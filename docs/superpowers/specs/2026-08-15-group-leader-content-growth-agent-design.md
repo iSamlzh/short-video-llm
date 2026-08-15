@@ -23,7 +23,7 @@
 
 用户界面采用“对话 + 活文档”的 AI-native 形态。系统根据 IP 属性和内部内容情报给出多个合适的选题方向；用户只选择一个方向，系统再在该方向下生成多篇完整候选文案，用户选择今天要拍的一篇。文案、证据、发布记录和复盘结果作为持续生长的任务产物嵌入任务流。
 
-第一版只交付内容闭环：团长 IP 建档、内部内容情报、选题方向匹配、同方向候选文案、动态质量标准、确认与锁稿、人工发布记录、平台数据导入、复盘和记忆升级。质量引擎自主发现、提炼和评测新标准，由内容负责人确认启用。首期只使用单台 4 核 8GB 服务器、基础鉴权与隔离、数据库迁移、任务重试和错误日志。数字人口播、平台 API、灾备、高可用、复杂发布治理和高级运维均不进入第一版。
+第一版只交付内容闭环：团长 IP 建档、内部内容情报、选题方向匹配、同方向候选文案、动态质量标准、确认与锁稿、人工发布记录、平台数据导入、复盘和记忆升级。质量引擎自主发现、提炼和评测新标准，由内容负责人确认启用。系统随版本交付可直接运行的系统基线包，为五类用户角色、三个 Agent、工作流和全部内容闭环组件提供不可变默认版本；独立演示数据可在正式上线前一次性清理。首期只使用单台 4 核 8GB 服务器、基础鉴权与隔离、数据库迁移、任务重试和错误日志。数字人口播、平台 API、灾备、高可用、复杂发布治理和高级运维均不进入第一版。
 
 ## 2. 设计依据与已确认决策
 
@@ -54,6 +54,8 @@
 | 数据回流 | 一期表格/链接导入为主，平台 API 二期接入 |
 | 主交互范式 | “对话 + 活文档”；团长默认入口为主动秘书式简报 |
 | 核心业务对象 | 团长 IP 数字分身，而不是一组静态资料表单 |
+| 首版默认版本 | 交付不可变 `content-loop-starter-v1` 系统基线包；新租户零配置继承，修改时创建租户版本，不覆盖系统版本 |
+| 上线数据清理 | 系统基线保留或停用；示例租户、示例用户和示例业务数据归入独立演示包，可预览并一次性彻底清理 |
 | 首期部署 | 单台 4 核 8GB，只满足内容闭环试用；备份、灾备、监控告警、发布治理、负载均衡和高可用全部放入第二版 |
 
 ## 3. 目标、非目标与范围
@@ -92,6 +94,9 @@
 - **Agent Run：** Workflow Runtime 围绕一个目标推进的一次持久任务运行，可暂停、等待、恢复和回放。
 - **选题方向：** 系统根据 IP 属性、当期内容机会和历史效果生成的内容方向候选；它不是独立商业策略，用户必须先选择一个方向，系统才生成该方向下的候选文案。
 - **爆款结构：** 由内部爆款内容人工拆解形成的抽象文案结构；技术上版本化为 `WritingTemplateVersion`，包含适用 IP、方向、钩子、正文步骤、证据要求、CTA、平台规则和禁用条件，不包含供生成模型直接复用的爆款原文。
+- **系统基线包：** 由产品发布、不可被租户原地修改的一组兼容版本引用，技术上为 `SystemBaselineBundle`；包含角色策略、Agent、工作流、IP Schema、Goal 模板、爆款结构、质量标准、导入映射、复盘规则和 UI Block 协议。
+- **有效版本集：** Run 启动时解析系统基线与租户覆盖后形成的不可变 `EffectiveVersionSet`；运行中的任务始终使用该快照，不受后续默认版本升级影响。
+- **演示数据包：** 仅用于安装验收的独立示例租户及其用户、IP、任务、发布、指标和复盘数据；全部标记 `data_scope=DEMO`，不包含系统运行依赖的基线版本。
 - **数字人口播成片：** MiniMax 等服务根据锁定稿生成音频后，HeyGen 等服务使用该音频驱动已授权数字人并返回的视频文件。系统负责归档和页面展示，不对视频执行合成、字幕烧录、封面生成、转码或精剪。
 
 ### 3.4 第一版范围优先级
@@ -100,19 +105,19 @@
 
 | 第一版实现 | 后续待定，不实现 |
 |---|---|
-| 租户与角色、团长 IP、内部内容情报、爆款结构库、选题方向选择、同方向候选文案选择、质量标准 v1、自主标准提案/评测、负责人启用与质量版本回滚、运营/团长确认、人工发布记录、CSV/XLSX 指标导入、统一指标、复盘、记忆提案、基础操作记录、成本与单机启动配置 | MiniMax/HeyGen、数字人档案、音频/视频资产、成片页面、自动发布、抖音/视频号 API、带货模板包、微信小程序、任务星图、备份、异地灾备、RPO/RTO、恢复演练、蓝绿/金丝雀发布、应用自动回滚、外部监控、压力/故障注入、多实例高可用 |
+| 租户与角色、系统基线包、可清理演示数据、团长 IP、内部内容情报、爆款结构库、选题方向选择、同方向候选文案选择、质量标准 v1、自主标准提案/评测、负责人启用与质量版本回滚、运营/团长确认、人工发布记录、CSV/XLSX 指标导入、统一指标、复盘、记忆提案、基础操作记录、成本与单机启动配置 | MiniMax/HeyGen、数字人档案、音频/视频资产、成片页面、自动发布、抖音/视频号 API、带货模板包、微信小程序、任务星图、备份、异地灾备、RPO/RTO、恢复演练、蓝绿/金丝雀发布、应用自动回滚、外部监控、压力/故障注入、多实例高可用 |
 
 ## 4. 用户、角色与权限
 
-| 角色 | 主要任务 | 核心权限 | 明确禁止 |
-|---|---|---|---|
-| 团长 | 提供事实、选择内容方向、选择今天要拍的文案、查看复盘结果 | 查看和纠正自己的 IP；选择自己的方向与文案；确认公开表达 | 查看内部爆款原文、其他团长信息、内部模板评分 |
-| 内容运营 | 管理多个团长、创建目标、协助方向/文案选择、审核内容、导入数据、确认复盘结论 | 查看被分配团长；使用抽象模板；执行确认和生产交接 | 查看未授权团长；绕过事实/合规阻断 |
-| 内容情报员 | 采集并拆解近 7 日爆款 | 访问内部来源、拆解和爆款结构发布流程 | 访问团长敏感资料或外部开放内部原文 |
-| 运营负责人 | 配置模板、质量阈值、预算、团队和确认规则 | 跨运营项目视图；模板发布；成本和异常管理 | 直接修改团长确认的事实而不产生新提案 |
-| 系统管理员 | 租户、集成和权限管理 | 第一版技术配置和基础故障排查 | 使用管理员身份创作或审批业务内容 |
+| 系统角色 | 默认入口 | 主要任务 | 核心权限 | 明确禁止 |
+|---|---|---|---|---|
+| `group_leader` 团长 | 今日内容主动简报 | 提供事实、选择内容方向、选择今天要拍的文案、查看复盘结果 | 查看和纠正自己的 IP；选择自己的方向与文案；确认公开表达 | 查看内部爆款原文、其他团长信息、内部模板评分 |
+| `content_operator` 内容运营 | 待推进内容任务 | 管理多个团长、创建目标、协助方向/文案选择、审核内容、导入数据、确认复盘结论 | 查看被分配团长；使用抽象模板；执行确认和生产交接 | 查看未授权团长；绕过事实/合规阻断 |
+| `content_intelligence` 内容情报员 | 待拆解与待复核来源 | 采集并拆解近 7 日爆款 | 访问内部来源、拆解和爆款结构发布流程 | 访问团长敏感资料或外部开放内部原文 |
+| `content_owner` 内容负责人 | 待审批规则与质量提案 | 配置模板、质量阈值、预算、团队和确认规则 | 跨运营项目视图；模板发布；成本和异常管理 | 直接修改团长确认的事实而不产生新提案 |
+| `admin` 系统管理员 | 系统状态与租户管理 | 租户、集成和权限管理 | 第一版技术配置、基线检查和基础故障排查 | 使用管理员身份创作或审批业务内容 |
 
-所有业务对象均包含 `tenant_id`。内部内容资产使用独立的数据域和角色，不通过团长端接口暴露。
+五类角色随 `RolePolicySetVersion v1` 一次性交付；新租户不需要手工创建权限矩阵。所有业务对象均包含 `tenant_id`。内部内容资产使用独立的数据域和角色，不通过团长端接口暴露。系统不预置共享管理员账号或密码；首次启动必须通过一次性初始化流程创建首个租户与管理员。
 
 ## 5. 会议要求与架构承载
 
@@ -133,10 +138,13 @@ flowchart TB
     U1["运营：目标与复杂决策"] --> UI["对话 + 活文档任务流"]
     U2["团长：事实与表达确认"] --> UI
     UI --> API["API / SSE"]
+    API --> BASE["System Baseline / Tenant Defaults"]
     API --> WF["Workflow Runtime\n确定性状态机"]
+    BASE --> WF
     WF --> A1["IP Agent"]
     WF --> A2["Content Agent"]
     WF --> A3["Quality & Learning Agent"]
+    BASE --> A1 & A2 & A3
     WF -. 第二版 .-> VIDEO["数字人口播异步工作流"]
     A1 & A2 & A3 --> CTX["受控上下文装配器"]
     CTX --> IP["团长 IP 资产域"]
@@ -160,6 +168,7 @@ flowchart TB
 5. **数据最小化。** Agent 不能自由扫描数据库，只能读取上下文装配器按租户、任务和角色组装的数据包。
 6. **异步优先。** 模型、导入和复盘均为可暂停、可恢复的异步步骤；数字人口播若未来立项沿用同一模式。
 7. **可追踪和可撤销。** 目标、Agent、工具、模型、产物、审批、成本和记忆升级形成完整谱系。
+8. **开箱可运行，默认也版本化。** 干净环境必须用已校验系统基线直接跑通闭环；租户修改采用覆盖版本，Run 固定有效版本集，演示数据与基线严格分离。
 
 ### 6.2 首期技术选型
 
@@ -181,6 +190,7 @@ Workflow Runtime 状态机由业务代码显式实现，不把核心运行语义
 | 模块 | 职责 | 拥有的数据 | 对外接口/事件 | 不负责 |
 |---|---|---|---|---|
 | Identity & Tenant | 用户、组织、角色、授权和同意 | tenants, users, memberships, consents | `authorize()`, `consent.granted` | 内容和 Agent 逻辑 |
+| System Defaults | 系统基线发布、租户默认绑定、有效版本解析、首次初始化和演示数据清理 | system_baseline_bundles, baseline_component_refs, tenant_default_bindings, effective_version_sets, demo_data_manifests | `resolve_effective_versions()`, `system.baseline.activated`, `demo_data.purge.completed` | Agent 决策、业务内容生成或任意范围删除 |
 | IP Core | 团长事实、证据、表达、人设和版本 | ip_profiles, fact_claims, evidence, voice_rules, boundaries | `publish_snapshot()`, `ip.snapshot.published` | 内容模板和任务调度 |
 | Content Intelligence | 受保护来源、拆解、模式和人工发布的爆款结构 | source_items, decompositions, patterns, writing_template_versions | `match_templates()`, `writing_template.published` | 团长事实、方向选择和文案确认 |
 | Review & Learning | 单条内容复盘、跨内容规律累积、质量信号、标准提案/评测和内容经验 | insights, quality_signals, quality_standard_proposals, quality_standard_versions, quality_evaluations | `review_content()`, `propose_standard()`, `quality_standard.activated` | 修改事实/合规硬门槛；未经内容负责人确认启用新标准 |
@@ -365,6 +375,31 @@ Content Agent 的选题模式根据已发布 IP 快照、当期目标、近 7 �
 
 Agent 不持有数据库连接、供应商密钥或任意 HTTP 能力。所有工具调用通过 Gateway 完成授权、脱敏、限流、幂等、成本记录和审计。
 
+### 10.4 首版系统基线包
+
+首版必须随应用镜像交付 `content-loop-starter-v1`，干净数据库完成迁移和初始化后即可运行内容闭环，不允许把“后台再配 Prompt、角色或质量规则”作为上线前置条件。
+
+| 基线组件 | 首版默认版本 | 开箱行为 |
+|---|---|---|
+| 角色策略 | `RolePolicySetVersion v1` | 创建五类系统角色、最小权限和默认入口；不创建共享账号 |
+| IP Agent | `IpAgentDefinition v1` | 提供建档问题、事实提案和三次校准；使用类型化 Schema 和预算 |
+| Content Agent | `ContentAgentDefinition v1` | 内置 `TOPIC_DIRECTION` 与 `SCRIPT_GENERATION` 两个模式 |
+| Quality & Learning Agent | `QualityLearningAgentDefinition v1` | 内置 `PRE_PUBLISH_QA`、`POST_PUBLISH_REVIEW`、`CROSS_CONTENT_LEARNING` 三个模式 |
+| 工作流 | `ContentLoopWorkflowVersion v1` | 提供第 11.2 节完整状态机、人工等待、重试和恢复规则 |
+| IP 建档 | `IpProfileSchemaVersion v1` | 提供最小字段、默认访谈问题、事实/表达/内容输出三次校准规则 |
+| 业务目标 | `GoalContractTemplateVersion v1` | 默认“团长招商获客”，允许修改目标受众、平台、CTA 和成功指标 |
+| 爆款结构 | 20～30 个 `WritingTemplateVersion v1` | 由内容负责人确认并随基线发布，只包含抽象结构，不包含爆款原文 |
+| 内容质量 | `QualityStandardVersion v1` | 提供事实、合规、IP 禁区和泄露硬门禁，以及 IP 一致性、可信度、节奏和行动引导软评分 |
+| 发布与导入 | `PublicationSchemaVersion v1`、`MetricMappingSetVersion v1` | 可人工登记抖音/视频号发布信息，并导入标准 CSV/XLSX 示例字段 |
+| 复盘学习 | `ReviewPolicyVersion v1`、`PromotionPolicyVersion v1` | 提供单条复盘、证据阈值、影子评测和负责人启用规则 |
+| 用户界面 | `UiBlockSchemaVersion v1` | 提供完整首版 Block 类型、角色默认入口和安全渲染规则 |
+
+基线包使用 `bundle_key + semantic_version + checksum` 唯一标识，状态为 `DRAFT → VALIDATED → ACTIVE → RETIRED`。只有通过完整性校验的包可以设为 ACTIVE；已发布组件不可原地修改，修复也必须生成新语义版本。应用启动只读取 ACTIVE 包，缺少必需组件、引用不存在或校验和不一致时 readiness 失败，不允许带着半套默认配置接收业务流量。
+
+新租户创建 `TenantDefaultBinding` 引用当前 ACTIVE 系统基线，不复制 20～30 份结构和 Agent 配置。租户修改某个组件时使用 copy-on-write 创建 `scope=TENANT` 的新版本，并只覆盖该组件引用。Run 启动时将解析后的全部组件写入 `EffectiveVersionSet`；基线升级、租户覆盖或系统版本停用只影响新 Run，不能改变运行中和历史 Run。
+
+最小首次使用只要求创建租户管理员、录入团长最小 IP 信息并确认默认“团长招商获客”目标。系统必须能够依次生成方向、同方向文案、QA 和锁定稿，再完成发布记录、指标导入与复盘。用户可以编辑默认值，但不能因为未进入配置后台而被阻断。
+
 ## 11. 端到端业务流程
 
 ### 11.1 流程与审批门
@@ -490,6 +525,9 @@ CREATED
 
 ```text
 Tenant ──< Membership >── User
+SystemBaselineBundle ──< BaselineComponentRef
+Tenant ──1 TenantDefaultBinding ──> SystemBaselineBundle
+AgentRun ──1 EffectiveVersionSet
 Tenant ──< IPProfile ──< IPProfileVersion
 IPProfileVersion ──< FactClaim >──< Evidence
 IPProfileVersion ──< VoiceRule / Boundary / Offer / CaseStudy
@@ -506,9 +544,27 @@ QualityStandardVersion ──< QAReport >── ArtifactVersion
 ArtifactVersion ──> Publication ──< MetricSnapshot
 Experiment ──< Publication
 Experiment ──< Insight ──> MemoryProposal
+DemoDataManifest ──1 DemoTenant ──< DemoScopedRecord
 ```
 
 数字人口播的 `VoiceProfile`、`SpeechJob`、`AudioAsset`、`AvatarProfile`、`TalkingVideoJob`、`VideoAsset`、QA 报告和 `DeliveryPage` 仅是第 15 章的未来领域草案，第一版实体模型不包含这些对象。
+
+### 13.5 系统基线、租户覆盖与演示数据
+
+`SystemBaselineBundle` 只保存兼容组件的版本引用、校验和、发布状态和产品版本，不复制组件内容。`TenantDefaultBinding` 保存租户当前基线和逐组件覆盖；解析优先级固定为“租户有效覆盖 → 系统 ACTIVE 基线”，禁止运行时临时让模型补齐缺失配置。`EffectiveVersionSet` 保存最终解析结果及来源范围，必须绑定 Run、QA、发布记录和复盘。
+
+演示数据使用独立 `demo_tenant_id`、对象存储前缀和 `DemoDataManifest`，所有记录显式标记 `data_scope=DEMO`。系统基线组件使用 `data_scope=SYSTEM`，真实租户数据使用 `data_scope=TENANT`；三者不能靠名称或固定 ID 猜测区分。20～30 个抽象爆款结构、质量标准和 Agent 定义属于 SYSTEM 基线，不得因清理演示数据而删除。
+
+正式上线清理采用“预览 → 引用检查 → 二次确认 → 执行 → 完整性验证”流程：
+
+1. 生成数据库记录数、对象存储对象数和预计影响范围，不执行删除；
+2. 检查任何非演示租户是否引用 DEMO 对象，存在引用时阻断并列出迁移项；
+3. 管理员使用短期确认令牌执行，只允许以已解析的 `demo_tenant_id` 和 DEMO 对象前缀为边界；
+4. 在事务中删除演示租户业务记录，再删除清单中的对象存储文件；对象删除失败时保留待清理清单并可幂等续跑；
+5. 保留不含业务正文的清理审计，包括操作者、时间、清单哈希、删除数量和失败数量；
+6. 重新运行系统基线完整性检查和正式租户冒烟测试；生产环境固定 `DEMO_SEED_ENABLED=false`，后续部署不得重新生成演示数据。
+
+清理命令重复执行必须返回 `already_purged`，不能误删 SYSTEM 或 TENANT 数据。系统基线只有在所有真实租户已建立可用覆盖、且没有新 Run 依赖时才能 RETIRE；第一版不提供物理删除系统基线的入口。
 
 ## 14. 平台数据导入与统一指标
 
@@ -682,6 +738,11 @@ class TalkingAvatarPort(Protocol):
 
 | API | 功能 | 关键约束 |
 |---|---|---|
+| `GET /v1/system/baseline-status` | 获取系统基线完整性和 ACTIVE 版本 | readiness 和管理员可读；不返回 Prompt 正文、密钥或内部爆款原文 |
+| `POST /v1/setup/first-admin` | 首次创建租户和管理员 | 只在零租户状态且持有一次性启动令牌时可用；成功后永久关闭该令牌 |
+| `GET /v1/tenant/default-versions` | 查看租户继承和覆盖后的默认版本 | 标明 SYSTEM/TENANT 来源、语义版本和是否被运行中任务使用 |
+| `GET /v1/admin/demo-data/purge-preview` | 生成演示数据清理清单 | 只读；执行非演示引用检查并返回清单哈希和短期确认令牌 |
+| `POST /v1/admin/demo-data/purge` | 一次性清理演示数据 | 必须携带清单哈希和确认令牌；仅能删除 `data_scope=DEMO`，支持幂等续跑 |
 | `POST /v1/goals` | 创建 GoalContract | 返回结构化预览；确认后才启动批量调用 |
 | `POST /v1/goals/{id}/start` | 启动 Agent Run | 使用幂等键，重复请求返回同一 Run |
 | `GET /v1/runs/{id}` | 获取 Run 和当前决策 | 按租户和角色裁剪字段 |
@@ -703,6 +764,9 @@ class TalkingAvatarPort(Protocol):
 ### 16.2 领域事件
 
 - `goal.accepted.v1`
+- `system.baseline.activated.v1`
+- `tenant.defaults.bound.v1`
+- `demo_data.purge.completed.v1`
 - `run.state.changed.v1`
 - `ip.snapshot.published.v1`
 - `topic.directions.generated.v1`
@@ -727,6 +791,10 @@ class TalkingAvatarPort(Protocol):
 
 | 异常 | 系统行为 | 用户看到的动作 |
 |---|---|---|
+| 系统基线不完整或校验失败 | readiness 返回失败，不接收新 Run；保留数据库诊断结果 | 管理员重新执行幂等初始化或回到上一完整 ACTIVE 基线 |
+| 租户覆盖引用失效 | 禁止启动新 Run；不影响已固定 `EffectiveVersionSet` 的历史/运行中任务 | 内容负责人恢复有效覆盖或使用系统默认版本 |
+| 演示数据存在正式租户引用 | 清理预览标记阻断，执行端拒绝删除 | 先迁移引用，再重新生成清理清单 |
+| 演示对象存储删除部分失败 | 数据库保留待清理对象清单，重复执行只处理失败项 | 管理员重试；正式租户与系统基线继续可用 |
 | IP 资料不足 | 暂停生成并产生针对性追问 | 补资料、降低主张强度或删除主张 |
 | 模型超时/限流 | 指数退避；允许换备用模型；保持检查点 | 稍后继续或批准切换供应商 |
 | 导入文件错误 | 不写权威表；展示逐行错误 | 下载错误报告、修复后重传 |
@@ -768,6 +836,15 @@ class TalkingAvatarPort(Protocol):
 - 事实和合规阻断不能由 Agent 或普通运营绕过；
 - 发布记录包含平台、账号、内容 ID/URL、发布时间、锁定稿版本和审批人。
 
+### 18.5 默认版本与演示数据安全
+
+- 系统基线由构建产物签名或校验和保护，租户和普通管理员不能原地修改 SYSTEM 版本；
+- 首次管理员不使用镜像内默认密码，通过一次性启动令牌创建，令牌成功使用后立即失效且不得写入日志；
+- 演示租户不得持有真实外部凭证，演示任务不得调用真实发布、通知或业务线索渠道；
+- 清理接口只接受服务端生成的 manifest 哈希和短期确认令牌，不接受用户提交任意租户 ID、对象前缀或删除条件；
+- 清理执行前后二次验证 SYSTEM/TENANT 记录计数和基线完整性；任何边界不一致立即停止；
+- 清理审计不保留示例 IP 正文、文案正文或导入文件内容。
+
 ## 19. 首期精简单机部署
 
 ### 19.1 定位与约束
@@ -803,6 +880,8 @@ External
 ```
 
 使用 Docker Compose 管理服务。数据库和 Redis 使用本机持久卷；容器设置 CPU/内存限制；日志按大小轮转，避免写满磁盘。证据和导入文件由客户端直传对象存储，不经过 API 服务器。第一版不提供这些数据的备份与恢复保证。
+
+迁移完成后运行一次性 `baseline-init` Job：按照 `bundle_key + semantic_version + checksum` 幂等写入并校验 `content-loop-starter-v1`，不得覆盖已存在的发布版本。Job 成功后 API readiness 才能通过。零租户环境进入首次设置页，使用部署时生成的一次性令牌创建首个租户和管理员；没有共享默认账号。演示环境可显式设置 `DEMO_SEED_ENABLED=true` 创建独立演示租户，正式环境必须为 `false`。
 
 ### 19.4 首期容量和限流
 
@@ -994,7 +1073,7 @@ tenant_id → goal_id → run_id → run_step_id
 
 | 阶段 | 可独立验收的结果 | 出口标准 |
 |---|---|---|
-| P0 最小基座 | 单机启动、租户、权限、基础操作记录、对象存储、状态机、任务流和基础 CI | 4C8G 单机可启动；登录、租户隔离、任务创建和状态读取通过 |
+| P0 最小基座 | 单机启动、系统基线包、五类角色默认入口、三 Agent 默认版本、租户、权限、基础操作记录、对象存储、状态机、可清理演示数据和基础 CI | 干净数据库在 4C8G 单机初始化后无需后台手工配置即可登录并启动内容任务；基线完整性、租户隔离、演示清理通过 |
 | P1 团长 IP | AI 访谈、资料导入、事实/证据核验、IP 快照、记忆提案和撤销 | 10 位团长完成建档；事实 Evals 达标 |
 | P2 内容闭环 | 受保护原文库、20～30 个人工爆款结构、IP 匹配方向、单方向候选文案、质量标准 v1、质检、确认和真人交接 | 运营独立完成 30 条“选方向 → 选文案”任务；每份 QA 报告绑定质量标准版本；候选批次跨方向混稿为 0；内部原文泄露为 0 |
 | P3 发布数据与自主进化 | 人工发布记录、数据导入、统一指标、复盘、爆款结构效果、质量标准自主提案/评测、人工启用和记忆升级 | 两个真实首期业务周期跑通；至少完成一次“发现 → 提案 → 评测 → 负责人启用/拒绝”的质量标准迭代；导入和标准回滚通过 |
@@ -1016,10 +1095,17 @@ tenant_id → goal_id → run_id → run_step_id
 - 运营人均周产能较试点前提升 ≥ 2 倍；
 - 至少一个首期业务结果指标连续两个完整周期改善；
 - 团长平均每个任务需要处理的决策卡不超过 3 张。
+- 五类用户角色首次登录后进入各自默认工作入口，不需要管理员先手工配置权限、导航或 Agent；
+- 新租户只录入最小 IP 信息并确认默认业务目标，即可开始完整内容任务。
 
 ### 26.2 第一版最低技术验收
 
 - 4C8G 单机可以完成部署、登录并创建第一个内容任务；
+- 干净数据库完成迁移和 `baseline-init` 后，系统基线包完整性检查通过，五类角色、三个 Agent、五个 Agent 模式及所有闭环组件均存在有效默认版本；
+- 固定示例数据可以从首次建档跑到 `REVIEWED`，全程不要求进入配置后台；
+- Run 保存唯一 `EffectiveVersionSet`；系统基线或租户默认升级后，运行中任务的组件版本不漂移；
+- 演示数据清理预览能阻断跨范围引用；一次性清理后 DEMO 数据和对象均为 0，SYSTEM 基线及正式租户冒烟测试仍通过，重复清理返回 `already_purged`；
+- 生产环境关闭演示种子后，应用重启和升级不会重新生成演示数据；
 - 单个内容任务可以在人工等待、模型限流或页面重连后从数据库状态继续；
 - 模型付费调用具备幂等键，同一次成功步骤不重复扣费；
 - SSE 断线重连后可以读取数据库中的最新任务状态；
