@@ -34,6 +34,16 @@ describe("prototype workspace", () => {
     expect(screen.getByText("模拟数据，不代表真实平台表现")).toBeVisible()
   })
 
+  it("disables the review action while a review request is running", () => {
+    render(<SimulationAndReview
+      snapshot={{ isSimulated: true, impressions: 3200, plays: 1800 }}
+      onReview={() => undefined}
+      reviewPending
+    />)
+
+    expect(screen.getByRole("button", { name: "正在复盘这条内容…" })).toBeDisabled()
+  })
+
   it("prefills an explicitly requested demo IP profile", () => {
     render(<PrototypeWorkspace initialProfile={{
       displayName: "林姐",

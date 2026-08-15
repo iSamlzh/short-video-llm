@@ -66,7 +66,7 @@ export function PrototypeWorkspace({ initialRun, initialProfile, resetOnLoad = f
     if (run.state === "READY_FOR_QA") return <section className="stage-card"><h2>发布前独立检查</h2><p>Agent 将检查可信度、IP 匹配和表达结构，不会替你改写。</p><button onClick={() => command("qa/run", { inputVersion: run.inputVersion }, "正在运行发布前 QA…")}>运行发布前 QA</button></section>
     if (run.state === "WAITING_LOCK_CONFIRMATION") return <QualityAndLock report={run.qualityReport} onLock={() => command("lock", {}, "正在锁定版本…")} />
     if (run.state === "LOCKED") return <section className="stage-card"><h2>拍摄稿已锁定</h2><p>下一步用确定性模拟数据验证复盘交互。</p><button onClick={() => command("publication/simulate", {}, "正在生成模拟表现…")}>生成模拟发布数据</button></section>
-    if (run.state === "WAITING_REVIEW") return <SimulationAndReview snapshot={run.metricSnapshot} onReview={() => command("review/generate", { metricVersion: run.metricSnapshot.version }, "正在复盘这条内容…")} />
+    if (run.state === "WAITING_REVIEW") return <SimulationAndReview snapshot={run.metricSnapshot} reviewPending={Boolean(busy)} onReview={() => command("review/generate", { metricVersion: run.metricSnapshot.version }, "正在复盘这条内容…")} />
     if (run.state === "REVIEWED") return <SimulationAndReview snapshot={run.metricSnapshot} review={run.review} />
     return <section className="stage-card"><h2>{busy || "Agent 正在处理当前步骤…"}</h2></section>
   })()
