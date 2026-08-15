@@ -15,16 +15,25 @@ const fields = [
   ["voiceStyle", "表达特点", "例如：直接、实在、有案例"], ["boundaries", "不能说的内容", "例如：不承诺确定收益"],
 ] as const
 
-export function PrototypeWorkspace({ initialRun, initialProfile }: { initialRun?: RunView; initialProfile?: IpProfile }) {
+export function PrototypeWorkspace({ initialRun, initialProfile, resetOnLoad = false }: { initialRun?: RunView; initialProfile?: IpProfile; resetOnLoad?: boolean }) {
   const [run, setRun] = useState<RunView | undefined>(initialRun)
   const [busy, setBusy] = useState("")
   const [error, setError] = useState("")
 
   useEffect(() => {
+    if (resetOnLoad) {
+      window.localStorage.removeItem("content-prototype-run")
+      const cleanUrl = new URL(window.location.href)
+      if (cleanUrl.searchParams.has("reset")) {
+        cleanUrl.searchParams.delete("reset")
+        window.history.replaceState({}, "", `${cleanUrl.pathname}${cleanUrl.search}`)
+      }
+      return
+    }
     if (initialRun) return
     const id = window.localStorage.getItem("content-prototype-run")
     if (id) getRun<RunView>(id).then(setRun).catch(() => window.localStorage.removeItem("content-prototype-run"))
-  }, [initialRun])
+  }, [initialRun, resetOnLoad])
 
   async function refresh(id = run?.id) { if (id) setRun(await getRun<RunView>(id)) }
   async function command(path: string, body: Record<string, unknown>, label: string) {

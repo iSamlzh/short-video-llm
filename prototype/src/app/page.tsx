@@ -9,7 +9,8 @@ const demoProfile = {
   boundaries: "不承诺收入，不虚构成功案例，不贬低其他平台",
 }
 
-export default async function HomePage({ searchParams }: { searchParams?: Promise<{ demo?: string }> }) {
-  const demo = (await searchParams)?.demo === "1"
-  return <PrototypeWorkspace initialProfile={demo ? demoProfile : undefined} />
+export default async function HomePage({ searchParams }: { searchParams?: Promise<{ demo?: string; reset?: string }> }) {
+  const params = await searchParams
+  const demo = params?.demo === "1"
+  return <PrototypeWorkspace initialProfile={demo ? demoProfile : undefined} resetOnLoad={params?.reset === "1"} />
 }
