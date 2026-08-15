@@ -19,7 +19,7 @@
 3. 面向 IP 选题方向沉淀爆款内容结构，并输出对应结构的候选文案；
 4. 从爆款内容库和实际发布效果中形成、评测并持续进化的内容质量标准。
 
-产品采用“逻辑多 Agent、工程模块化单体”的架构。增长主理人 Agent 负责拆目标和推进持久任务状态机，IP 建模师、趋势研究员、选题策划师、文案创作者、质检官、口播视频编排 Agent 和复盘师通过结构化契约协作。每个 Agent 有独立工具白名单、数据权限、成本预算、超时和输出 Schema，但首期不拆为独立微服务。
+产品采用“确定性 Workflow Runtime + 3 个 Agent”的架构。Workflow Runtime 负责状态流转、人工等待、重试、版本锁定和费用控制，不使用模型决定下一状态。IP Agent、Content Agent、Quality & Learning Agent 分别承担 IP 资产、内容生成、质量与学习三种真正独立的决策/权限边界；趋势研究、选题、文案、质检、复盘和质量进化只是这三个 Agent 内部的运行步骤或模式，不再分别建 Agent。
 
 用户界面采用“对话 + 活文档”的 AI-native 形态。系统根据 IP 属性和内部内容情报给出多个合适的选题方向；用户只选择一个方向，系统再在该方向下生成多篇完整候选文案，用户选择今天要拍的一篇。文案、证据、发布记录和复盘结果作为持续生长的任务产物嵌入任务流。
 
@@ -89,7 +89,7 @@
 - **有效咨询：** 由运营人员确认，具备有效联系方式并明确表达合作、代理、团长加入或进一步洽谈意愿的线索。
 - **IP 快照：** 经团长确认、运营核验后发布的某一版权威 IP 模型；生成内容必须绑定快照版本。
 - **活文档：** 嵌在任务流中、随 Agent 和人工操作持续产生新版本的选题、文案、证据或复盘产物。
-- **Agent Run：** 增长主理人围绕一个目标执行的一次持久任务运行，可暂停、等待、恢复和回放。
+- **Agent Run：** Workflow Runtime 围绕一个目标推进的一次持久任务运行，可暂停、等待、恢复和回放。
 - **选题方向：** 系统根据 IP 属性、当期内容机会和历史效果生成的内容方向候选；它不是独立商业策略，用户必须先选择一个方向，系统才生成该方向下的候选文案。
 - **爆款结构：** 由内部爆款内容人工拆解形成的抽象文案结构；技术上版本化为 `WritingTemplateVersion`，包含适用 IP、方向、钩子、正文步骤、证据要求、CTA、平台规则和禁用条件，不包含供生成模型直接复用的爆款原文。
 - **数字人口播成片：** MiniMax 等服务根据锁定稿生成音频后，HeyGen 等服务使用该音频驱动已授权数字人并返回的视频文件。系统负责归档和页面展示，不对视频执行合成、字幕烧录、封面生成、转码或精剪。
@@ -124,7 +124,7 @@
 | 真人/数字人双路径 | 后续待定；第一版只把锁定稿作为内容闭环的最终生产交接物 | 第一版不存在 MiniMax/HeyGen 接口、媒体资产或成片页面 |
 | 不自研精剪 | External Handoff：字幕、镜头、素材包和成片归档 | 系统内不存在时间线编辑器；支持记录外部成片 |
 | 数据回流 | Analytics Import：表格导入、字段映射、统一指标 | 导入可预览、校验、去重和回滚 |
-| Agent 优化文案 | Experiment + Insight：归因、模板效果和内容经验提案 | 结论有证据、置信度、适用范围并需人工发布 |
+| 内容持续优化 | Review & Learning：单条复盘、跨内容累积、爆款结构效果和质量标准提案 | 结论有证据、置信度和适用范围；多个复盘信号达到门槛后才形成进化提案 |
 
 ## 6. 总体架构
 
@@ -133,33 +133,28 @@ flowchart TB
     U1["运营：目标与复杂决策"] --> UI["对话 + 活文档任务流"]
     U2["团长：事实与表达确认"] --> UI
     UI --> API["API / SSE"]
-    API --> ORCH["增长主理人 Agent\n持久任务状态机"]
-    ORCH --> A1["IP 建模师"]
-    ORCH --> A2["趋势研究员"]
-    ORCH --> A3["选题策划师"]
-    ORCH --> A4["文案创作者"]
-    ORCH --> A5["质检官"]
-    ORCH -. 后续待定 .-> A6["口播视频编排 Agent"]
-    ORCH --> A7["复盘师"]
-    ORCH --> A8["质量进化 Agent"]
-    A1 & A2 & A3 & A4 & A5 & A6 & A7 & A8 --> CTX["受控上下文装配器"]
+    API --> WF["Workflow Runtime\n确定性状态机"]
+    WF --> A1["IP Agent"]
+    WF --> A2["Content Agent"]
+    WF --> A3["Quality & Learning Agent"]
+    WF -. 第二版 .-> VIDEO["数字人口播异步工作流"]
+    A1 & A2 & A3 --> CTX["受控上下文装配器"]
     CTX --> IP["团长 IP 资产域"]
     CTX --> INTEL["内部内容智能域"]
     CTX --> RUN["任务 / 产物 / 实验域"]
-    ORCH --> TOOLS["模型与工具 Gateway"]
+    A1 & A2 & A3 --> TOOLS["模型与工具 Gateway"]
     TOOLS --> LLM["云端大模型 / 搜索"]
-    TOOLS -. 后续待定 .-> AVATAR["数字人 / 语音 API"]
     TOOLS --> STORAGE["对象存储"]
     RUN --> IMPORT["一期：表格 / 链接导入"]
-    IMPORT --> REVIEW["指标归一与复盘"]
-    REVIEW --> ORCH
+    IMPORT --> REVIEW["复盘与进化"]
+    REVIEW --> A3
     P2["二期：抖音 / 视频号 API"] -.-> IMPORT
 ```
 
 ### 6.1 架构原则
 
 1. **核心自有，非核心适配。** IP、内容情报、选题匹配、爆款结构、质量标准、实验和审计属于我方；模型、数字人、剪辑和平台能力通过可替换 Adapter 使用。
-2. **逻辑多 Agent，工程模块化单体。** Agent 是职责和权限边界，不是默认的部署边界。
+2. **少量 Agent，确定性编排。** 第一版只有 3 个 Agent；Workflow Runtime 是普通业务代码，不是 Agent。Agent 只代表独立决策、权限和评测边界，不按每个工作步骤拆分。
 3. **权威状态先落库。** Run、审批、成本和工具调用先进入 PostgreSQL，再通过 Outbox 分发事件。
 4. **人机权限明确。** 事实、公开表达、预算超限、发布和长期记忆由人决策。
 5. **数据最小化。** Agent 不能自由扫描数据库，只能读取上下文装配器按租户、任务和角色组装的数据包。
@@ -176,10 +171,10 @@ flowchart TB
 | 异步任务 | Celery + Redis | 首期生态成熟、易于单机部署；任务权威状态仍在 PostgreSQL |
 | 实时更新 | Server-Sent Events | 产品以服务器向客户端推送状态为主，比双向 WebSocket 更简单 |
 | 对象存储 | S3 兼容存储 | 媒体直传、短期签名 URL、版本和生命周期能力 |
-| 可观测性 | OpenTelemetry | 统一关联 API、Agent、模型、工具和异步任务 Trace |
+| 基础运行记录 | 本机结构化日志 | 第一版只记录 Run、Agent 模式、模型调用、成本和错误，不建设独立可观测平台 |
 | 部署 | Docker Compose（一期） | 单机成本低且服务边界清晰；二期可迁移到托管容器平台 |
 
-Agent 任务状态机由业务代码显式实现，不把核心运行语义锁死在某个 Agent 框架中。模型和供应商 SDK 只存在于 Adapter 层。
+Workflow Runtime 状态机由业务代码显式实现，不把核心运行语义锁死在某个 Agent 框架中。模型和供应商 SDK 只存在于 Adapter 层。
 
 ## 7. 模块边界
 
@@ -188,11 +183,11 @@ Agent 任务状态机由业务代码显式实现，不把核心运行语义锁�
 | Identity & Tenant | 用户、组织、角色、授权和同意 | tenants, users, memberships, consents | `authorize()`, `consent.granted` | 内容和 Agent 逻辑 |
 | IP Core | 团长事实、证据、表达、人设和版本 | ip_profiles, fact_claims, evidence, voice_rules, boundaries | `publish_snapshot()`, `ip.snapshot.published` | 内容模板和任务调度 |
 | Content Intelligence | 受保护来源、拆解、模式和人工发布的爆款结构 | source_items, decompositions, patterns, writing_template_versions | `match_templates()`, `writing_template.published` | 团长事实、方向选择和文案确认 |
-| Quality Evolution | 从爆款库、黄金样本和发布效果提炼、影子评测并版本化质量标准 | quality_standard_proposals, quality_standard_versions, quality_evaluations | `propose_standard()`, `evaluate_standard()`, `quality_standard.activated` | 修改事实/合规硬门槛；未经内容负责人确认启用新标准 |
-| Agent Runtime | Goal、Run、任务图、上下文、模型/工具调用 | goals, runs, run_steps, tool_calls, outbox | `start_run()`, `run.state.changed` | 直接修改其他模块数据 |
+| Review & Learning | 单条内容复盘、跨内容规律累积、质量信号、标准提案/评测和内容经验 | insights, quality_signals, quality_standard_proposals, quality_standard_versions, quality_evaluations | `review_content()`, `propose_standard()`, `quality_standard.activated` | 修改事实/合规硬门槛；未经内容负责人确认启用新标准 |
+| Workflow Runtime | Goal、Run、确定性状态机、上下文、模型/工具调用 | goals, runs, run_steps, tool_calls, outbox | `start_run()`, `run.state.changed` | 用模型决定状态；直接修改其他模块数据 |
 | Artifact & Approval | 活文档、版本、批注、审批和锁定 | artifacts, artifact_versions, comments, approvals | `lock_version()`, `artifact.version.locked` | Agent 调度和媒体渲染 |
-| Production（后续待定） | 语音供应商、数字人视频供应商和成片页面编排 | 第一版不创建相关表 | 第一版不提供相关接口或事件 | 不进入第一版实现、迁移、部署和测试 |
-| Analytics & Import | 发布记录、导入、指标、实验和复盘 | publications, imports, metric_snapshots, experiments, insights | `import_metrics()`, `insight.proposed` | 一期平台 API 拉取 |
+| Production Workflow（后续待定） | 语音供应商、数字人视频供应商和成片页面编排 | 第一版不创建相关表 | 第一版不提供相关接口或事件 | 不进入第一版实现、迁移、部署和测试 |
+| Publishing & Analytics | 发布记录、导入、统一指标和实验数据 | publications, imports, metric_snapshots, experiments | `import_metrics()`, `metrics.imported` | 内容复盘、质量标准；一期平台 API 拉取 |
 | Audit & Notification | 审计、提醒、异常、配额和预算 | audit_events, notifications, budgets, cost_ledger | `record_event()`, `budget.exceeded` | 业务规则裁决 |
 
 模块只能写自己拥有的表。跨模块写操作必须通过应用接口或领域事件，禁止直接更新其他模块表。
@@ -276,7 +271,7 @@ Agent 任务状态机由业务代码显式实现，不把核心运行语义锁�
 }
 ```
 
-原始文本和媒体只允许内部情报角色访问。文案创作者只获得抽象结构、适用条件、风险标签和统计结论。
+原始文本和媒体只允许内部情报角色访问。Content Agent 只获得抽象结构、适用条件、风险标签和统计结论。
 
 ### 9.3 爆款结构库
 
@@ -305,7 +300,7 @@ Agent 任务状态机由业务代码显式实现，不把核心运行语义锁�
 
 ### 9.4 选题与模板匹配
 
-选题策划师先根据已发布 IP 快照、当期目标、近 7 日机会和历史效果生成 3～5 个 `TopicDirectionCandidate`。每个候选只展示方向名称、为什么适合该 IP、可以使用的事实和风险，不向用户展示内部模板或爆款来源。
+Content Agent 的选题模式根据已发布 IP 快照、当期目标、近 7 日机会和历史效果生成 3～5 个 `TopicDirectionCandidate`。每个候选只展示方向名称、为什么适合该 IP、可以使用的事实和风险，不向用户展示内部模板或爆款来源。
 
 用户必须明确选择一个 `TopicDirectionCandidate`。选择后，系统只在该方向下匹配爆款结构并生成默认 3 篇完整候选文案；禁止在一次候选集中混入多个方向。三篇稿件可以使用不同钩子或结构，但必须共享同一个 `topic_selection_id`，让用户解决“今天拍哪一篇”，而不是在多个方向和多个稿件组成的矩阵中盲选。
 
@@ -335,23 +330,26 @@ Agent 任务状态机由业务代码显式实现，不把核心运行语义锁�
 
 事实、合规、权限和内部原文泄露属于不可学习降低的硬门槛。播放量只能作为信号，不能单独决定质量标准；系统必须结合有效咨询等业务结果，避免把标题党、虚假承诺或偶然高播放自我强化为新标准。
 
-## 10. Agent 体系与运行契约
+## 10. 三 Agent 体系与运行契约
 
 ### 10.1 Agent 职责
 
 | Agent | 输入 | 输出 | 允许工具 | 禁止事项 |
 |---|---|---|---|---|
-| 增长主理人 | GoalContract、当前 Run 状态 | 任务图、预算和下一步 | 调度、状态、通知、预算 | 直接写最终文案；绕过审批 |
-| IP 建模师 | 团长资料和 IP 当前版本 | 缺口问题、事实提案、快照提案 | 资料解析、IP 查询 | 自动发布权威事实 |
-| 趋势研究员 | 任务、平台、人群、内部情报 | 带时效和适用条件的内部机会卡 | 内部检索、允许的搜索 | 向团长输出内部原文 |
-| 选题策划师 | IP 快照、机会卡、历史效果 | 3～5 个适合该 IP 的选题方向及匹配理由 | 模板标签、历史指标 | 输出独立商业策略；把爆款原文或内部模板评分展示给团长 |
-| 文案创作者 | 唯一已选方向、匹配模板、IP 快照、平台规则 | 同一方向下默认 3 篇完整候选文案 | 受控上下文、格式工具 | 在候选集中混入其他方向；使用未核验强背书 |
-| 质检官 | 文案、证据、规则 | 阻断、警告、建议和定位 | 事实检查、规则检查、重复度 | 修改权威事实；自行解除阻断 |
-| 口播视频编排 Agent（后续待定） | 锁定稿、语音和数字人供应商配置 | 音频/视频作业和交付页面 | 后续立项时定义 | 第一版不注册、不运行、不创建数据库或接口 |
-| 复盘师 | 内容版本、指标、业务线索 | 证据、判断、置信度、下一实验 | 指标查询、对比分析 | 将相关性表述为确定因果 |
-| 质量进化 Agent | 爆款拆解、黄金样本、历史稿件、发布效果和当前质量标准 | 新质量信号、版本提案、离线/影子评测和回滚建议 | 只读分析、评测运行、提案写入 | 自动启用新标准；降低事实、合规、隔离或原文泄露门槛 |
+| IP Agent | 团长资料、访谈记录和 IP 当前版本 | 缺口问题、事实提案、表达偏好提案和快照提案 | 资料解析、IP 查询、证据引用 | 自动发布权威事实；读取爆款原文或其他团长资料 |
+| Content Agent | IP 快照、抽象机会、历史效果、所选方向和爆款结构 | 选题模式输出 3～5 个方向；创作模式输出同方向默认 3 篇完整候选文案 | 受控内容检索、模板匹配、模型生成、格式工具 | 读取爆款原文；在候选集中混入其他方向；审核自己的成稿；使用未核验强背书 |
+| Quality & Learning Agent | 所选文案、证据、质量标准、发布指标、历史稿件和爆款拆解信号 | 发布前 QA、单条内容复盘、跨内容规律、质量标准提案/评测和回滚建议 | 事实/规则检查、重复度、指标查询、对比分析、影子评测 | 修改权威事实；自行解除阻断或启用新标准；将相关性表述为确定因果 |
 
-### 10.2 统一 Agent 定义
+合并 Agent 不等于使用一个无限大的提示词。Content Agent 分为 `TOPIC_DIRECTION`、`SCRIPT_GENERATION` 两个类型化模式；Quality & Learning Agent 分为 `PRE_PUBLISH_QA`、`POST_PUBLISH_REVIEW`、`CROSS_CONTENT_LEARNING` 三个类型化模式。Workflow Runtime 根据当前状态选择固定模式，每个模式有独立输入/输出 Schema、工具白名单、Token 预算和 Evals，但共享同一个 Agent 的权限边界与领域记忆。Quality & Learning Agent 与 Content Agent 必须使用独立上下文和调用记录，保证“生成者不审核自己的成稿”。
+
+### 10.2 不是 Agent 的职责
+
+- **Workflow Runtime：** 用确定性代码推进状态、预算、人工等待、重试、版本锁定和事件，不使用模型判断下一状态。
+- **Content Intelligence Pipeline：** 定时采集、保存、拆解和发布爆款结构，是后台数据流水线，不具备对话目标和自主任务生命周期。
+- **数字人口播工作流：** 若第二版立项，作为异步供应商编排和 Adapter，不默认包装成 Agent。
+- **通知、导入、成本和对象存储：** 都是普通应用服务或工具，不是 Agent。
+
+### 10.3 统一 Agent 定义
 
 每个 Agent 配置必须包含：
 
@@ -382,7 +380,9 @@ Agent 不持有数据库连接、供应商密钥或任意 HTTP 能力。所有�
 | 最终确认 | 展示所选稿、逐句差异、证据和风险 | 锁定稿 | 运营确认质量；团长确认事实、像本人且愿意公开 |
 | 内容交接与人工发布 | 输出锁定稿、标题、封面文案和拍摄提示；运营在外部完成制作和发布 | 内容交接包、平台、账号、发布时间、内容 URL/ID | 运营确认发布记录 |
 | 数据导入 | 导入平台和业务数据 | 原始指标、统一指标 | 错误行修复；映射确认 |
-| 复盘升级 | 对比 IP 属性、方向、模板、质量标准、平台、钩子和 CTA | 复盘卡、模板效果、质量信号和记忆提案 | 内容负责人启用质量标准；运营发布模板效果结论；团长发布长期表达偏好 |
+| 复盘与进化 | Quality & Learning Agent 先完成单条复盘，再把多个复盘信号累积为结构权重或质量标准提案 | 复盘卡、爆款结构效果、质量信号和记忆/标准提案 | 内容负责人启用质量标准；运营发布结构效果结论；团长发布长期表达偏好 |
+
+每条已回流数据的内容都产生一次单条复盘；跨内容进化不是第二次独立用户流程，而是 `CROSS_CONTENT_LEARNING` 模式在累计证据达到门槛后自动运行。未达到样本门槛时只保存质量信号，不生成标准升级提案。用户统一在“复盘与优化”中查看单条结论、累积规律和需要确认的提案。
 
 ### 11.2 第一版持久状态机
 
@@ -414,8 +414,8 @@ CREATED
 系统不以固定左侧菜单、统计大盘和表单列表为主。一个内容目标对应一条持续生长的任务流：
 
 - 顶部是可随时修改的目标和当前成功标准；
-- 中间是用户、增长主理人和专职 Agent 的事件流；
-- 选题方向、同方向候选文案、证据、发布记录和复盘以活文档嵌入事件流；
+- 中间只显示用户与统一的“内容增长 Agent”事件流；IP、Content、Quality & Learning 的内部来源按需展开，不把多 Agent 组织图暴露成主界面；
+- 选题方向、同方向候选文案、证据、发布记录和“复盘与优化”以活文档嵌入事件流；用户不分别进入复盘和质量进化页面；
 - 只有当前需要用户判断的决策卡获得视觉优先级；
 - 工具、证据、版本、成本和运行轨迹按需展开，不持续占据屏幕；
 - 用户可暂停、恢复、重跑、编辑目标或请求解释。
@@ -435,6 +435,7 @@ CREATED
 - `evidence_callout`
 - `run_status`
 - `cost_preview`
+- `review_and_learning`
 - `memory_proposal`
 - `error_recovery`
 
@@ -603,7 +604,7 @@ flowchart LR
     P --> E["下载、确认、重试或外部精剪"]
 ```
 
-1. **锁定口播稿：** 只接受通过双层内容审批的 `ArtifactVersion`。口播视频编排 Agent 不得修改稿件事实或承诺。
+1. **锁定口播稿：** 只接受通过内容确认的 `ArtifactVersion`。数字人口播工作流不得修改稿件事实或承诺。
 2. **创建语音任务：** 系统把文本、`voice_id`、语速、音量、音高、情绪和发音词典提交给 MiniMax 等 `SpeechSynthesisAdapter`。
 3. **获取并归档音频：** 供应商返回音频字节或临时 URL 后，系统立即保存为私有 `AudioAsset`，记录稿件哈希、供应商 Trace/Job ID、音色配置、费用和 SHA-256。
 4. **音频校验：** 检查文件可播放、时长、静音和 ASR 文本一致性。首次使用某个音色、发音配置变化或 QA 异常时，团长需在任务流中试听确认。
@@ -903,10 +904,10 @@ modules/
   identity/
   ip_core/
   content_intelligence/
-  agent_runtime/
+  workflow_runtime/
   artifacts/
-  production/
-  analytics/
+  publishing_analytics/
+  review_learning/
   audit/
 packages/
   contracts/
