@@ -93,6 +93,33 @@ export class PrototypeRepository {
     return version ? batches.find(batch => batch.version === version) ?? null : batches.at(-1) ?? null
   }
 
+  selectTopic(runId: string, batchVersion: number, topicId: string) {
+    const batch = this.getTopicBatch(runId, batchVersion)
+    if (!batch || !batch.items.some(item => item.id === topicId)) throw new Error("TOPIC_SELECTION_INVALID")
+    const transaction = this.database.transaction(() => {
+      this.database.prepare("UPDATE topic_selections SET is_current = 0 WHERE run_id = ?").run(runId)
+      const version = this.nextVersion("topic_selections", runId)
+      const createdAt = new Date().toISOString()
+      this.database.prepare(`INSERT INTO topic_selections
+        (run_id,version,batch_version,item_id,is_current,schema_version,created_at) VALUES (?,?,?,?,1,?,?)`)
+        .run(runId, version, batchVersion, topicId, SCHEMA_VERSION, createdAt)
+      return { version, batchVersion, topicId, isCurrent: true, createdAt }
+    })
+    return transaction()
+  }
+
+  listTopicSelections(runId: string) {
+    const rows = this.database.prepare("SELECT * FROM topic_selections WHERE run_id = ? ORDER BY version").all(runId) as Row[]
+    return rows.map(row => ({
+      version: Number(row.version), batchVersion: Number(row.batch_version), topicId: String(row.item_id),
+      isCurrent: Boolean(row.is_current), createdAt: String(row.created_at),
+    }))
+  }
+
+  getCurrentTopicSelection(runId: string) {
+    return this.listTopicSelections(runId).findLast(item => item.isCurrent) ?? null
+  }
+
   private nextVersion(table: string, runId: string) {
     const allowed = new Set(["topic_batches", "topic_selections", "script_batches", "script_selections", "quality_reports", "locked_scripts", "metric_snapshots", "reviews"])
     if (!allowed.has(table)) throw new Error("INVALID_TABLE")
