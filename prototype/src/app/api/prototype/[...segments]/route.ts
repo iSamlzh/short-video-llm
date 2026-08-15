@@ -32,7 +32,7 @@ async function dispatch(request: NextRequest, segments: string[]) {
     if (request.method === "POST" && segments.join("/") === "runs") return Response.json(service.createRun(body as never), { status: 201 })
     if (segments[0] !== "runs" || !segments[1]) return Response.json({ errorCode: "NOT_FOUND" }, { status: 404 })
     const runId = segments[1]
-    if (request.method === "GET" && segments.length === 2) return Response.json(service.getRun(runId))
+    if (request.method === "GET" && segments.length === 2) return Response.json(service.getRunView(runId))
     if (request.method === "POST" && segments.slice(2).join("/") === "topics/generate") {
       return Response.json(await service.generateTopics(runId, Number(body.inputVersion)))
     }
@@ -52,6 +52,10 @@ async function dispatch(request: NextRequest, segments: string[]) {
     if (request.method === "POST" && segments.slice(2).join("/") === "publication/simulate") {
       return Response.json(service.simulatePublication(runId, body.scenario as never))
     }
+    if (request.method === "POST" && segments.slice(2).join("/") === "review/generate") {
+      return Response.json(await service.generateReview(runId, Number(body.metricVersion)))
+    }
+    if (request.method === "GET" && segments.slice(2).join("/") === "export") return Response.json(service.getRunView(runId))
     return Response.json({ errorCode: "NOT_FOUND" }, { status: 404 })
   } catch (error) { return errorResponse(error) }
 }

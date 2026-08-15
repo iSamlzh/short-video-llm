@@ -30,6 +30,13 @@ button {
   cursor: pointer;
 }
 
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+input, textarea {
+  width: 100%; border: 1px solid var(--line); border-radius: 0.9rem; padding: 0.85rem 1rem;
+  color: var(--ink); background: rgba(255,255,255,0.72);
+}
+textarea { min-height: 7rem; resize: vertical; }
+
 .prototype-shell {
   min-height: 100vh;
   display: grid;
@@ -48,10 +55,42 @@ button {
 
 .eyebrow { color: var(--accent); font-size: 0.75rem; letter-spacing: 0.16em; }
 h1 { margin: 0.7rem 0; font-size: clamp(2.5rem, 8vw, 5rem); line-height: 1; }
+h2 { font-size: clamp(1.6rem, 4vw, 2.7rem); margin: 0.5rem 0 1.25rem; }
+h3 { margin-top: 0; }
 p { color: var(--muted); line-height: 1.7; }
+
+.workspace-shell { width: min(72rem, calc(100% - 2rem)); margin: 0 auto; padding: 5rem 0; }
+.workspace-shell > header { max-width: 52rem; margin-bottom: 3rem; }
+.stage-card, .decision-card, .context-drawer, .error-card {
+  border: 1px solid var(--line); border-radius: 1.6rem; background: var(--card);
+  box-shadow: 0 1.2rem 4rem rgba(23, 32, 28, 0.06);
+}
+.stage-card { padding: clamp(1.4rem, 4vw, 3rem); }
+.ip-form { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.ip-form > p, .ip-form > h2, .ip-form > button { grid-column: 1 / -1; }
+.ip-form label { display: grid; gap: 0.45rem; font-size: 0.88rem; }
+.decision-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+.decision-card { padding: 1.4rem; display: flex; flex-direction: column; }
+.decision-card button { margin-top: auto; }
+.decision-card small, .review-copy small { color: var(--muted); line-height: 1.6; }
+blockquote { margin: 0 0 1rem; padding-left: 1rem; border-left: 3px solid var(--accent); font-weight: 700; }
+.score-grid, .metric-grid { display: flex; flex-wrap: wrap; gap: 0.75rem; margin: 1rem 0 2rem; }
+.score-grid span, .metric-grid span { min-width: 7rem; padding: 1rem; border-radius: 1rem; background: rgba(23,32,28,.05); color: var(--muted); }
+.score-grid strong, .metric-grid strong { display: block; color: var(--ink); font-size: 1.5rem; }
+.simulation-label { display: inline-flex; padding: .45rem .7rem; border-radius: 999px; color: #754113; background: #fff0cf; font-weight: 700; }
+.context-drawer { margin-top: 1.2rem; padding: 1rem 1.2rem; }
+.context-drawer summary { cursor: pointer; }
+.context-drawer dl { display: grid; grid-template-columns: 8rem 1fr; }
+.context-drawer dd { margin: 0; }
+.error-card { margin-bottom: 1rem; padding: 1rem 1.2rem; color: #8c2f19; background: #fff4ef; }
+.error-card small { display: block; margin-top: .4rem; }
+.working-line { margin-bottom: 1rem; color: var(--accent); }
 
 @media (max-width: 640px) {
   .prototype-shell { align-items: start; padding: 1rem; }
   .welcome-card { border-radius: 1.3rem; }
   button { width: 100%; }
+  .workspace-shell { padding: 2rem 0; }
+  .ip-form, .decision-grid { grid-template-columns: 1fr; }
+  .ip-form > * { grid-column: 1; }
 }

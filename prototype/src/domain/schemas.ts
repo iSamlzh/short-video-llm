@@ -66,7 +66,7 @@ export const contentReviewSchema = z.object({
   improve: z.array(z.string()).min(1),
   nextContent: z.string().min(5),
   evidenceLimits: z.string().min(5),
-  claimsRealCausation: z.literal(false),
+  claimsRealCausation: z.boolean(),
 })
 
 export type TopicDirectionCandidate = z.infer<typeof topicDirectionCandidateSchema>

@@ -1,4 +1,4 @@
-import { qualityReportSchema, scriptBatchSchema, topicBatchSchema } from "../domain/schemas"
+import { contentReviewSchema, qualityReportSchema, scriptBatchSchema, topicBatchSchema } from "../domain/schemas"
 import { transition } from "../domain/state-machine"
 import type { IpProfile } from "../domain/models"
 import { PrototypeRepository } from "../lib/db/repository"
@@ -11,6 +11,19 @@ export class RunService {
 
   createRun(input: IpProfile) { return this.repository.createRun(input) }
   getRun(runId: string) { return this.repository.requireRun(runId) }
+  getRunView(runId: string) {
+    return {
+      ...this.repository.requireRun(runId),
+      topicBatch: this.repository.getTopicBatch(runId),
+      topicSelection: this.repository.getCurrentTopicSelection(runId),
+      scriptBatch: this.repository.getScriptBatch(runId),
+      scriptSelection: this.repository.getCurrentScriptSelection(runId),
+      qualityReport: this.repository.getLatestQualityReport(runId),
+      lockedScript: this.repository.getLatestLockedScript(runId),
+      metricSnapshot: this.repository.getLatestMetricSnapshot(runId),
+      review: this.repository.getLatestReview(runId),
+    }
+  }
 
   async generateTopics(runId: string, inputVersion: number) {
     const run = this.repository.requireVersion(runId, inputVersion)
@@ -112,5 +125,31 @@ export class RunService {
     const saved = this.repository.saveMetricSnapshot(runId, snapshot)
     this.repository.setState(runId, transition("SIMULATING_PUBLICATION", "PUBLICATION_SIMULATED"))
     return saved
+  }
+
+  async generateReview(runId: string, metricVersion: number) {
+    const run = this.repository.requireRun(runId)
+    const metricSnapshot = this.repository.getLatestMetricSnapshot(runId)
+    const topicSelection = this.repository.getCurrentTopicSelection(runId)
+    const lockedScript = this.repository.getLatestLockedScript(runId)
+    const qualityReport = this.repository.getLatestQualityReport(runId)
+    if (!metricSnapshot || metricSnapshot.version !== metricVersion || !topicSelection || !lockedScript || !qualityReport) {
+      throw new Error("REVIEW_LINEAGE_INCOMPLETE")
+    }
+    this.repository.setState(runId, transition(run.state, "GENERATE_REVIEW"))
+    try {
+      const review = await this.llm.generateStructured("review", {
+        ipProfile: run.ipProfile, goal: prototypePreset.goal, topicSelection,
+        lockedScript, qualityReport, metricSnapshot,
+        instruction: "指标为模拟数据，不得推断真实平台因果",
+      }, contentReviewSchema)
+      if (review.claimsRealCausation !== false) throw new Error("REVIEW_CAUSALITY_VIOLATION")
+      const saved = this.repository.saveReview(runId, review)
+      this.repository.setState(runId, transition("REVIEWING", "REVIEW_COMPLETED"))
+      return saved
+    } catch (error) {
+      this.repository.setState(runId, "WAITING_REVIEW")
+      throw error
+    }
   }
 }

@@ -104,6 +104,24 @@ describe("RunService QA and locking", () => {
   })
 })
 
+describe("RunService review", () => {
+  it("passes simulated lineage to the review operation", async () => {
+    const { service, adapter, run, snapshot } = await reviewFixture()
+    adapter.enqueue({ json: reviewResult(false) })
+    await service.generateReview(run.id, snapshot.version)
+    const call = adapter.calls.at(-1)
+    expect(call?.operation).toBe("review")
+    expect(JSON.stringify(call?.input)).toContain('"isSimulated":true')
+  })
+
+  it("rejects a review that presents simulation as real causation", async () => {
+    const { service, adapter, run, snapshot } = await reviewFixture()
+    adapter.enqueue({ json: reviewResult(true) })
+    await expect(service.generateReview(run.id, snapshot.version))
+      .rejects.toMatchObject({ message: expect.stringContaining("REVIEW_CAUSALITY_VIOLATION") })
+  })
+})
+
 async function selectedScriptFixture() {
   const repository = new PrototypeRepository(":memory:")
   const adapter = new FakeLlmAdapter([{ json: topics }])
@@ -127,6 +145,26 @@ function qualityReport(hardGatePassed: boolean) {
   }
 }
 
+async function reviewFixture() {
+  const fixture = await selectedScriptFixture()
+  fixture.adapter.enqueue({ json: qualityReport(true) })
+  await fixture.service.runQa(fixture.run.id, fixture.run.inputVersion)
+  fixture.service.lockScript(fixture.run.id)
+  const snapshot = fixture.service.simulatePublication(fixture.run.id)
+  return { ...fixture, snapshot }
+}
+
+function reviewResult(claimsRealCausation: boolean) {
+  return {
+    summary: "这是一轮用于验证内容闭环的模拟表现摘要",
+    keep: ["真实经历形成了可信表达"],
+    improve: ["开头可以更快进入受众问题"],
+    nextContent: "下一条继续沿这个方向拆解一个具体案例",
+    evidenceLimits: "全部指标来自模拟器，不能代表平台真实表现或因果关系",
+    claimsRealCausation,
+  }
+}
+
 function makeScripts(topicDirectionId: string) {
   return Array.from({ length: 3 }, (_, index) => ({
     id: `script-${index + 1}`,
@@ -139,4 +177,4 @@ function makeScripts(topicDirectionId: string) {
   }))
 }
 
-export { makeScripts, minimumIpInput, qualityReport, topics }
+export { makeScripts, minimumIpInput, qualityReport, reviewResult, topics }
