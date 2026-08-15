@@ -6,6 +6,7 @@ import { ContextDrawer } from "./ContextDrawer"
 import { DecisionCards } from "./DecisionCards"
 import { QualityAndLock } from "./QualityAndLock"
 import { SimulationAndReview } from "./SimulationAndReview"
+import type { IpProfile } from "../domain/models"
 
 type RunView = any
 const fields = [
@@ -14,7 +15,7 @@ const fields = [
   ["voiceStyle", "表达特点", "例如：直接、实在、有案例"], ["boundaries", "不能说的内容", "例如：不承诺确定收益"],
 ] as const
 
-export function PrototypeWorkspace({ initialRun }: { initialRun?: RunView }) {
+export function PrototypeWorkspace({ initialRun, initialProfile }: { initialRun?: RunView; initialProfile?: IpProfile }) {
   const [run, setRun] = useState<RunView | undefined>(initialRun)
   const [busy, setBusy] = useState("")
   const [error, setError] = useState("")
@@ -47,7 +48,7 @@ export function PrototypeWorkspace({ initialRun }: { initialRun?: RunView }) {
 
   const stage = (() => {
     if (!run) return <form className="ip-form stage-card" onSubmit={submitIp}><p className="eyebrow">先让 Agent 认识你</p><h2>用真实经历建立你的内容起点</h2>
-      {fields.map(([name, label, placeholder]) => <label key={name}>{label}{name === "experience" ? <textarea name={name} required minLength={10} placeholder={placeholder} /> : <input name={name} required placeholder={placeholder} />}</label>)}
+      {fields.map(([name, label, placeholder]) => <label key={name}>{label}{name === "experience" ? <textarea name={name} required minLength={10} placeholder={placeholder} defaultValue={initialProfile?.[name]} /> : <input name={name} required placeholder={placeholder} defaultValue={initialProfile?.[name]} />}</label>)}
       <button disabled={Boolean(busy)}>{busy || "生成选题方向"}</button></form>
     if (run.state === "READY_FOR_TOPICS") return <section className="stage-card"><p className="eyebrow">今天拍什么</p><h2>先从你的 IP 里找方向</h2><button disabled={Boolean(busy)} onClick={() => command("topics/generate", { inputVersion: run.inputVersion }, "正在理解你的经历并生成方向…")}>生成选题方向</button></section>
     if (run.state === "WAITING_TOPIC_SELECTION") return <section><p className="eyebrow">唯一决策</p><h2>选择今天拍什么</h2><DecisionCards items={run.topicBatch.items} actionLabel="选择这个方向" onSelect={(item: any) => command("topics/select", { batchVersion: run.topicBatch.version, topicId: item.id }, "正在锁定方向…")} renderDetail={(item: any) => <><p>{item.angle}</p><small>为什么适合你：{item.ipFitEvidence.join("、")}</small></>} /></section>
