@@ -7,6 +7,6 @@ export default defineConfig({
     command: "npm run dev -- --hostname 127.0.0.1 --port 3100",
     url: "http://127.0.0.1:3100",
     reuseExistingServer: false,
-    env: { NODE_ENV: "test", PROTOTYPE_TEST_MODE: "true", PROTOTYPE_DB_PATH: ".data/e2e.sqlite" },
+    env: { PROTOTYPE_TEST_MODE: "true", PLAYWRIGHT_TEST_MODE: "true", PROTOTYPE_DB_PATH: ".data/e2e.sqlite" },
   },
 })

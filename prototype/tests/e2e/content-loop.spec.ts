@@ -1,0 +1,26 @@
+import { expect, test } from "@playwright/test"
+
+test("runs from minimum IP to reviewed and restores after refresh", async ({ page }) => {
+  await page.goto("/")
+  await page.getByLabel("称呼").fill("示例团长")
+  await page.getByLabel("真实经历").fill("三年社区团购运营经历，服务过多个社区")
+  await page.getByLabel("擅长领域").fill("社区团购运营")
+  await page.getByLabel("目标人群").fill("希望拓展本地业务的人")
+  await page.getByLabel("表达特点").fill("直接、实在、有案例")
+  await page.getByLabel("不能说的内容").fill("不承诺确定收益")
+  await page.getByRole("button", { name: "生成选题方向" }).click()
+  await expect(page.getByText("选择今天拍什么")).toBeVisible()
+  await page.getByRole("button", { name: "选择这个方向" }).first().click()
+
+  await page.reload()
+  await expect(page.getByRole("button", { name: "生成 3 篇文案" })).toBeVisible()
+  await page.getByRole("button", { name: "生成 3 篇文案" }).click()
+  await page.getByRole("button", { name: "选为今天拍摄稿" }).first().click()
+  await page.getByRole("button", { name: "运行发布前 QA" }).click()
+  await page.getByRole("button", { name: "确认锁稿" }).click()
+  await page.getByRole("button", { name: "生成模拟发布数据" }).click()
+  await page.getByRole("button", { name: "生成复盘" }).click()
+  await expect(page.getByText("本次内容复盘")).toBeVisible()
+  await expect(page.getByText("模拟数据，不代表真实平台表现")).toBeVisible()
+  await expect(page.getByRole("navigation")).toHaveCount(0)
+})

@@ -16,3 +16,32 @@ export class FakeLlmAdapter implements LlmAdapter {
     return { text: "json" in response ? JSON.stringify(response.json) : response.text, model: "fake-test-model" }
   }
 }
+
+export class PrototypeFixtureLlmAdapter implements LlmAdapter {
+  async generate(request: LlmRequest): Promise<LlmResponse> {
+    const input = request.input as Record<string, any>
+    const payload = request.operation === "topics" ? Array.from({ length: 3 }, (_, index) => ({
+      id: `topic-${index + 1}`, title: ["把踩过的坑变成信任", "新团长最容易误判的三件事", "我为什么不承诺确定收益"][index],
+      angle: "从三年社区团购的真实经历切入，给目标受众一个今天能采用的方法",
+      audienceTension: "想拓展本地业务，但害怕选错方法",
+      ipFitEvidence: [input.ipProfile?.experience ?? "真实业务经历"],
+      structureId: ["failure-turn", "myth-correction", "value-filter"][index], riskNotes: [],
+    })) : request.operation === "scripts" ? Array.from({ length: 3 }, (_, index) => ({
+      id: `script-${index + 1}`, topicDirectionId: input.selectedTopic.id,
+      title: `同方向表达路径 ${index + 1}`, hook: ["我做团购三年，最后悔的是这件事", "新团长别急着追求规模", "真正能长期合作的人，会先问这件事"][index],
+      body: `这是围绕唯一方向的第 ${index + 1} 种完整表达。我会从自己的社区团购经历讲起，把当时的判断、踩过的坑和后来验证有效的动作说明白，让听众获得可以结合自身情况使用的方法，而不是一个无法核实的收益承诺。`,
+      callToAction: "如果你也在做本地业务，可以留言说说你的具体情况。", estimatedSeconds: 75,
+    })) : request.operation === "qa" ? {
+      hardGatePassed: true, hardGateReasons: [],
+      scores: { hook: 84, ipFit: 92, credibility: 90, structure: 82, callToAction: 78 },
+      suggestions: ["拍摄时在中段补充一个可核实的具体动作"],
+    } : request.operation === "review" ? {
+      summary: "本轮模拟结果用于验证从创作到复盘的完整交互。",
+      keep: ["真实经历与选题方向保持一致"], improve: ["下一稿可让开头更快进入受众矛盾"],
+      nextContent: "继续沿当前方向拆解一个真实场景中的判断过程。",
+      evidenceLimits: "指标全部来自确定性模拟器，不代表平台真实表现，也不能证明因果。",
+      claimsRealCausation: false,
+    } : (() => { throw new Error(`UNEXPECTED_FIXTURE_OPERATION:${request.operation}`) })()
+    return { text: JSON.stringify(payload), model: "prototype-e2e-fixture" }
+  }
+}

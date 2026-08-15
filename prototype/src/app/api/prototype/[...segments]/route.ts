@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path"
 import { NextRequest } from "next/server"
 import { PrototypeRepository } from "@/lib/db/repository"
 import { OpenAiCompatibleAdapter } from "@/lib/llm/adapter"
+import { PrototypeFixtureLlmAdapter } from "@/lib/llm/fake"
 import { StructuredLlmClient } from "@/lib/llm/structured"
 import { RunService } from "@/services/run-service"
 
@@ -12,9 +13,11 @@ export const dynamic = "force-dynamic"
 let singleton: RunService | undefined
 function getService() {
   if (singleton) return singleton
-  const dbPath = resolve(process.cwd(), process.env.PROTOTYPE_DB_PATH ?? ".data/prototype.sqlite")
+  const dbPath = resolve(/* turbopackIgnore: true */ process.cwd(), process.env.PROTOTYPE_DB_PATH ?? ".data/prototype.sqlite")
   mkdirSync(dirname(dbPath), { recursive: true })
-  singleton = new RunService(new PrototypeRepository(dbPath), new StructuredLlmClient(new OpenAiCompatibleAdapter()))
+  const allowFixture = process.env.PROTOTYPE_TEST_MODE === "true" && process.env.PLAYWRIGHT_TEST_MODE === "true"
+  const adapter = allowFixture ? new PrototypeFixtureLlmAdapter() : new OpenAiCompatibleAdapter()
+  singleton = new RunService(new PrototypeRepository(dbPath), new StructuredLlmClient(adapter))
   return singleton
 }
 

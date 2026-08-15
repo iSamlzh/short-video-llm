@@ -36,7 +36,12 @@ export function PrototypeWorkspace({ initialRun }: { initialRun?: RunView }) {
   async function submitIp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy("正在建立你的内容上下文…"); setError("")
     const body = Object.fromEntries(new FormData(event.currentTarget))
-    try { const created = await createRun<RunView>(body); window.localStorage.setItem("content-prototype-run", created.id); setRun(created) }
+    try {
+      const created = await createRun<RunView>(body)
+      window.localStorage.setItem("content-prototype-run", created.id)
+      await postCommand(created.id, "topics/generate", { inputVersion: created.inputVersion })
+      setRun(await getRun<RunView>(created.id))
+    }
     catch (caught) { setError(caught instanceof Error ? caught.message : "创建失败") } finally { setBusy("") }
   }
 
