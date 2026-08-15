@@ -19,11 +19,11 @@
 3. 面向招商转化的内容结构、策略和质量标准；
 4. 从内容目标、生产、发布数据到策略升级的实验闭环。
 
-产品采用“逻辑多 Agent、工程模块化单体”的架构。增长主理人 Agent 负责拆目标和推进持久任务状态机，IP 建模师、趋势研究员、内容策略师、文案创作者、质检官、视频制片 Agent 和复盘师通过结构化契约协作。每个 Agent 有独立工具白名单、数据权限、成本预算、超时和输出 Schema，但首期不拆为独立微服务。
+产品采用“逻辑多 Agent、工程模块化单体”的架构。增长主理人 Agent 负责拆目标和推进持久任务状态机，IP 建模师、趋势研究员、内容策略师、文案创作者、质检官、口播视频编排 Agent 和复盘师通过结构化契约协作。每个 Agent 有独立工具白名单、数据权限、成本预算、超时和输出 Schema，但首期不拆为独立微服务。
 
 用户界面采用“对话 + 活文档”的 AI-native 形态。用户描述目标后，系统持续推进研究、策略、创作、质检和复盘；文案、证据、成片和复盘结果作为持续生长的任务产物嵌入任务流。人只在事实、策略、公开表达、成本和长期记忆等关键节点决策。
 
-首期交付的数字人能力不是一个孤立的供应商 API 按钮，而是一条完整的口播短视频生产链：数字人/声音建档与授权、锁定稿口语化标注、生成前预检和报价、样片生成、自动音画质检、团长确认、标准竖屏成片输出、可选外部精剪和资产归档。首期使用表格/链接导入完成平台数据回流，抖音、视频号 API 放到二期。首期以单台 4 核 8GB 服务器降低固定成本，通过异步队列、外部对象存储、异地备份和严格并发上限保证可恢复性。二期再引入负载均衡、多实例、托管主备数据库和平台数据连接器。
+首期数字人口播采用纯外部生成链路：系统把已锁定口播稿交给 MiniMax 等语音服务生成音频，归档并校验音频后，再把该音频和已授权数字人 ID 交给 HeyGen 等数字人服务生成口播视频；供应商完成后，系统下载成片到对象存储并在交付页面提供播放、下载、确认和重试。系统只做编排、状态、质检、成本和展示，不进行语音合成、口型驱动、视频合成、转码或精剪。首期使用表格/链接导入完成平台数据回流，抖音、视频号 API 放到二期。首期以单台 4 核 8GB 服务器降低固定成本，通过异步队列、外部对象存储、异地备份和严格并发上限保证可恢复性。二期再引入负载均衡、多实例、托管主备数据库和平台数据连接器。
 
 ## 2. 设计依据与已确认决策
 
@@ -73,6 +73,7 @@
 - 不开发时间线剪辑器、字幕编辑器或特效系统；
 - 不本地部署或训练大模型；
 - 不自研数字人模型、语音克隆模型或视频渲染集群；
+- 系统不执行语音合成、口型驱动、视频合成、转码、字幕烧录、封面生成或精剪，只编排第三方 API 并展示结果；
 - 一期不自动发布到抖音或视频号；
 - 一期不接抖音、视频号作品数据 API；
 - 一期使用响应式 Web 和微信内 H5，不单独开发小程序；
@@ -87,7 +88,7 @@
 - **IP 快照：** 经团长确认、运营核验后发布的某一版权威 IP 模型；生成内容必须绑定快照版本。
 - **活文档：** 嵌在任务流中、随 Agent 和人工操作持续产生新版本的策略、文案、视频、证据或复盘产物。
 - **Agent Run：** 增长主理人围绕一个目标执行的一次持久任务运行，可暂停、等待、恢复和回放。
-- **标准数字人口播短视频：** 基于已批准的数字人形象、声音和锁定稿，由第三方生成服务输出的 9:16 MP4，包含基础背景、烧录字幕、标题区和结尾 CTA；复杂 B-roll、转场和特效继续交给外部精剪工具。
+- **数字人口播成片：** MiniMax 等服务根据锁定稿生成音频后，HeyGen 等服务使用该音频驱动已授权数字人并返回的视频文件。系统负责归档和页面展示，不对视频执行合成、字幕烧录、封面生成、转码或精剪。
 
 ## 4. 用户、角色与权限
 
@@ -108,7 +109,7 @@
 | 个人知识库采集分类 | IP Core：AI 访谈、事实图谱、证据、表达指纹、IP 快照 | 团长可以确认、纠正、撤销并查看每条事实来源 |
 | 内部 7 日爆款内容工厂 | Content Intelligence：采集队列、拆解、复核、策略抽象、过期淘汰 | 团长接口无法读取原文；运营可以每日完成采集和发布 |
 | 招商文案生产 | Strategy + Artifact：招商结构、母稿和平台变体 | 文案绑定 IP、策略和事实证据版本 |
-| 真人/数字人双路径 | Production：真人交接包与完整数字人口播短视频流水线 | 锁定稿可以选择任一路径；数字人路径能产出样片、质检报告和标准竖屏成片 |
+| 真人/数字人双路径 | Production：真人交接包；或“稿件 → MiniMax 音频 → HeyGen 数字人视频 → 页面交付” | 锁定稿可以选择任一路径；数字人路径能展示音频、供应商状态、质检报告和最终视频 |
 | 不自研精剪 | External Handoff：字幕、镜头、素材包和成片归档 | 系统内不存在时间线编辑器；支持记录外部成片 |
 | 数据回流 | Analytics Import：表格导入、字段映射、统一指标 | 导入可预览、校验、去重和回滚 |
 | Agent 优化文案 | Experiment + Insight：归因、策略提案和审批 | 结论有证据、置信度、适用范围并需人工发布 |
@@ -126,7 +127,7 @@ flowchart TB
     ORCH --> A3["内容策略师"]
     ORCH --> A4["文案创作者"]
     ORCH --> A5["质检官"]
-    ORCH --> A6["视频制片 Agent"]
+    ORCH --> A6["口播视频编排 Agent"]
     ORCH --> A7["复盘师"]
     A1 & A2 & A3 & A4 & A5 & A6 & A7 --> CTX["受控上下文装配器"]
     CTX --> IP["团长 IP 资产域"]
@@ -176,7 +177,7 @@ Agent 任务状态机由业务代码显式实现，不把核心运行语义锁�
 | Content Intelligence | 来源、拆解、模式、趋势和招商策略 | source_items, decompositions, patterns, strategies | `search_patterns()`, `strategy.published` | 团长事实和文案审批 |
 | Agent Runtime | Goal、Run、任务图、上下文、模型/工具调用 | goals, runs, run_steps, tool_calls, outbox | `start_run()`, `run.state.changed` | 直接修改其他模块数据 |
 | Artifact & Approval | 活文档、版本、批注、审批和锁定 | artifacts, artifact_versions, comments, approvals | `lock_version()`, `artifact.version.locked` | Agent 调度和媒体渲染 |
-| Production | 真人交接、数字人资产、口播视频简报、样片、渲染、音画质检、供应商和成本 | digital_human_profiles, video_briefs, production_jobs, render_attempts, video_qa_reports, provider_routes, media_assets | `submit_preview()`, `approve_preview()`, `render_final()`, `production.video.finalized` | 自研剪辑器、本地数字人训练和本地视频渲染 |
+| Production | 真人交接；语音合成作业、音频资产、数字人视频作业、最终视频页面、供应商状态和成本 | voice_profiles, avatar_profiles, speech_jobs, audio_assets, talking_video_jobs, video_assets, delivery_pages, provider_routes | `synthesize_audio()`, `submit_talking_video()`, `publish_delivery_page()`, `production.video.ready` | 语音/视频生成计算、口型驱动、转码、字幕烧录、封面制作和精剪 |
 | Analytics & Import | 发布记录、导入、指标、实验和复盘 | publications, imports, metric_snapshots, experiments, insights | `import_metrics()`, `insight.proposed` | 一期平台 API 拉取 |
 | Audit & Notification | 审计、提醒、异常、配额和预算 | audit_events, notifications, budgets, cost_ledger | `record_event()`, `budget.exceeded` | 业务规则裁决 |
 
@@ -275,7 +276,7 @@ Agent 任务状态机由业务代码显式实现，不把核心运行语义锁�
 | 内容策略师 | 机会、IP、历史实验 | 3 个策略方向、风险和实验假设 | 策略库、历史指标 | 无证据给出确定性增长承诺 |
 | 文案创作者 | 已选策略、IP 快照、平台规则 | 母稿、平台变体、标题和镜头提示 | 受控上下文、格式工具 | 使用未核验强背书 |
 | 质检官 | 文案、证据、规则 | 阻断、警告、建议和定位 | 事实检查、规则检查、重复度 | 修改权威事实；自行解除阻断 |
-| 视频制片 Agent | 锁定稿、数字人档案、平台和模板 | 口播标注稿、VideoBrief、成本预估、样片、质检报告和标准成片 | 数字人 Adapter、字幕、ASR、媒体探测、对象存储 | 修改锁定稿事实；跳过授权或样片审批；执行复杂精剪 |
+| 口播视频编排 Agent | 锁定稿、MiniMax 音色配置、HeyGen 数字人配置和预算 | SpeechJob、AudioAsset、TalkingVideoJob、质检结果和交付页面 | Speech Adapter、Talking Avatar Adapter、ASR/媒体探测、对象存储 | 在本地生成音频或视频；修改锁定稿；把未批准音频提交给数字人服务 |
 | 复盘师 | 内容版本、指标、业务线索 | 证据、判断、置信度、下一实验 | 指标查询、对比分析 | 将相关性表述为确定因果 |
 
 ### 10.2 统一 Agent 定义
@@ -307,9 +308,11 @@ Agent 不持有数据库连接、供应商密钥或任意 HTTP 能力。所有�
 | 文案生成 | 生成母稿和平台变体 | Script vN、标题、镜头提示 | 无 |
 | 自动质检 | 事实、口吻、招商承诺、平台规范、泄露检查 | QA 报告 | 阻断项必须由人处理 |
 | 双层确认 | 展示逐句差异、证据和风险 | 锁定稿 | 运营审策略；团长确认事实、像本人且愿意公开 |
-| 生产路径选择 | 生成真人交接包或进入数字人口播生产 | 真人拍摄包或 VideoBrief | 选择路径；预算超限时批准 |
-| 数字人口播短视频 | 口播标注、样片渲染、自动音画质检、团长预览、标准成片渲染 | 样片、字幕、QA 报告、9:16 MP4、封面帧和外部精剪包 | 首次形象/声音必须验收；样片需团长确认 |
-| 外部剪辑发布 | 标准成片可直接发布，也可在外部工具继续精剪 | 最终成片、平台链接和发布记录 | 发布前最终确认 |
+| 生产路径选择 | 生成真人交接包或进入数字人口播编排 | 真人拍摄包或 TalkingVideoRequest | 选择路径；预算超限时批准 |
+| 生成口播音频 | 系统将锁定稿和音色参数提交 MiniMax 等服务，下载结果并完成文本/音频校验 | AudioAsset、供应商 Job ID、费用和 AudioQAReport | 首次音色或音频异常时由团长试听确认 |
+| 生成数字人口播视频 | 系统把已批准音频提交 HeyGen 等服务驱动数字人，轮询/接收回调并归档视频 | VideoAsset、供应商 Job ID、费用和 VideoQAReport | 数字人必须已授权；异常成片由团长决定重试或切真人 |
+| 成片页面交付 | 在系统页面展示播放器、锁定稿、音频/视频状态、费用和操作 | DeliveryPage | 团长确认成片；可下载、重试或转外部精剪 |
+| 外部剪辑发布 | 将供应商成片下载到开拍、剪映等继续处理，或直接发布 | 最终成片、平台链接和发布记录 | 发布前最终确认 |
 | 数据导入 | 导入平台和业务数据 | 原始指标、统一指标 | 错误行修复；映射确认 |
 | 复盘升级 | 对比平台、受众、钩子、结构和 CTA | 复盘卡、策略和记忆提案 | 运营发布策略；团长发布长期表达偏好 |
 
@@ -324,13 +327,14 @@ CREATED
   → QA
   → WAITING_CONTENT_APPROVAL
   → PRODUCTION_ROUTING
-  → DIGITAL_HUMAN_PREFLIGHT
-  → WAITING_AVATAR_APPROVAL
-  → RENDERING_PREVIEW
+  → SPEECH_SYNTHESIS
+  → AUDIO_QA
+  → WAITING_AUDIO_APPROVAL
+  → TALKING_VIDEO_SUBMITTED
+  → TALKING_VIDEO_PROCESSING
   → VIDEO_QA
-  → WAITING_VIDEO_APPROVAL
-  → RENDERING_FINAL
   → VIDEO_READY
+  → WAITING_VIDEO_ACCEPTANCE
   → EXTERNAL_EDITING
   → PUBLISHED
   → WAITING_METRICS_IMPORT
@@ -353,7 +357,7 @@ CREATED
 - 策略、文案、证据、视频和复盘以活文档嵌入事件流；
 - 只有当前需要用户判断的决策卡获得视觉优先级；
 - 工具、证据、版本、成本和运行轨迹按需展开，不持续占据屏幕；
-- 数字人路径在任务流中生成 `video_production_card`，持续显示形象、声音、口播稿版本、供应商、预计费用、渲染进度、样片、QA 结果和最终成片；
+- 数字人路径在任务流中生成 `talking_video_card`，依次显示锁定稿、MiniMax 音频状态与播放器、HeyGen 视频状态、预计/实际费用、QA 结果和最终成片播放器；
 - 用户可暂停、恢复、重跑、编辑目标、切换生产路径或请求解释。
 
 ### 12.2 团长默认入口：主动秘书
@@ -370,7 +374,7 @@ CREATED
 - `run_status`
 - `cost_preview`
 - `memory_proposal`
-- `video_production_card`
+- `talking_video_card`
 - `video_qa_report`
 - `error_recovery`
 
@@ -433,10 +437,11 @@ SourceItem ──1 ContentDecomposition ──> Pattern ──> StrategyVersion
 
 GoalContract ──1 AgentRun ──< RunStep ──< ToolCall
 AgentRun ──< Artifact ──< ArtifactVersion ──< Approval
-DigitalHumanProfile ──> AvatarAsset / VoiceAsset / PronunciationLexicon
-ArtifactVersion ──> VideoBrief ──> ProductionJob ──< RenderAttempt
-ProductionJob ──> VideoQAReport
-ProductionJob ──> MediaAsset
+VoiceProfile ──> SpeechJob ──> AudioAsset ──> AudioQAReport
+AvatarProfile ──> TalkingVideoJob
+ArtifactVersion ──> SpeechJob
+AudioAsset ──> TalkingVideoJob ──> VideoAsset ──> VideoQAReport
+VideoAsset ──> DeliveryPage
 ArtifactVersion ──> Publication ──< MetricSnapshot
 Experiment ──< Publication
 Experiment ──< Insight ──> MemoryProposal
@@ -506,91 +511,103 @@ Experiment ──< Insight ──> MemoryProposal
 - 必备素材与证据清单；
 - 外部剪辑交接包。
 
-### 15.2 数字人资产建档
+### 15.2 外部声音与数字人档案
 
-数字人口播短视频在首次生成前必须建立 `DigitalHumanProfile`，不能仅临时上传一张照片和一段声音后直接批量生产。
+系统不训练声音或数字人，只绑定第三方已经创建的资源 ID，并记录授权和调用配置。
 
-| 资产 | 必要内容 | 状态 |
+| 档案 | 必要内容 | 所属服务 |
 |---|---|---|
-| `AvatarAsset` | 正面形象素材、形象 ID、供应商、训练/创建时间、可用比例和授权引用 | `draft`、`training`、`ready_for_review`、`approved`、`rejected`、`revoked` |
-| `VoiceAsset` | 声音样本、声音 ID、语言、语速范围、供应商和授权引用 | 同上 |
-| `PronunciationLexicon` | 人名、品牌名、地名、数字、英文缩写和行业词的标准读音 | 版本化、团长可纠正 |
-| `VideoTemplate` | 9:16 画布、背景、标题安全区、字幕样式、结尾 CTA 和品牌元素 | 运营发布版本 |
-| `ConsentGrant` | 形象/声音用途、供应商、保存期限、撤回和删除规则 | `active`、`revoked`、`expired` |
+| `VoiceProfile` | MiniMax 等供应商、`voice_id`、语言、语速、音量、音高、情绪、发音词典和凭证引用 | 外部语音合成 |
+| `AvatarProfile` | HeyGen 等供应商、`avatar_id`/`talking_photo_id`、默认画幅、供应商侧验证状态和凭证引用 | 外部数字人视频 |
+| `ConsentGrant` | 声音和肖像用途、允许的供应商、保存期限、撤回和删除规则 | 系统授权域 |
 
-数字人形象和声音首次训练完成后，必须生成 10～20 秒标准测试样片。团长需要分别确认“像本人”“声音可接受”“口型和节奏可接受”“同意用于本服务”。只有 `AvatarAsset`、`VoiceAsset` 和 `ConsentGrant` 均为可用状态，才能创建正式口播视频。
+如果需要克隆音色或创建数字人，用户先在 MiniMax、HeyGen 等供应商完成，或由系统通过相应供应商 Adapter 代为发起；训练计算仍完全发生在供应商侧。只有 `VoiceProfile`、`AvatarProfile` 和 `ConsentGrant` 均为 `approved/active`，系统才允许执行正式链路。
 
-### 15.3 数字人口播短视频生产流水线
+### 15.3 固定外部生成链路
 
 ```mermaid
 flowchart LR
-    S["已锁定口播稿"] --> M["口语化与发音标注"]
-    M --> B["VideoBrief + 成本预估"]
-    B --> P["授权/资产/预算预检"]
-    P --> R1["生成低成本样片"]
-    R1 --> Q1["自动音画 QA"]
-    Q1 --> H["团长样片确认"]
-    H --> R2["生成标准竖屏成片"]
-    R2 --> Q2["最终 QA"]
-    Q2 --> F["MP4 + 字幕 + 封面 + 交接包"]
-    F --> E["直接发布或外部精剪"]
+    S["已锁定口播稿"] --> T["系统提交 MiniMax 等 TTS"]
+    T --> A["供应商生成音频"]
+    A --> D1["系统立即下载并归档 AudioAsset"]
+    D1 --> Q1["音频校验 / 必要时团长试听"]
+    Q1 --> U["系统上传音频给 HeyGen 等服务"]
+    U --> V["供应商用音频驱动数字人生成视频"]
+    V --> D2["系统立即下载并归档 VideoAsset"]
+    D2 --> Q2["视频可播放与口播一致性校验"]
+    Q2 --> P["成片交付页面展示"]
+    P --> E["下载、确认、重试或外部精剪"]
 ```
 
-1. **锁定输入：** 只接受通过双层内容审批的 `ArtifactVersion`；记录脚本哈希，后续事实内容不得由视频制片 Agent 修改。
-2. **口播标注：** 将书面稿转换为口语执行稿，增加停顿、重音、语速、情绪、数字读法和专有词发音；任何语义变化都产生新脚本版本并重新审批。
-3. **生成 VideoBrief：** 固定平台、9:16 画布、目标时长、数字人/声音、模板、字幕样式、标题、结尾 CTA 和期望输出清晰度。
-4. **预检与报价：** 检查 Consent、形象/声音状态、脚本长度、供应商限制、敏感内容、预计费用和租户预算。
-5. **样片生成：** 优先使用供应商的低分辨率、短片段或测试模式；若供应商没有测试模式，生成包含开头、关键背书和 CTA 的最短可判断片段。
-6. **自动音画 QA：** 机器检查文件完整性、分辨率、画幅、音轨、黑帧、静音、ASR 文本一致性、字幕越界和供应商水印。
-7. **团长确认：** 团长确认形象、声音、口型、语速和整体观感；修改发音或语速时更新对应配置，不把单次视频选择自动升级为长期偏好。
-8. **标准成片渲染：** 使用已批准样片配置生成完整 9:16 MP4，并使用第三方模板能力完成基础背景、烧录字幕、标题区和结尾 CTA。
-9. **最终 QA：** 对最终成片重新执行音画检查；ASR 与锁定口播稿出现实质差异时强制阻断。
-10. **成片归档：** 归档 MP4、SRT/VTT、封面帧、口播标注稿、VideoBrief、QA 报告、供应商 Job ID、费用和授权版本。
-11. **发布分流：** 标准成片可直接进入发布确认；需要 B-roll、复杂转场、花字或高级包装时输出外部精剪包。
+1. **锁定口播稿：** 只接受通过双层内容审批的 `ArtifactVersion`。口播视频编排 Agent 不得修改稿件事实或承诺。
+2. **创建语音任务：** 系统把文本、`voice_id`、语速、音量、音高、情绪和发音词典提交给 MiniMax 等 `SpeechSynthesisAdapter`。
+3. **获取并归档音频：** 供应商返回音频字节或临时 URL 后，系统立即保存为私有 `AudioAsset`，记录稿件哈希、供应商 Trace/Job ID、音色配置、费用和 SHA-256。
+4. **音频校验：** 检查文件可播放、时长、静音和 ASR 文本一致性。首次使用某个音色、发音配置变化或 QA 异常时，团长需在任务流中试听确认。
+5. **创建数字人视频任务：** 系统把已批准 `AudioAsset` 上传为 HeyGen 等供应商可接受的音频资产，连同已授权 `avatar_id` 提交给 `TalkingAvatarAdapter`。HeyGen 只负责使用该音频驱动数字人并生成视频。
+6. **等待供应商处理：** 系统通过 Webhook 或轮询获取 `pending/processing/completed/failed`，页面实时显示状态。等待期间不占用 Worker。
+7. **获取并归档视频：** 供应商完成后，系统立即把临时视频 URL 下载到我方私有对象存储，记录供应商 Video ID、输入音频哈希、数字人 ID、费用、耗时和视频 SHA-256。
+8. **视频校验：** 检查视频可播放、有音轨、时长合理，并通过 ASR 确认口播仍与锁定稿一致。系统不修改视频内容。
+9. **页面交付：** 创建 `DeliveryPage`，向团长展示视频播放器、口播稿、音频播放器、生成状态、供应商、费用、QA 结果和操作按钮。
+10. **用户动作：** 团长可确认成片、下载 MP4、重新生成音频、重新提交数字人视频、切换已批准供应商或转真人拍摄/外部精剪。
 
-### 15.4 标准交付物
+### 15.4 两类供应商端口
 
-每条数字人口播短视频必须产生：
+```python
+class SpeechSynthesisPort(Protocol):
+    async def synthesize(self, request: SpeechRequest) -> SpeechJobRef: ...
+    async def get_status(self, job: SpeechJobRef) -> SpeechJobStatus: ...
+    async def fetch_audio(self, job: SpeechJobRef) -> BinaryAsset: ...
 
-- 1080 × 1920 的 9:16 MP4；供应商仅支持较低清晰度时，必须在报价和样片阶段明确提示且由运营确认；
-- 与锁定口播稿关联的口语标注稿；
-- UTF-8 SRT 或 VTT 字幕，以及可选烧录字幕版本；
-- 一张可用于发布前预览的封面帧；
-- `VideoQAReport`；
-- 供应商、模型/引擎、形象、声音、模板和生成时间等溯源信息；
-- 本次实际费用、重试次数和生成耗时；
-- 可供开拍、剪映或其他外部工具继续处理的素材交接包。
+class TalkingAvatarPort(Protocol):
+    async def upload_audio(self, audio: AudioAssetRef) -> ProviderAudioRef: ...
+    async def submit_from_audio(self, request: TalkingVideoRequest) -> TalkingVideoJobRef: ...
+    async def get_status(self, job: TalkingVideoJobRef) -> TalkingVideoJobStatus: ...
+    async def fetch_video(self, job: TalkingVideoJobRef) -> BinaryAsset: ...
+```
 
-首期标准成片只包含数字人口播、基础背景、字幕、标题和结尾 CTA。复杂 B-roll、音乐卡点、转场、调色和特效不进入自研范围。
+`SpeechSynthesisAdapter` 首期实现 MiniMax，`TalkingAvatarAdapter` 首期实现 HeyGen。其他供应商必须实现同一端口，不得把供应商字段泄露到上层任务和页面模型。
 
-### 15.5 视频自动质检
+支持租户 BYOK 与平台托管密钥：
 
-`VideoQAReport` 至少包含：
+- BYOK 凭证按租户加密保存；
+- 平台密钥按套餐、租户和预算控制额度；
+- 每个外部请求带幂等键、输入哈希、预计成本和授权引用；
+- 超时后先查询供应商状态，不直接重复扣费；
+- 供应商临时 URL 必须立即归档到我方对象存储；
+- 音频供应商失败时可换另一个 TTS Adapter；数字人供应商失败时可重试、换已授权 AvatarProfile 或转真人拍摄。
 
-| 检查 | 通过标准 | 失败动作 |
-|---|---|---|
-| 文件完整性 | 可解码、有视频轨和音轨、时长大于 0 | 重新拉取或重渲染 |
-| 画幅与清晰度 | 9:16；输出达到已批准的分辨率 | 阻断或要求运营接受降级 |
-| 口播一致性 | ASR 与锁定稿规范化文本相似度 ≥ 98% | 标记差异句并阻断 |
-| 静音/断音 | 无超出标注停顿的异常静音 | 重渲染或换声音配置 |
-| 黑帧/冻结 | 不存在连续异常黑帧或长时间冻结 | 重渲染 |
-| 字幕安全区 | 字幕、标题和 CTA 不越界、不被平台 UI 遮挡 | 调整模板后重渲染 |
-| 水印 | 不含未批准供应商水印或测试标记 | 阻断正式交付 |
-| 授权一致性 | 使用的形象、声音和模板均与批准版本一致 | 安全阻断并审计 |
+### 15.5 音频与视频校验
 
-自动 QA 只能判断技术和文本一致性，不能替代团长对“像不像本人、声音是否自然、是否愿意公开”的人工判断。
+| 对象 | 检查 | 通过标准 | 失败动作 |
+|---|---|---|---|
+| 音频 | 文件完整性 | 可解码、有音轨、时长大于 0 | 重新获取或重新调用 TTS |
+| 音频 | 口播一致性 | ASR 与锁定稿规范化文本相似度 ≥ 98% | 标记差异并重新生成音频 |
+| 音频 | 静音/断音 | 无异常长静音或明显截断 | 调整文本/发音参数后重新生成 |
+| 视频 | 文件完整性 | 可在主流浏览器播放、有视频轨和音轨 | 重新获取或重新提交 HeyGen 作业 |
+| 视频 | 输入一致性 | 记录的输入音频哈希等于已批准 `AudioAsset` | 安全阻断并审计 |
+| 视频 | 口播一致性 | 视频 ASR 与已批准音频/锁定稿相似度 ≥ 98% | 阻断页面确认并重新提交供应商 |
+| 视频 | 授权一致性 | `avatar_id`、声音和 Consent 均为有效批准版本 | 安全阻断并审计 |
 
-### 15.6 数字人供应商适配
+校验只判断交付完整性和文本一致性，不对视频进行合成、修复、转码、字幕烧录或画面加工。团长仍需人工判断形象、口型、声音和整体观感是否可以公开。
 
-支持租户自有密钥和平台托管密钥两种模式：
+### 15.6 成片交付页面
 
-- BYOK 凭证以租户为边界加密存储；
-- 平台密钥按租户套餐和预算分配额度；
-- Provider Adapter 统一 `create_avatar`、`create_voice`、`submit_preview`、`submit_final`、`get_status`、`cancel` 和 `fetch_result`；
-- 每次提交包含幂等键、脚本哈希、形象 ID、声音 ID、预计成本和授权引用；
-- 超时后先查询供应商状态，不能直接重复提交；
-- 结果 URL 若会过期，完成后立即归档到我方对象存储；
-- 失败可重试、切换已批准的供应商或改为真人拍摄。
+`DeliveryPage` 是数字人口播链路的最终系统交付物，必须包含：
+
+- 最终视频播放器和下载按钮；
+- 对应锁定稿与版本；
+- MiniMax 等生成的音频播放器；
+- 音频和视频两段供应商作业状态；
+- 音色、数字人、生成时间、费用和 QA 摘要；
+- “确认成片”“重做音频”“重做数字人视频”“转真人拍摄”“下载后外部精剪”操作；
+- 失败时明确显示失败发生在 TTS 还是数字人阶段，以及是否已经产生费用。
+
+页面不提供视频编辑器。需要字幕、封面、B-roll、音乐、转场或特效时，用户下载成片后进入开拍、剪映等外部工具处理。
+
+### 15.7 当前供应商能力依据
+
+- MiniMax 同步 T2A API 支持 `voice_id`、语速、音量、音高、情绪、发音词典、MP3/WAV 等音频格式及 URL/字节结果；URL 为临时结果，系统必须及时归档：[MiniMax 同步语音合成文档](https://platform.minimaxi.com/docs/api-reference/speech-t2a-http)。
+- HeyGen 官方文档支持以已上传音频资产作为 `input_audio` 驱动 Avatar 视频，并通过状态接口获取结果；返回视频 URL 会过期，系统必须及时归档：[HeyGen Audio Source / WebM 文档](https://docs.heygen.com/docs/create-webm-avatar-videos-archived)。
 
 数字人和语音克隆必须在 Consent 模块存在明确授权记录，授权应包含用途、供应商、保存期限和撤回方式。
 
@@ -608,12 +625,13 @@ flowchart LR
 | `POST /v1/ip/memory-proposals/{id}/publish` | 发布权威/偏好记忆 | 显式确认、记录旧值并支持撤销 |
 | `POST /v1/imports/metrics` | 创建指标导入批次 | 原文件留存、先验证后写入 |
 | `POST /v1/imports/{id}/commit` | 提交验证通过的批次 | 全批事务或明确的部分提交策略 |
-| `POST /v1/digital-human-profiles` | 创建或绑定数字人形象、声音和授权 | 资产未验收前不能创建正式生产任务 |
-| `POST /v1/production/video-briefs` | 从锁定稿创建数字人口播 VideoBrief | 脚本版本、平台、模板、形象和声音全部锁定 |
-| `POST /v1/production/jobs/preview` | 创建数字人样片任务 | 成本预检、授权检查、幂等和测试模式优先 |
-| `POST /v1/production/jobs/{id}/approve` | 批准样片配置并允许正式渲染 | 只有团长或被授权代理人可批准 |
-| `POST /v1/production/jobs/{id}/render-final` | 创建标准竖屏成片 | 必须绑定已批准样片和未变更的锁定稿 |
-| `GET /v1/production/jobs/{id}` | 查询生产状态、费用、QA 和资产 | 不返回供应商密钥；URL 使用短期签名 |
+| `POST /v1/production/voice-profiles` | 绑定 MiniMax 等外部音色配置 | 必须关联有效声音授权和凭证引用 |
+| `POST /v1/production/avatar-profiles` | 绑定 HeyGen 等外部数字人 ID | 必须关联有效肖像授权和已验收数字人 |
+| `POST /v1/production/speech-jobs` | 将锁定稿提交语音供应商 | 成本预检、脚本哈希、幂等和音色授权检查 |
+| `POST /v1/production/speech-jobs/{id}/approve` | 团长确认生成音频 | 首次音色或 QA 警告时必须确认 |
+| `POST /v1/production/talking-video-jobs` | 将已批准音频提交数字人供应商 | 输入必须是归档的 AudioAsset 和有效 AvatarProfile |
+| `GET /v1/production/talking-video-jobs/{id}` | 查询 TTS、数字人、费用和 QA 状态 | 不返回供应商密钥；媒体使用短期签名 URL |
+| `GET /v1/deliveries/{id}` | 获取成片交付页面数据 | 只返回当前租户有权查看的视频、音频和稿件 |
 
 ### 16.2 领域事件
 
@@ -622,10 +640,12 @@ flowchart LR
 - `ip.snapshot.published.v1`
 - `strategy.approval.requested.v1`
 - `artifact.version.locked.v1`
-- `digital_human.profile.approved.v1`
-- `production.preview.ready.v1`
-- `production.video.qa_completed.v1`
-- `production.video.finalized.v1`
+- `production.speech.requested.v1`
+- `production.audio.ready.v1`
+- `production.audio.approved.v1`
+- `production.talking_video.submitted.v1`
+- `production.video.ready.v1`
+- `production.delivery.published.v1`
 - `publication.recorded.v1`
 - `metrics.imported.v1`
 - `insight.proposed.v1`
@@ -640,9 +660,10 @@ flowchart LR
 |---|---|---|
 | IP 资料不足 | 暂停生成并产生针对性追问 | 补资料、降低主张强度或删除主张 |
 | 模型超时/限流 | 指数退避；允许换备用模型；保持检查点 | 稍后继续或批准切换供应商 |
-| 数字人形象/声音未通过 | 禁止正式生成；保留稿件和配置 | 重录样本、换形象/声音或转真人 |
-| 数字人渲染失败 | 查询状态后重试；可切厂商或真人路径 | 重试、换方案、转真人 |
-| 视频 QA 失败 | 标出差异句、黑帧、静音、越界或水印问题；阻断成片 | 调整发音/模板后重渲染 |
+| MiniMax 等 TTS 失败 | 查询状态后重试；不向 HeyGen 提交不完整音频 | 重试、换音色/语音供应商或转真人 |
+| 音频 QA 失败 | 标出错读、截断或异常静音；阻断数字人任务 | 调整稿件发音参数后重新调用 TTS |
+| HeyGen 等数字人任务失败 | 查询状态后重试；保留已批准 AudioAsset | 重试、换已授权数字人供应商或转真人 |
+| 视频 QA 失败 | 标出口播差异或不可播放问题；阻断交付确认 | 重新提交数字人供应商或转外部处理 |
 | 导入文件错误 | 不写权威表；展示逐行错误 | 下载错误报告、修复后重传 |
 | 事实/合规阻断 | 强制停在审批前 | 补证据、改文案或删除内容 |
 | 对象存储异常 | 禁止新媒体作业，文字任务继续 | 稍后上传；已完成稿件不受影响 |
@@ -666,7 +687,7 @@ flowchart LR
 - 照片、声音、视频和证据放私有对象存储，使用短期签名 URL；
 - 临时文件 7 天清理，成片默认热存 90 天后转低频或按合同删除；
 - 用户可撤回数字人授权，撤回后禁止新作业并执行约定的数据删除流程。
-- 数字人样片和成片必须保存所用 `ConsentGrant`、`AvatarAsset`、`VoiceAsset` 和模板版本；授权撤回后不允许用旧 Job 复制生成新视频。
+- 音频和视频必须保存所用 `ConsentGrant`、`VoiceProfile`、`AvatarProfile`、锁定稿哈希和上游 AudioAsset 哈希；授权撤回后不允许用旧 Job 生成新资产。
 
 ### 18.3 Agent 安全
 
@@ -679,8 +700,8 @@ flowchart LR
 ### 18.4 发布安全
 
 - 锁定稿生成 SHA-256 内容哈希；
-- 成片字幕或语音转写与锁定稿出现实质差异时重新审批；
-- 未通过 `VideoQAReport` 或未获团长样片确认的数字人成片不能进入发布确认；
+- 成片语音转写与锁定稿出现实质差异时阻断确认并重新提交供应商；
+- 未通过 `AudioQAReport`/`VideoQAReport` 或未获团长成片确认的视频不能进入发布确认；
 - 事实和合规阻断不能由 Agent 或普通运营绕过；
 - 发布记录包含平台、账号、内容 ID/URL、锁定稿版本、成片哈希和审批人。
 
@@ -777,7 +798,8 @@ External
 单任务成本
 = 模型输入/输出 Token
 + 搜索和资料解析
-+ 数字人生成分钟
++ MiniMax 等 TTS 合成字符/音频时长
++ HeyGen 等数字人视频时长
 + 对象存储
 + 下载流量
 + 通知
@@ -788,7 +810,7 @@ External
 ### 21.2 四层预算
 
 1. **任务预算：** 启动时预估；达到硬上限暂停并请求运营确认；
-2. **租户预算：** 日/月额度、并发、重跑和数字人分钟按套餐配置；
+2. **租户预算：** 日/月额度、TTS 字符、数字人视频分钟、并发和重跑次数按套餐配置；
 3. **供应商预算：** 每家供应商设置日上限、并发、失败率熔断和备用路由；
 4. **全局预算：** 60% 提醒、80% 降级非关键任务、100% 停止新增高成本任务。
 
@@ -796,7 +818,7 @@ External
 
 - 不部署 GPU；
 - 没有队列积压时不增加 Worker；
-- 数字人正式成片默认只在样片批准后生成一次；修改形象、声音、口播标注或模板才允许创建新渲染版本；
+- 同一锁定稿、VoiceProfile、AvatarProfile 和 AudioAsset 的重复请求必须命中幂等记录；只有用户明确重做或供应商失败才允许产生新的付费作业；
 - Embedding、稳定规则和重复资料解析结果缓存；
 - 媒体直传对象存储；
 - 临时文件和视频执行生命周期策略；
@@ -844,7 +866,7 @@ ops/
 - API、事件、Agent 输出和导入模板做 Schema 兼容性测试；
 - PostgreSQL、Redis 和对象存储使用真实依赖进行集成测试；
 - 供应商 Adapter 使用沙盒或录制响应进行契约测试；
-- 数字人生产测试覆盖授权阻断、样片审批、口播一致性、视频 QA、正式渲染和外部精剪交接；
+- 口播视频编排测试覆盖授权阻断、MiniMax 音频生成、音频归档/试听、HeyGen 音频驱动视频、供应商回调、页面展示、口播一致性和外部精剪交接；
 - 数据库迁移执行前滚、回填和恢复演练；
 - 依赖、镜像、密钥和高危漏洞扫描无阻断项；
 - 跨租户访问、断线续传、版本冲突、撤销和任务恢复具备端到端测试；
@@ -880,7 +902,7 @@ tenant_id → goal_id → run_id → run_step_id
 - 队列深度、最老任务等待时间、重试和死信数量；
 - Agent 各步骤成功率、耗时、Token、成本和阻断率；
 - 数字人各供应商成功率、耗时、费用和重复提交拦截；
-- 数字人样片一次通过率、ASR 一致性、视频 QA 失败类型、正式成片成功率和团长确认耗时；
+- TTS 成功率和耗时、音频试听通过率、数字人视频成功率和耗时、ASR 一致性、各阶段费用、成片页面打开率和团长确认耗时；
 - 导入成功率、错误行、重复率和回滚次数；
 - 审批等待时间、首稿选用率和目标到发布时长；
 - 预算使用率和单位内容成本。
@@ -914,7 +936,7 @@ tenant_id → goal_id → run_id → run_step_id
 | P0 基座 | 单机部署、租户、权限、审计、对象存储、状态机、任务流、CI/CD、备份和监控 | 跨租户测试通过；Worker 中断可恢复；备份可在新机重建 |
 | P1 团长 IP | AI 访谈、资料导入、事实/证据核验、IP 快照、记忆提案和撤销 | 10 位团长完成建档；事实 Evals 达标 |
 | P2 内容闭环 | 内部拆解、招商策略、母稿/平台稿、质检、双层审批和真人交接 | 运营独立完成 30 条内容；内部原文泄露为 0 |
-| P3 数字人口播与复盘 | 一个数字人 Adapter、形象/声音建档、样片审批、标准竖屏成片、视频 QA、外部精剪包、数据导入、统一指标、复盘和策略升级 | 10 位团长各生成 3 条标准数字人口播短视频；两个真实招商周期跑通；失败降级和导入回滚通过 |
+| P3 数字人口播与复盘 | MiniMax Speech Adapter、AudioAsset 归档/试听、HeyGen Talking Avatar Adapter、最终成片交付页面、音视频 QA、外部精剪交接、数据导入、统一指标、复盘和策略升级 | 10 位团长各跑通 3 次“稿件→音频→数字人视频→页面确认”；两个真实招商周期跑通；失败降级和导入回滚通过 |
 | P4 试点加固 | 单机压力测试、故障演练、安全测试、恢复演练、运行手册 | 严重缺陷清零；业务负责人签收；成本未超预算 |
 | P5 二期扩展 | 多实例高可用、平台 API、带货策略包和更高容量 | 满足二期触发条件后单独立项和验收 |
 
@@ -931,8 +953,8 @@ tenant_id → goal_id → run_id → run_step_id
 - 团长平均每个任务需要处理的决策卡不超过 3 张。
 - 已批准锁定稿与数字人成片 ASR 规范化文本一致性 ≥ 98%；
 - 数字人口播视频使用未授权形象或声音的数量为 0；
-- 数字人口播标准成片在一次自动重试后的任务成功率 ≥ 95%；
-- 10 位试点团长分别确认其形象、声音和 3 条标准成片可用于发布。
+- MiniMax 等音频作业和 HeyGen 等视频作业在一次自动重试后的端到端成功率 ≥ 95%；
+- 10 位试点团长分别确认其音色、数字人和 3 条页面成片可下载并用于发布或外部精剪。
 
 ### 26.2 首期技术
 
@@ -952,7 +974,7 @@ tenant_id → goal_id → run_id → run_step_id
 2. **爆款素材使用规范：** 明确可采集来源、内部分析范围、原文访问权限和删除机制；
 3. **招商指标口径：** 使用本文定义的“有效咨询”，并明确签约和激活的业务确认人；
 4. **黄金样本集：** 10 位真实团长，每人至少 10 条本人确认的表达样本和完整事实清单；
-5. **供应商试用结论：** 至少验证一个低成本数字人供应商的形象/声音创建、样片、9:16 标准成片、字幕/模板、费用、回调、失败和授权能力；
+5. **供应商试用结论：** 分别验证 MiniMax 等 TTS 的音色、发音、音频格式、费用和失败处理，以及 HeyGen 等数字人服务从外部音频生成视频、回调/轮询、结果下载、费用和失败处理；
 6. **备份恢复责任人：** 指定首期单机故障时执行重建的技术负责人和告警接收人。
 
 ## 28. 主要风险与对策
@@ -964,8 +986,8 @@ tenant_id → goal_id → run_id → run_step_id
 | 内部爆款资产泄露 | 核心壁垒和合规受损 | 独立角色、索引、上下文装配器和输出泄露检测 |
 | Agent 自我强化错误 | 错误策略进入长期记忆 | 记忆提案必须审批；带证据、范围、版本和撤销 |
 | 平台数据口径不一致 | 错误归因 | 保存原始字段和采集时间；统一指标映射；人工确认业务线索 |
-| 数字人供应商失败/涨价 | 口播短视频生产中断和成本增加 | 样片优先、Adapter、预算、熔断、备用供应商和真人降级 |
-| 数字人音画不一致 | 错读背书、口型异常或字幕与口播不符 | 发音词典、ASR 差异检查、技术 QA 和团长样片审批 |
+| 语音或数字人供应商失败/涨价 | 口播短视频链路中断和成本增加 | 两类独立 Adapter、分阶段成本账本、熔断、备用供应商和真人降级 |
+| TTS 错读或数字人口型异常 | 错误背书进入成片或观感不可用 | 发音词典、音频先行试听、ASR 差异检查、视频 QA 和团长成片确认 |
 | 第三方限流 | 任务积压 | 队列、租户公平调度、退避、配额和预计等待时间 |
 | 视频存储增长 | 成本失控 | 直传对象存储、7 天临时文件、90 天热存和生命周期归档 |
 | 过度产品化 | 首期进度失控 | 招商优先；数据 API、自动发布、带货、小程序和任务星图放二期 |
