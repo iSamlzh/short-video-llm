@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto"
 import type Database from "better-sqlite3"
-import { ipProfileSchema, type TopicDirectionCandidate } from "../../domain/schemas"
+import { ipProfileSchema, type ScriptCandidate, type TopicDirectionCandidate } from "../../domain/schemas"
 import type { IpProfile, PrototypeRun, RunState, VersionedBatch } from "../../domain/models"
 import { openDatabase } from "./database"
 
@@ -98,6 +98,8 @@ export class PrototypeRepository {
     if (!batch || !batch.items.some(item => item.id === topicId)) throw new Error("TOPIC_SELECTION_INVALID")
     const transaction = this.database.transaction(() => {
       this.database.prepare("UPDATE topic_selections SET is_current = 0 WHERE run_id = ?").run(runId)
+      this.database.prepare("UPDATE script_batches SET superseded = 1 WHERE run_id = ?").run(runId)
+      this.database.prepare("UPDATE script_selections SET is_current = 0 WHERE run_id = ?").run(runId)
       const version = this.nextVersion("topic_selections", runId)
       const createdAt = new Date().toISOString()
       this.database.prepare(`INSERT INTO topic_selections
@@ -118,6 +120,62 @@ export class PrototypeRepository {
 
   getCurrentTopicSelection(runId: string) {
     return this.listTopicSelections(runId).findLast(item => item.isCurrent) ?? null
+  }
+
+  saveScriptBatch(runId: string, inputVersion: number, items: ScriptCandidate[], idempotencyKey: string): VersionedBatch<ScriptCandidate> {
+    const existing = this.commandResult<VersionedBatch<ScriptCandidate>>(idempotencyKey)
+    if (existing) return existing
+    const transaction = this.database.transaction(() => {
+      const version = this.nextVersion("script_batches", runId)
+      const result = { version, inputVersion, items, superseded: false }
+      this.database.prepare(`INSERT INTO script_batches
+        (run_id,version,input_version,schema_version,payload_json,created_at) VALUES (?,?,?,?,?,?)`)
+        .run(runId, version, inputVersion, SCHEMA_VERSION, JSON.stringify(items), new Date().toISOString())
+      this.saveCommand(idempotencyKey, runId, "GENERATE_SCRIPTS", result)
+      return result
+    })
+    return transaction()
+  }
+
+  listScriptBatches(runId: string): VersionedBatch<ScriptCandidate>[] {
+    const rows = this.database.prepare("SELECT * FROM script_batches WHERE run_id = ? ORDER BY version").all(runId) as Row[]
+    return rows.map(row => ({
+      version: Number(row.version), inputVersion: Number(row.input_version),
+      items: JSON.parse(String(row.payload_json)), superseded: Boolean(row.superseded),
+    }))
+  }
+
+  getScriptBatch(runId: string, version?: number) {
+    const batches = this.listScriptBatches(runId).filter(batch => !batch.superseded)
+    return version ? batches.find(batch => batch.version === version) ?? null : batches.at(-1) ?? null
+  }
+
+  selectScript(runId: string, batchVersion: number, scriptId: string) {
+    const batch = this.getScriptBatch(runId, batchVersion)
+    const script = batch?.items.find(item => item.id === scriptId)
+    const topic = this.getCurrentTopicSelection(runId)
+    if (!batch || !script || !topic || script.topicDirectionId !== topic.topicId) throw new Error("SCRIPT_SELECTION_STALE")
+    const transaction = this.database.transaction(() => {
+      this.database.prepare("UPDATE script_selections SET is_current = 0 WHERE run_id = ?").run(runId)
+      const version = this.nextVersion("script_selections", runId)
+      const createdAt = new Date().toISOString()
+      this.database.prepare(`INSERT INTO script_selections
+        (run_id,version,batch_version,item_id,is_current,schema_version,created_at) VALUES (?,?,?,?,1,?,?)`)
+        .run(runId, version, batchVersion, scriptId, SCHEMA_VERSION, createdAt)
+      return { version, batchVersion, scriptId, isCurrent: true, createdAt }
+    })
+    return transaction()
+  }
+
+  getCurrentScriptSelection(runId: string) {
+    const row = this.database.prepare("SELECT * FROM script_selections WHERE run_id = ? AND is_current = 1 ORDER BY version DESC LIMIT 1").get(runId) as Row | undefined
+    return row ? { version: Number(row.version), batchVersion: Number(row.batch_version), scriptId: String(row.item_id), isCurrent: true } : null
+  }
+
+  getSelectedScript(runId: string) {
+    const selection = this.getCurrentScriptSelection(runId)
+    const batch = selection ? this.getScriptBatch(runId, selection.batchVersion) : null
+    return selection && batch ? batch.items.find(item => item.id === selection.scriptId) ?? null : null
   }
 
   private nextVersion(table: string, runId: string) {

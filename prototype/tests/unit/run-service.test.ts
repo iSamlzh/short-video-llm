@@ -54,4 +54,50 @@ describe("RunService topics", () => {
   })
 })
 
-export { minimumIpInput, topics }
+describe("RunService scripts", () => {
+  it("stores exactly three scripts for the selected direction", async () => {
+    const repository = new PrototypeRepository(":memory:")
+    const adapter = new FakeLlmAdapter([{ json: topics }])
+    const service = new RunService(repository, new StructuredLlmClient(adapter))
+    const run = service.createRun(minimumIpInput)
+    const topicBatch = await service.generateTopics(run.id, run.inputVersion)
+    service.selectTopic(run.id, topicBatch.version, topics[0].id)
+    const scripts = makeScripts(topics[0].id)
+    adapter.enqueue({ json: scripts })
+
+    const batch = await service.generateScripts(run.id, run.inputVersion)
+    expect(batch.items).toHaveLength(3)
+    expect(new Set(batch.items.map(item => item.topicDirectionId))).toEqual(new Set([topics[0].id]))
+    expect(service.getRun(run.id).state).toBe("WAITING_SCRIPT_SELECTION")
+  })
+
+  it("rejects the whole batch when one script changes direction", async () => {
+    const repository = new PrototypeRepository(":memory:")
+    const adapter = new FakeLlmAdapter([{ json: topics }])
+    const service = new RunService(repository, new StructuredLlmClient(adapter))
+    const run = service.createRun(minimumIpInput)
+    const topicBatch = await service.generateTopics(run.id, run.inputVersion)
+    service.selectTopic(run.id, topicBatch.version, topics[0].id)
+    const scripts = makeScripts(topics[0].id)
+    scripts[2].topicDirectionId = "foreign-direction"
+    adapter.enqueue({ json: scripts })
+
+    await expect(service.generateScripts(run.id, run.inputVersion))
+      .rejects.toMatchObject({ message: expect.stringContaining("SCRIPT_DIRECTION_MISMATCH") })
+    expect(repository.listScriptBatches(run.id)).toHaveLength(0)
+  })
+})
+
+function makeScripts(topicDirectionId: string) {
+  return Array.from({ length: 3 }, (_, index) => ({
+    id: `script-${index + 1}`,
+    topicDirectionId,
+    title: `同一方向口播稿${index + 1}`,
+    hook: "很多团长第一步就做错了",
+    body: `这是第${index + 1}种表达路径。我用三年社区团购的真实经历，拆开讲清如何避免常见错误，并给出今天能执行的方法。`,
+    callToAction: "想交流具体情况，可以留言",
+    estimatedSeconds: 60,
+  }))
+}
+
+export { makeScripts, minimumIpInput, topics }

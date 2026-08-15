@@ -39,6 +39,12 @@ async function dispatch(request: NextRequest, segments: string[]) {
     if (request.method === "POST" && segments.slice(2).join("/") === "topics/select") {
       return Response.json(service.selectTopic(runId, Number(body.batchVersion), String(body.topicId)))
     }
+    if (request.method === "POST" && segments.slice(2).join("/") === "scripts/generate") {
+      return Response.json(await service.generateScripts(runId, Number(body.inputVersion)))
+    }
+    if (request.method === "POST" && segments.slice(2).join("/") === "scripts/select") {
+      return Response.json(service.selectScript(runId, Number(body.batchVersion), String(body.scriptId)))
+    }
     return Response.json({ errorCode: "NOT_FOUND" }, { status: 404 })
   } catch (error) { return errorResponse(error) }
 }
