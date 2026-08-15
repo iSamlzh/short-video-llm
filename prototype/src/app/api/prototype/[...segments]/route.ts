@@ -45,6 +45,13 @@ async function dispatch(request: NextRequest, segments: string[]) {
     if (request.method === "POST" && segments.slice(2).join("/") === "scripts/select") {
       return Response.json(service.selectScript(runId, Number(body.batchVersion), String(body.scriptId)))
     }
+    if (request.method === "POST" && segments.slice(2).join("/") === "qa/run") {
+      return Response.json(await service.runQa(runId, Number(body.inputVersion)))
+    }
+    if (request.method === "POST" && segments.slice(2).join("/") === "lock") return Response.json(service.lockScript(runId))
+    if (request.method === "POST" && segments.slice(2).join("/") === "publication/simulate") {
+      return Response.json(service.simulatePublication(runId, body.scenario as never))
+    }
     return Response.json({ errorCode: "NOT_FOUND" }, { status: 404 })
   } catch (error) { return errorResponse(error) }
 }

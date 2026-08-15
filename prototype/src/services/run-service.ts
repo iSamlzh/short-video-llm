@@ -1,9 +1,10 @@
-import { scriptBatchSchema, topicBatchSchema } from "../domain/schemas"
+import { qualityReportSchema, scriptBatchSchema, topicBatchSchema } from "../domain/schemas"
 import { transition } from "../domain/state-machine"
 import type { IpProfile } from "../domain/models"
 import { PrototypeRepository } from "../lib/db/repository"
 import { StructuredLlmClient } from "../lib/llm/structured"
 import { prototypePreset } from "../presets"
+import { simulateMetrics, type SimulationScenario } from "../lib/simulation/metric-simulator"
 
 export class RunService {
   constructor(private readonly repository: PrototypeRepository, private readonly llm: StructuredLlmClient) {}
@@ -70,5 +71,46 @@ export class RunService {
     const selection = this.repository.selectScript(runId, batchVersion, scriptId)
     this.repository.setState(runId, transition(run.state, "SELECT_SCRIPT"))
     return selection
+  }
+
+  async runQa(runId: string, inputVersion: number) {
+    const run = this.repository.requireVersion(runId, inputVersion)
+    const script = this.repository.getSelectedScript(runId)
+    if (!script) throw new Error("SCRIPT_SELECTION_REQUIRED")
+    this.repository.setState(runId, transition(run.state, "RUN_QA"))
+    try {
+      const report = await this.llm.generateStructured("qa", {
+        ipProfile: run.ipProfile, goal: prototypePreset.goal, selectedScript: script,
+        instruction: "只检查，不改写",
+      }, qualityReportSchema)
+      const saved = this.repository.saveQualityReport(runId, report)
+      this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
+      return saved
+    } catch (error) {
+      this.repository.setState(runId, "READY_FOR_QA")
+      throw error
+    }
+  }
+
+  lockScript(runId: string) {
+    const run = this.repository.requireRun(runId)
+    const report = this.repository.getLatestQualityReport(runId)
+    if (!report?.hardGatePassed) throw new Error("QA_HARD_GATE_BLOCKED")
+    const locked = this.repository.lockSelectedScript(runId)
+    this.repository.setState(runId, transition(run.state, "LOCK"))
+    return locked
+  }
+
+  simulatePublication(runId: string, requestedScenario: SimulationScenario = "normal") {
+    const run = this.repository.requireRun(runId)
+    const locked = this.repository.getLatestLockedScript(runId)
+    const report = this.repository.getLatestQualityReport(runId)
+    if (!locked || !report) throw new Error("LOCKED_SCRIPT_REQUIRED")
+    this.repository.setState(runId, transition(run.state, "SIMULATE_PUBLICATION"))
+    const scenario = process.env.PROTOTYPE_DEMO_CONTROLS === "true" ? requestedScenario : "normal"
+    const snapshot = simulateMetrics({ runId, lockedScriptVersion: locked.version, scores: report.scores }, scenario)
+    const saved = this.repository.saveMetricSnapshot(runId, snapshot)
+    this.repository.setState(runId, transition("SIMULATING_PUBLICATION", "PUBLICATION_SIMULATED"))
+    return saved
   }
 }

@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto"
+import { createHash } from "node:crypto"
 import type Database from "better-sqlite3"
-import { ipProfileSchema, type ScriptCandidate, type TopicDirectionCandidate } from "../../domain/schemas"
+import { contentReviewSchema, ipProfileSchema, metricSnapshotSchema, qualityReportSchema, type ContentReview, type MetricSnapshot, type QualityReport, type ScriptCandidate, type TopicDirectionCandidate } from "../../domain/schemas"
 import type { IpProfile, PrototypeRun, RunState, VersionedBatch } from "../../domain/models"
 import { openDatabase } from "./database"
 
@@ -176,6 +177,69 @@ export class PrototypeRepository {
     const selection = this.getCurrentScriptSelection(runId)
     const batch = selection ? this.getScriptBatch(runId, selection.batchVersion) : null
     return selection && batch ? batch.items.find(item => item.id === selection.scriptId) ?? null : null
+  }
+
+  saveQualityReport(runId: string, report: QualityReport) {
+    const checked = qualityReportSchema.parse(report)
+    const version = this.nextVersion("quality_reports", runId)
+    const createdAt = new Date().toISOString()
+    this.database.prepare("INSERT INTO quality_reports (run_id,version,schema_version,payload_json,created_at) VALUES (?,?,?,?,?)")
+      .run(runId, version, SCHEMA_VERSION, JSON.stringify(checked), createdAt)
+    return { version, ...checked, createdAt }
+  }
+
+  getLatestQualityReport(runId: string) {
+    const row = this.database.prepare("SELECT * FROM quality_reports WHERE run_id = ? ORDER BY version DESC LIMIT 1").get(runId) as Row | undefined
+    return row ? { version: Number(row.version), ...qualityReportSchema.parse(JSON.parse(String(row.payload_json))) } : null
+  }
+
+  lockSelectedScript(runId: string) {
+    const script = this.getSelectedScript(runId)
+    if (!script) throw new Error("SCRIPT_SELECTION_REQUIRED")
+    const version = this.nextVersion("locked_scripts", runId)
+    const sha256 = createHash("sha256").update(JSON.stringify(script)).digest("hex")
+    const createdAt = new Date().toISOString()
+    this.database.prepare("INSERT INTO locked_scripts (run_id,version,schema_version,sha256,payload_json,created_at) VALUES (?,?,?,?,?,?)")
+      .run(runId, version, SCHEMA_VERSION, sha256, JSON.stringify(script), createdAt)
+    return { version, sha256, script: structuredClone(script), createdAt }
+  }
+
+  getLatestLockedScript(runId: string) {
+    const row = this.database.prepare("SELECT * FROM locked_scripts WHERE run_id = ? ORDER BY version DESC LIMIT 1").get(runId) as Row | undefined
+    return row ? { version: Number(row.version), sha256: String(row.sha256), script: JSON.parse(String(row.payload_json)) as ScriptCandidate } : null
+  }
+
+  saveMetricSnapshot(runId: string, snapshot: MetricSnapshot) {
+    const checked = metricSnapshotSchema.parse(snapshot)
+    const version = this.nextVersion("metric_snapshots", runId)
+    const createdAt = new Date().toISOString()
+    this.database.prepare("INSERT INTO metric_snapshots (run_id,version,schema_version,payload_json,created_at) VALUES (?,?,?,?,?)")
+      .run(runId, version, SCHEMA_VERSION, JSON.stringify(checked), createdAt)
+    return { version, ...checked, createdAt }
+  }
+
+  getLatestMetricSnapshot(runId: string) {
+    const row = this.database.prepare("SELECT * FROM metric_snapshots WHERE run_id = ? ORDER BY version DESC LIMIT 1").get(runId) as Row | undefined
+    return row ? { version: Number(row.version), ...metricSnapshotSchema.parse(JSON.parse(String(row.payload_json))) } : null
+  }
+
+  saveReview(runId: string, review: ContentReview) {
+    const checked = contentReviewSchema.parse(review)
+    const version = this.nextVersion("reviews", runId)
+    const createdAt = new Date().toISOString()
+    this.database.prepare("INSERT INTO reviews (run_id,version,schema_version,payload_json,created_at) VALUES (?,?,?,?,?)")
+      .run(runId, version, SCHEMA_VERSION, JSON.stringify(checked), createdAt)
+    return { version, ...checked, createdAt }
+  }
+
+  getLatestReview(runId: string) {
+    const row = this.database.prepare("SELECT * FROM reviews WHERE run_id = ? ORDER BY version DESC LIMIT 1").get(runId) as Row | undefined
+    return row ? { version: Number(row.version), ...contentReviewSchema.parse(JSON.parse(String(row.payload_json))) } : null
+  }
+
+  recordStepError(runId: string, error: { code: string; message: string; retryFromState: RunState }) {
+    this.database.prepare("INSERT INTO step_errors (run_id,error_code,message,retry_from_state,schema_version,created_at) VALUES (?,?,?,?,?,?)")
+      .run(runId, error.code, error.message, error.retryFromState, SCHEMA_VERSION, new Date().toISOString())
   }
 
   private nextVersion(table: string, runId: string) {

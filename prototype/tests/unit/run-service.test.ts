@@ -88,6 +88,45 @@ describe("RunService scripts", () => {
   })
 })
 
+describe("RunService QA and locking", () => {
+  it("uses a separate QA model operation", async () => {
+    const { service, adapter, run } = await selectedScriptFixture()
+    adapter.enqueue({ json: qualityReport(true) })
+    await service.runQa(run.id, run.inputVersion)
+    expect(adapter.calls.at(-1)?.operation).toBe("qa")
+  })
+
+  it("does not lock a script that fails a hard gate", async () => {
+    const { service, adapter, run } = await selectedScriptFixture()
+    adapter.enqueue({ json: qualityReport(false) })
+    await service.runQa(run.id, run.inputVersion)
+    expect(() => service.lockScript(run.id)).toThrow("QA_HARD_GATE_BLOCKED")
+  })
+})
+
+async function selectedScriptFixture() {
+  const repository = new PrototypeRepository(":memory:")
+  const adapter = new FakeLlmAdapter([{ json: topics }])
+  const service = new RunService(repository, new StructuredLlmClient(adapter))
+  const run = service.createRun(minimumIpInput)
+  const topicBatch = await service.generateTopics(run.id, run.inputVersion)
+  service.selectTopic(run.id, topicBatch.version, topics[0].id)
+  const scripts = makeScripts(topics[0].id)
+  adapter.enqueue({ json: scripts })
+  const scriptBatch = await service.generateScripts(run.id, run.inputVersion)
+  service.selectScript(run.id, scriptBatch.version, scripts[0].id)
+  return { repository, adapter, service, run }
+}
+
+function qualityReport(hardGatePassed: boolean) {
+  return {
+    hardGatePassed,
+    hardGateReasons: hardGatePassed ? [] : ["存在无法核实的收益承诺"],
+    scores: { hook: 82, ipFit: 90, credibility: 88, structure: 80, callToAction: 75 },
+    suggestions: ["补充真实经历中的具体动作"],
+  }
+}
+
 function makeScripts(topicDirectionId: string) {
   return Array.from({ length: 3 }, (_, index) => ({
     id: `script-${index + 1}`,
@@ -100,4 +139,4 @@ function makeScripts(topicDirectionId: string) {
   }))
 }
 
-export { makeScripts, minimumIpInput, topics }
+export { makeScripts, minimumIpInput, qualityReport, topics }
