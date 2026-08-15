@@ -1,6 +1,12 @@
 export type LlmOperation = "topics" | "scripts" | "qa" | "review" | "repair"
 export interface TokenUsage { promptTokens?: number; completionTokens?: number; totalTokens?: number }
-export interface LlmRequest { operation: LlmOperation; systemPrompt: string; input: unknown; timeoutMs: number }
+export interface LlmRequest {
+  operation: LlmOperation
+  systemPrompt: string
+  input: unknown
+  timeoutMs: number
+  jsonRoot?: "object" | "array"
+}
 export interface LlmResponse { text: string; model: string; usage?: TokenUsage }
 export interface LlmAdapter { generate(request: LlmRequest): Promise<LlmResponse> }
 
@@ -32,7 +38,7 @@ export class OpenAiCompatibleAdapter implements LlmAdapter {
               { role: "system", content: request.systemPrompt },
               { role: "user", content: JSON.stringify(request.input) },
             ],
-            response_format: { type: "json_object" },
+            ...(request.jsonRoot === "array" ? {} : { response_format: { type: "json_object" } }),
           }),
           signal: controller.signal,
         })

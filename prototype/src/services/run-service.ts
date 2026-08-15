@@ -22,6 +22,7 @@ export class RunService {
       lockedScript: this.repository.getLatestLockedScript(runId),
       metricSnapshot: this.repository.getLatestMetricSnapshot(runId),
       review: this.repository.getLatestReview(runId),
+      stepErrors: this.repository.listStepErrors(runId),
     }
   }
 
@@ -36,12 +37,13 @@ export class RunService {
         goal: prototypePreset.goal,
         structures: prototypePreset.structures,
         presetVersion: prototypePreset.version,
-      }, topicBatchSchema)
+      }, topicBatchSchema, "array")
       const batch = this.repository.saveTopicBatch(runId, inputVersion, items, `${runId}:topics:${inputVersion}`)
       this.repository.setState(runId, transition("GENERATING_TOPICS", "TOPICS_GENERATED"))
       return batch
     } catch (error) {
       this.repository.setState(runId, "READY_FOR_TOPICS")
+      this.recordFailure(runId, error, "READY_FOR_TOPICS")
       throw error
     }
   }
@@ -68,13 +70,14 @@ export class RunService {
       const items = await this.llm.generateStructured("scripts", {
         ipProfile: run.ipProfile, goal: prototypePreset.goal, selectedTopic: topic,
         instruction: "围绕这个唯一方向生成恰好三篇完整文案",
-      }, scriptBatchSchema)
+      }, scriptBatchSchema, "array")
       if (items.some(item => item.topicDirectionId !== selection.topicId)) throw new Error("SCRIPT_DIRECTION_MISMATCH")
       const batch = this.repository.saveScriptBatch(runId, inputVersion, items, `${runId}:scripts:${inputVersion}:${selection.version}`)
       this.repository.setState(runId, transition("GENERATING_SCRIPTS", "SCRIPTS_GENERATED"))
       return batch
     } catch (error) {
       this.repository.setState(runId, "READY_FOR_SCRIPTS")
+      this.recordFailure(runId, error, "READY_FOR_SCRIPTS")
       throw error
     }
   }
@@ -101,6 +104,7 @@ export class RunService {
       return saved
     } catch (error) {
       this.repository.setState(runId, "READY_FOR_QA")
+      this.recordFailure(runId, error, "READY_FOR_QA")
       throw error
     }
   }
@@ -149,7 +153,17 @@ export class RunService {
       return saved
     } catch (error) {
       this.repository.setState(runId, "WAITING_REVIEW")
+      this.recordFailure(runId, error, "WAITING_REVIEW")
       throw error
     }
+  }
+
+  private recordFailure(runId: string, error: unknown, retryFromState: Parameters<PrototypeRepository["recordStepError"]>[1]["retryFromState"]) {
+    const value = error as { code?: string; message?: string }
+    this.repository.recordStepError(runId, {
+      code: value.code ?? value.message ?? "UNKNOWN_ERROR",
+      message: value.message ?? "操作失败",
+      retryFromState,
+    })
   }
 }

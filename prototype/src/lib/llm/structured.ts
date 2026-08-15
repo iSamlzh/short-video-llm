@@ -23,12 +23,14 @@ export async function generateStructured<T>(options: {
   input: unknown
   schema: z.ZodType<T>
   timeoutMs: number
+  jsonRoot?: "object" | "array"
 }): Promise<T> {
   const first = await options.adapter.generate({
     operation: options.operation,
     systemPrompt: prompts[options.operation],
     input: options.input,
     timeoutMs: options.timeoutMs,
+    jsonRoot: options.jsonRoot,
   })
   const checked = validate(options.schema, first.text)
   if (checked.success) return checked.data
@@ -38,6 +40,7 @@ export async function generateStructured<T>(options: {
     systemPrompt: "只修复 JSON 结构，使其满足字段约束；不要添加解释。",
     input: { original: first.text, issues: checked.issues.map(issue => ({ path: issue.path, code: issue.code, message: issue.message })) },
     timeoutMs: options.timeoutMs,
+    jsonRoot: options.jsonRoot,
   })
   const repairedChecked = validate(options.schema, repaired.text)
   if (repairedChecked.success) return repairedChecked.data
@@ -46,8 +49,13 @@ export async function generateStructured<T>(options: {
 
 export class StructuredLlmClient {
   constructor(private readonly adapter: LlmAdapter) {}
-  generateStructured<T>(operation: Exclude<LlmOperation, "repair">, input: unknown, schema: z.ZodType<T>) {
+  generateStructured<T>(
+    operation: Exclude<LlmOperation, "repair">,
+    input: unknown,
+    schema: z.ZodType<T>,
+    jsonRoot: "object" | "array" = "object",
+  ) {
     const timeoutMs = Number(process.env.LLM_TIMEOUT_SECONDS ?? 60) * 1000
-    return generateStructured({ adapter: this.adapter, operation, input, schema, timeoutMs })
+    return generateStructured({ adapter: this.adapter, operation, input, schema, timeoutMs, jsonRoot })
   }
 }

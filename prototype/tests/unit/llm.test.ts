@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest"
+import { afterEach, describe, expect, it, vi } from "vitest"
 import { topicBatchSchema } from "../../src/domain/schemas"
 import { FakeLlmAdapter } from "../../src/lib/llm/fake"
-import { sanitizeModelCall } from "../../src/lib/llm/adapter"
+import { OpenAiCompatibleAdapter, sanitizeModelCall } from "../../src/lib/llm/adapter"
 import { generateStructured } from "../../src/lib/llm/structured"
 
 const validTopicBatch = Array.from({ length: 3 }, (_, index) => ({
@@ -15,6 +15,45 @@ const validTopicBatch = Array.from({ length: 3 }, (_, index) => ({
 }))
 
 describe("structured model client", () => {
+  afterEach(() => vi.unstubAllGlobals())
+
+  it("does not force JSON-object mode when the expected root is an array", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: JSON.stringify(validTopicBatch) } }],
+      model: "test-model",
+    }), { status: 200, headers: { "content-type": "application/json" } }))
+    vi.stubGlobal("fetch", fetchMock)
+    const adapter = new OpenAiCompatibleAdapter({
+      baseUrl: "https://model.example/v1", apiKey: "secret", model: "test-model",
+    })
+
+    await adapter.generate({
+      operation: "topics", systemPrompt: "return an array", input: {}, timeoutMs: 1_000, jsonRoot: "array",
+    })
+
+    const request = fetchMock.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(String(request.body))
+    expect(body.response_format).toBeUndefined()
+  })
+
+  it("keeps JSON-object mode for object-shaped outputs", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      choices: [{ message: { content: "{}" } }], model: "test-model",
+    }), { status: 200, headers: { "content-type": "application/json" } }))
+    vi.stubGlobal("fetch", fetchMock)
+    const adapter = new OpenAiCompatibleAdapter({
+      baseUrl: "https://model.example/v1", apiKey: "secret", model: "test-model",
+    })
+
+    await adapter.generate({
+      operation: "qa", systemPrompt: "return an object", input: {}, timeoutMs: 1_000, jsonRoot: "object",
+    })
+
+    const request = fetchMock.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(String(request.body))
+    expect(body.response_format).toEqual({ type: "json_object" })
+  })
+
   it("repairs invalid structured output only once", async () => {
     const adapter = new FakeLlmAdapter([
       { text: "not-json" },

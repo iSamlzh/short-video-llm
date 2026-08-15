@@ -52,6 +52,17 @@ describe("RunService topics", () => {
       expect.objectContaining({ topicId: topics[1].id }),
     ])
   })
+
+  it("records a failed topic-generation step before returning to the retry checkpoint", async () => {
+    const run = service.createRun(minimumIpInput)
+
+    await expect(service.generateTopics(run.id, run.inputVersion)).rejects.toThrow("FAKE_LLM_RESPONSE_MISSING")
+
+    expect(service.getRun(run.id).state).toBe("READY_FOR_TOPICS")
+    expect(repository.listStepErrors(run.id)).toEqual([
+      expect.objectContaining({ errorCode: "FAKE_LLM_RESPONSE_MISSING:topics", retryFromState: "READY_FOR_TOPICS" }),
+    ])
+  })
 })
 
 describe("RunService scripts", () => {

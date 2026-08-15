@@ -242,6 +242,16 @@ export class PrototypeRepository {
       .run(runId, error.code, error.message, error.retryFromState, SCHEMA_VERSION, new Date().toISOString())
   }
 
+  listStepErrors(runId: string) {
+    const rows = this.database.prepare("SELECT * FROM step_errors WHERE run_id = ? ORDER BY id").all(runId) as Row[]
+    return rows.map(row => ({
+      errorCode: String(row.error_code),
+      message: String(row.message),
+      retryFromState: String(row.retry_from_state) as RunState,
+      createdAt: String(row.created_at),
+    }))
+  }
+
   private nextVersion(table: string, runId: string) {
     const allowed = new Set(["topic_batches", "topic_selections", "script_batches", "script_selections", "quality_reports", "locked_scripts", "metric_snapshots", "reviews"])
     if (!allowed.has(table)) throw new Error("INVALID_TABLE")
