@@ -185,8 +185,10 @@ EDITING_IP
   → READY_FOR_TOPICS
   → GENERATING_TOPICS
   → WAITING_TOPIC_SELECTION
+  → READY_FOR_SCRIPTS
   → GENERATING_SCRIPTS
   → WAITING_SCRIPT_SELECTION
+  → READY_FOR_QA
   → RUNNING_QA
   → WAITING_LOCK_CONFIRMATION
   → LOCKED
@@ -432,7 +434,7 @@ SQLite 初始化使用一份原型专用 SQL schema；原型升级只保证删�
 | 第 4 天 | AI-native 单页面、响应式、错误恢复和刷新继续 |
 | 第 5 天 | 自动 E2E、真实模型冒烟、Prompt 调整和演示脚本 |
 
-预计 25～35 个文件、3,000～5,000 行代码。若真实模型兼容性或 Prompt 质量需要多轮校准，增加的是验证时间，不扩大原型基础设施范围。
+预计 35～45 个文件（包含工程配置和测试）、3,000～5,000 行代码。若真实模型兼容性或 Prompt 质量需要多轮校准，增加的是验证时间，不扩大原型基础设施范围。
 
 ## 16. 验收标准
 
