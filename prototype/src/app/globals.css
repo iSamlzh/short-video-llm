@@ -61,7 +61,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
 .topic-row { display: grid; grid-template-columns: 52px minmax(0, 1fr) 100px; align-items: center; gap: 13px; padding: 20px 6px 19px 2px; border-bottom: 1px solid var(--line); }
 .topic-rank { align-self: start; padding-top: 4px; color: var(--muted); font: 15px/1 Georgia, serif; }
 .topic-copy h3 { margin: 3px 0 6px; font: 700 18px/1.45 "Songti SC", STSong, serif; }
-.topic-copy p { margin: 0 0 5px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+.topic-copy p { margin: 0 0 5px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .topic-copy small { color: var(--muted); font-size: 9px; }
 .recommendation { color: var(--accent); font-size: 9px; font-weight: 720; }
 .topic-row button { padding: 7px 0; border: 0; border-bottom: 1px solid currentColor; background: transparent; color: var(--accent); font-size: 10px; font-weight: 720; cursor: pointer; }
@@ -147,11 +147,12 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
   .app-header { height: auto; }
   .header-inner { width: calc(100% - 36px); min-height: 64px; align-items: flex-start; padding: 14px 0; }
   .header-context { flex-direction: column-reverse; align-items: flex-end; gap: 7px; }
+  .current-ip-trigger { min-height: 44px; align-items: center; }
   .current-ip-panel { width: min(330px, calc(100vw - 36px)); }
   .daily-workspace { width: calc(100% - 36px); padding-top: 27px; }
   .stage-title, .onboarding-sheet h2, .recovery-stage h2, .loading-stage h2, .simulation-card h2 { font-size: 31px; }
   .topic-row { grid-template-columns: 32px minmax(0, 1fr); }
-  .topic-row button { grid-column: 2; justify-self: start; }
+  .topic-row button { grid-column: 2; justify-self: start; min-height: 44px; padding: 12px 0; }
   .script-row { grid-template-columns: 22px minmax(0, 1fr); }
   .script-index { display: none; }
   .stage-actions { align-items: stretch; flex-direction: column; }
