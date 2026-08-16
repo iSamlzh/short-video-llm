@@ -35,10 +35,10 @@ describe("prototype workspace", () => {
       String(url).includes("topics/generate") ? { items: topicItems } : { ...initialRun, state: "WAITING_TOPIC_SELECTION", topicBatch: { version: 1, items: topicItems } },
     ), { status: 200, headers: { "content-type": "application/json" } }))) as typeof fetch
     render(<PrototypeWorkspace initialRun={initialRun} />)
-    expect(screen.getByRole("button", { name: "生成选题方向" })).toBeVisible()
-    expect(screen.queryByText("选择今天的文案")).not.toBeInTheDocument()
-    await user.click(screen.getByRole("button", { name: "生成选题方向" }))
-    expect(await screen.findByText("选择今天拍什么")).toBeVisible()
+    expect(screen.getByRole("button", { name: "重试今日选题" })).toBeVisible()
+    expect(screen.queryByText("选择今天的口播稿")).not.toBeInTheDocument()
+    await user.click(screen.getByRole("button", { name: "重试今日选题" }))
+    expect(await screen.findByText("今天，先确定真正值得拍的一条")).toBeVisible()
   })
 
   it("uses the persisted current IP without showing onboarding again", async () => {
@@ -62,8 +62,41 @@ describe("prototype workspace", () => {
     render(<PrototypeWorkspace />)
 
     expect(screen.queryByLabelText("称呼")).not.toBeInTheDocument()
-    expect(await screen.findByText("选择今天拍什么")).toBeVisible()
-    expect(screen.getByText("示例团长 · 确定今天拍什么。")).toBeVisible()
+    expect(await screen.findByText("今天，先确定真正值得拍的一条")).toBeVisible()
+    expect(screen.getByRole("button", { name: "当前 IP 示例团长" })).toBeVisible()
+  })
+
+  it("moves from topic selection directly into script generation", async () => {
+    const user = userEvent.setup()
+    const topicItems = [{ id: "topic-1", title: "真实经历怎么变成信任", angle: "用三年运营经历说明可信内容如何形成", audienceTension: "想拓客又怕说得太虚", ipFitEvidence: ["三年经历"], structureId: "case-breakdown", riskNotes: [] }]
+    const scripts = Array.from({ length: 3 }, (_, index) => ({
+      id: `script-${index + 1}`, topicDirectionId: "topic-1", title: `口播稿 ${index + 1}`,
+      hook: "很多团长第一步就做错了", body: "这是完整口播稿正文，用真实经历说明社区团购如何建立信任，并给出今天能够执行的方法。",
+      callToAction: "欢迎留言交流", estimatedSeconds: 60,
+    }))
+    const topicSelectionRun = {
+      id: "run-topic", state: "WAITING_TOPIC_SELECTION", inputVersion: 1, schemaVersion: 1,
+      ipProfile: persistedProfile, topicBatch: { version: 1, items: topicItems }, createdAt: "now", updatedAt: "now",
+    }
+    let releaseSelection!: (response: Response) => void
+    const pendingSelection = new Promise<Response>((resolve) => { releaseSelection = resolve })
+    global.fetch = vi.fn((input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("topics/select")) return pendingSelection
+      return Promise.resolve(new Response(JSON.stringify({
+        ...topicSelectionRun,
+        state: "WAITING_SCRIPT_SELECTION",
+        scriptBatch: { version: 1, items: scripts },
+      }), { status: 200, headers: { "content-type": "application/json" } }))
+    }) as typeof fetch
+
+    render(<PrototypeWorkspace initialRun={topicSelectionRun} />)
+    await user.click(screen.getByRole("button", { name: "选择这个方向" }))
+
+    expect(screen.getByText("正在生成同方向口播稿…")).toBeVisible()
+    expect(screen.queryByRole("button", { name: "生成 3 篇文案" })).not.toBeInTheDocument()
+    releaseSelection(new Response(JSON.stringify({ version: 1, items: scripts }), { status: 200, headers: { "content-type": "application/json" } }))
+    expect(await screen.findByText("选择今天的口播稿")).toBeVisible()
   })
 
   it("always labels publication metrics as simulated", () => {
@@ -106,6 +139,6 @@ describe("prototype workspace", () => {
     }} />)
     expect(window.localStorage.getItem("content-prototype-run")).toBeNull()
     expect(screen.getByLabelText("称呼")).toHaveValue("林姐")
-    expect(screen.getByRole("button", { name: "生成选题方向" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "完成初始化并生成选题" })).toBeVisible()
   })
 })
