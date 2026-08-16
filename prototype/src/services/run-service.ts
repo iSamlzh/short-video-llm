@@ -57,6 +57,11 @@ export class RunService {
     return selection
   }
 
+  async selectTopicAndGenerateScripts(runId: string, batchVersion: number, topicId: string, inputVersion: number) {
+    this.selectTopic(runId, batchVersion, topicId)
+    return this.generateScripts(runId, inputVersion)
+  }
+
   async generateScripts(runId: string, inputVersion: number) {
     const run = this.repository.requireVersion(runId, inputVersion)
     const existing = this.repository.getScriptBatch(runId)

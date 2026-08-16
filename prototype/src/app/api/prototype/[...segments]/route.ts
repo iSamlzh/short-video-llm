@@ -40,7 +40,12 @@ async function dispatch(request: NextRequest, segments: string[]) {
       return Response.json(await service.generateTopics(runId, Number(body.inputVersion)))
     }
     if (request.method === "POST" && segments.slice(2).join("/") === "topics/select") {
-      return Response.json(service.selectTopic(runId, Number(body.batchVersion), String(body.topicId)))
+      return Response.json(await service.selectTopicAndGenerateScripts(
+        runId,
+        Number(body.batchVersion),
+        String(body.topicId),
+        Number(body.inputVersion),
+      ))
     }
     if (request.method === "POST" && segments.slice(2).join("/") === "scripts/generate") {
       return Response.json(await service.generateScripts(runId, Number(body.inputVersion)))

@@ -66,6 +66,43 @@ describe("RunService topics", () => {
 })
 
 describe("RunService scripts", () => {
+  it("generates scripts immediately after a topic is selected", async () => {
+    const repository = new PrototypeRepository(":memory:")
+    const adapter = new FakeLlmAdapter([{ json: topics }])
+    const service = new RunService(repository, new StructuredLlmClient(adapter))
+    const run = service.createRun(minimumIpInput)
+    const topicBatch = await service.generateTopics(run.id, run.inputVersion)
+    adapter.enqueue({ json: makeScripts(topics[0].id) })
+
+    const scriptBatch = await service.selectTopicAndGenerateScripts(
+      run.id,
+      topicBatch.version,
+      topics[0].id,
+      run.inputVersion,
+    )
+
+    expect(scriptBatch.items).toHaveLength(3)
+    expect(service.getRun(run.id).state).toBe("WAITING_SCRIPT_SELECTION")
+  })
+
+  it("keeps the topic selection when automatic script generation fails", async () => {
+    const repository = new PrototypeRepository(":memory:")
+    const adapter = new FakeLlmAdapter([{ json: topics }])
+    const service = new RunService(repository, new StructuredLlmClient(adapter))
+    const run = service.createRun(minimumIpInput)
+    const topicBatch = await service.generateTopics(run.id, run.inputVersion)
+
+    await expect(service.selectTopicAndGenerateScripts(
+      run.id,
+      topicBatch.version,
+      topics[0].id,
+      run.inputVersion,
+    )).rejects.toThrow("FAKE_LLM_RESPONSE_MISSING")
+
+    expect(repository.getCurrentTopicSelection(run.id)?.topicId).toBe(topics[0].id)
+    expect(service.getRun(run.id).state).toBe("READY_FOR_SCRIPTS")
+  })
+
   it("stores exactly three scripts for the selected direction", async () => {
     const repository = new PrototypeRepository(":memory:")
     const adapter = new FakeLlmAdapter([{ json: topics }])
