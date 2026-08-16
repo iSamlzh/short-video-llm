@@ -7,6 +7,7 @@ import { DecisionCards } from "./DecisionCards"
 import { QualityAndLock } from "./QualityAndLock"
 import { SimulationAndReview } from "./SimulationAndReview"
 import type { IpProfile } from "../domain/models"
+import { loadCurrentIp, saveCurrentIp } from "../lib/current-ip-store"
 
 type RunView = any
 const fields = [
@@ -17,6 +18,8 @@ const fields = [
 
 export function PrototypeWorkspace({ initialRun, initialProfile, resetOnLoad = false }: { initialRun?: RunView; initialProfile?: IpProfile; resetOnLoad?: boolean }) {
   const [run, setRun] = useState<RunView | undefined>(initialRun)
+  const [currentIp, setCurrentIp] = useState<IpProfile | null>(initialRun?.ipProfile ?? null)
+  const [entryResolved, setEntryResolved] = useState(Boolean(initialRun))
   const [busy, setBusy] = useState("")
   const [error, setError] = useState("")
 
@@ -28,11 +31,39 @@ export function PrototypeWorkspace({ initialRun, initialProfile, resetOnLoad = f
         cleanUrl.searchParams.delete("reset")
         window.history.replaceState({}, "", `${cleanUrl.pathname}${cleanUrl.search}`)
       }
+    }
+    if (initialRun) {
+      saveCurrentIp(initialRun.ipProfile)
+      setEntryResolved(true)
       return
     }
-    if (initialRun) return
+    if (resetOnLoad) {
+      const storedProfile = loadCurrentIp()
+      setCurrentIp(storedProfile)
+      setEntryResolved(true)
+      if (storedProfile) void startDailyRun(storedProfile)
+      return
+    }
     const id = window.localStorage.getItem("content-prototype-run")
-    if (id) getRun<RunView>(id).then(setRun).catch(() => window.localStorage.removeItem("content-prototype-run"))
+    if (id) {
+      getRun<RunView>(id).then((restored) => {
+        setRun(restored)
+        setCurrentIp(restored.ipProfile)
+        saveCurrentIp(restored.ipProfile)
+        setEntryResolved(true)
+      }).catch(() => {
+        window.localStorage.removeItem("content-prototype-run")
+        const storedProfile = loadCurrentIp()
+        setCurrentIp(storedProfile)
+        setEntryResolved(true)
+        if (storedProfile) void startDailyRun(storedProfile)
+      })
+      return
+    }
+    const storedProfile = loadCurrentIp()
+    setCurrentIp(storedProfile)
+    setEntryResolved(true)
+    if (storedProfile) void startDailyRun(storedProfile)
   }, [initialRun, resetOnLoad])
 
   async function refresh(id = run?.id) { if (id) setRun(await getRun<RunView>(id)) }
@@ -43,11 +74,25 @@ export function PrototypeWorkspace({ initialRun, initialProfile, resetOnLoad = f
     catch (caught) { setError(caught instanceof Error ? caught.message : "当前步骤失败，请重试") }
     finally { setBusy("") }
   }
+  async function startDailyRun(profile: IpProfile) {
+    setCurrentIp(profile); setBusy(`正在为${profile.displayName}准备今日选题…`); setError("")
+    try {
+      const created = await createRun<RunView>(profile)
+      window.localStorage.setItem("content-prototype-run", created.id)
+      await postCommand(created.id, "topics/generate", { inputVersion: created.inputVersion })
+      setRun(await getRun<RunView>(created.id))
+    }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "今日选题准备失败") }
+    finally { setBusy("") }
+  }
   async function submitIp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setBusy("正在建立你的内容上下文…"); setError("")
     const body = Object.fromEntries(new FormData(event.currentTarget))
     try {
-      const created = await createRun<RunView>(body)
+      const profile = body as unknown as IpProfile
+      saveCurrentIp(profile)
+      setCurrentIp(profile)
+      const created = await createRun<RunView>(profile)
       window.localStorage.setItem("content-prototype-run", created.id)
       await postCommand(created.id, "topics/generate", { inputVersion: created.inputVersion })
       setRun(await getRun<RunView>(created.id))
@@ -56,6 +101,8 @@ export function PrototypeWorkspace({ initialRun, initialProfile, resetOnLoad = f
   }
 
   const stage = (() => {
+    if (!entryResolved || (!run && currentIp && busy)) return <section className="stage-card"><h2>{busy || "正在载入当前 IP…"}</h2></section>
+    if (!run && currentIp) return <section className="stage-card"><p className="eyebrow">当前 IP · {currentIp.displayName}</p><h2>继续准备今天的选题</h2><p>当前 IP 已保留，不需要重新建档。</p><button disabled={Boolean(busy)} onClick={() => startDailyRun(currentIp)}>{busy || "重试今日选题"}</button></section>
     if (!run) return <form className="ip-form stage-card" onSubmit={submitIp}><p className="eyebrow">先让 Agent 认识你</p><h2>用真实经历建立你的内容起点</h2>
       {fields.map(([name, label, placeholder]) => <label key={name}>{label}{name === "experience" ? <textarea name={name} required minLength={10} placeholder={placeholder} defaultValue={initialProfile?.[name]} /> : <input name={name} required placeholder={placeholder} defaultValue={initialProfile?.[name]} />}</label>)}
       <button disabled={Boolean(busy)}>{busy || "生成选题方向"}</button></form>
@@ -71,5 +118,5 @@ export function PrototypeWorkspace({ initialRun, initialProfile, resetOnLoad = f
     return <section className="stage-card"><h2>{busy || "Agent 正在处理当前步骤…"}</h2></section>
   })()
 
-  return <main className="workspace-shell"><header><p className="eyebrow">CONTENT STUDIO</p><h1>内容增长 Agent</h1><p>从你的真实经历开始，确定今天拍什么。</p></header>{error && <aside className="error-card">{error}<small>已完成进度仍然保留，请重试当前步骤。</small></aside>}{busy && run && <div className="working-line">{busy}</div>}{stage}{run && <ContextDrawer run={run} />}</main>
+  return <main className="workspace-shell"><header><p className="eyebrow">CONTENT STUDIO</p><h1>内容增长 Agent</h1><p>{run?.ipProfile.displayName ?? currentIp?.displayName ?? "首次使用"} · 确定今天拍什么。</p></header>{error && <aside className="error-card">{error}<small>已完成进度仍然保留，请重试当前步骤。</small></aside>}{busy && run && <div className="working-line">{busy}</div>}{stage}{run && <ContextDrawer run={run} />}</main>
 }

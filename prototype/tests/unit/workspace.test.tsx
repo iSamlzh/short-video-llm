@@ -1,10 +1,22 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 import { PrototypeWorkspace } from "../../src/components/PrototypeWorkspace"
 import { SimulationAndReview } from "../../src/components/SimulationAndReview"
+import { saveCurrentIp } from "../../src/lib/current-ip-store"
+
+const persistedProfile = {
+  displayName: "示例团长",
+  experience: "三年社区团购运营经历，服务过多个社区",
+  expertise: "社区团购运营",
+  audience: "希望拓展本地业务的人",
+  voiceStyle: "直接、实在、有案例",
+  boundaries: "不承诺确定收益",
+}
 
 describe("prototype workspace", () => {
+  beforeEach(() => window.localStorage.clear())
+
   it("renders the single content growth workspace", () => {
     render(<PrototypeWorkspace />)
     expect(screen.getByRole("heading", { name: "内容增长 Agent" })).toBeVisible()
@@ -27,6 +39,31 @@ describe("prototype workspace", () => {
     expect(screen.queryByText("选择今天的文案")).not.toBeInTheDocument()
     await user.click(screen.getByRole("button", { name: "生成选题方向" }))
     expect(await screen.findByText("选择今天拍什么")).toBeVisible()
+  })
+
+  it("uses the persisted current IP without showing onboarding again", async () => {
+    saveCurrentIp(persistedProfile)
+    const topicItems = [{ id: "topic-1", title: "真实经历怎么变成信任", angle: "用三年运营经历说明可信内容如何形成", audienceTension: "想拓客又怕说得太虚", ipFitEvidence: ["三年经历"], structureId: "case-breakdown", riskNotes: [] }]
+    const run = {
+      id: "run-daily", state: "WAITING_TOPIC_SELECTION", inputVersion: 1, schemaVersion: 1,
+      ipProfile: persistedProfile, topicBatch: { version: 1, items: topicItems }, createdAt: "now", updatedAt: "now",
+    }
+    global.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith("/runs") && init?.method === "POST") {
+        return new Response(JSON.stringify({ ...run, state: "READY_FOR_TOPICS", topicBatch: undefined }), { status: 201, headers: { "content-type": "application/json" } })
+      }
+      if (url.includes("topics/generate")) {
+        return new Response(JSON.stringify(run.topicBatch), { status: 200, headers: { "content-type": "application/json" } })
+      }
+      return new Response(JSON.stringify(run), { status: 200, headers: { "content-type": "application/json" } })
+    }) as typeof fetch
+
+    render(<PrototypeWorkspace />)
+
+    expect(screen.queryByLabelText("称呼")).not.toBeInTheDocument()
+    expect(await screen.findByText("选择今天拍什么")).toBeVisible()
+    expect(screen.getByText("示例团长 · 确定今天拍什么。")).toBeVisible()
   })
 
   it("always labels publication metrics as simulated", () => {
