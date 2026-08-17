@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto"
 import type Database from "better-sqlite3"
-import type { ContentAnalysis, SampleStatus } from "../../domain/content-brain"
-import type { StructureCandidateInput } from "../../domain/content-brain-schemas"
+import type { ContentAnalysis, SampleStatus, TemplatePackage } from "../../domain/content-brain"
+import type { StructureCandidateInput, StructurePreview } from "../../domain/content-brain-schemas"
 import type { TokenUsage } from "../llm/adapter"
 
 type VersionInput = {
@@ -52,7 +52,8 @@ export class ContentBrainRepository {
       templateId: row.template_id,
       version: row.version,
       name: row.name,
-      nodes: (JSON.parse(row.payload_json) as { nodes: string[] }).nodes,
+      nodes: (JSON.parse(row.payload_json) as { nodes: Array<string | { instruction: string }> }).nodes
+        .map((node) => typeof node === "string" ? node : node.instruction),
       status: row.status,
       isGeneral: Boolean(row.is_general),
       dataOrigin: row.data_origin,
@@ -235,13 +236,168 @@ export class ContentBrainRepository {
       .map((row) => row.analysis_id)
   }
 
+  requireCandidate(candidateId: string) {
+    const row = this.database.prepare("SELECT * FROM platform_structure_candidates WHERE id=?").get(candidateId) as {
+      id: string; candidate_key: string; sample_id: string; version: number; decision: StructureCandidateInput["decision"];
+      target_template_id: string | null; payload_json: string; status: "draft" | "preview_ready" | "activation_required" | "active" | "inactive" | "rejected";
+      data_origin: "demo" | "formal"
+    } | undefined
+    if (!row) throw new Error("STRUCTURE_CANDIDATE_NOT_FOUND")
+    return {
+      id: row.id, candidateKey: row.candidate_key, sampleId: row.sample_id, version: row.version, decision: row.decision,
+      targetTemplateId: row.target_template_id, payload: JSON.parse(row.payload_json) as StructureCandidateInput,
+      status: row.status, dataOrigin: row.data_origin,
+    }
+  }
+
+  appendCandidateRevision(input: {
+    id: string; candidateId: string; expectedVersion: number; payload: StructureCandidateInput;
+    actorUserId: string; createdAt: string;
+  }) {
+    const current = this.requireCandidate(input.candidateId)
+    if (current.version !== input.expectedVersion) throw new Error("CANDIDATE_VERSION_CONFLICT")
+    if (current.status !== "draft") throw new Error("CANDIDATE_NOT_EDITABLE")
+    const version = current.version + 1
+    this.database.transaction(() => {
+      this.database.prepare("UPDATE platform_structure_candidates SET status='inactive',updated_at=? WHERE id=?")
+        .run(input.createdAt, current.id)
+      this.database.prepare(`INSERT INTO platform_structure_candidates
+        (id,candidate_key,sample_id,version,decision,target_template_id,payload_json,status,data_origin,
+         created_by_user_id,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,'draft',?,?,?,?)`).run(
+        input.id, current.candidateKey, current.sampleId, version, input.payload.decision,
+        input.payload.targetTemplateId, JSON.stringify(input.payload), current.dataOrigin,
+        input.actorUserId, input.createdAt, input.createdAt,
+      )
+      this.database.prepare(`INSERT INTO platform_candidate_source_links (candidate_id,analysis_id,created_at)
+        SELECT ?,analysis_id,? FROM platform_candidate_source_links WHERE candidate_id=?`).run(
+        input.id, input.createdAt, current.id,
+      )
+    })()
+    return { id: input.id, ...input.payload, version, status: "draft" as const }
+  }
+
+  savePreview(input: {
+    id: string; candidateId: string; expectedVersion: number; payload: StructurePreview;
+    model: string; actorUserId: string; createdAt: string;
+  }) {
+    const candidate = this.requireCandidate(input.candidateId)
+    if (candidate.version !== input.expectedVersion) throw new Error("CANDIDATE_VERSION_CONFLICT")
+    if (candidate.status !== "draft" && candidate.status !== "preview_ready") throw new Error("CANDIDATE_NOT_PREVIEWABLE")
+    this.database.transaction(() => {
+      this.database.prepare(`INSERT INTO platform_structure_previews
+        (id,candidate_id,candidate_version,payload_json,model,created_by_user_id,created_at)
+        VALUES (?,?,?,?,?,?,?)`).run(
+        input.id, input.candidateId, input.expectedVersion, JSON.stringify(input.payload),
+        input.model, input.actorUserId, input.createdAt,
+      )
+      this.database.prepare(`UPDATE platform_structure_candidates
+        SET status='activation_required',updated_at=? WHERE id=? AND version=?`).run(
+        input.createdAt, input.candidateId, input.expectedVersion,
+      )
+    })()
+    return { id: input.id, candidateId: input.candidateId, candidateVersion: input.expectedVersion, payload: input.payload, model: input.model }
+  }
+
+  latestPreview(candidateId: string, candidateVersion: number) {
+    const row = this.database.prepare(`SELECT * FROM platform_structure_previews
+      WHERE candidate_id=? AND candidate_version=? ORDER BY created_at DESC,rowid DESC LIMIT 1`)
+      .get(candidateId, candidateVersion) as { id: string; payload_json: string; model: string; created_at: string } | undefined
+    return row ? { id: row.id, payload: JSON.parse(row.payload_json) as StructurePreview, model: row.model, createdAt: row.created_at } : null
+  }
+
+  listActivePackages(): Array<TemplatePackage & { isGeneral: boolean; sourceCount: number }> {
+    const rows = this.database.prepare(`SELECT v.*,
+      (SELECT COUNT(*) FROM platform_template_activation_events e WHERE e.template_version_id=v.id) source_count
+      FROM platform_template_versions v WHERE v.status='active' ORDER BY v.is_general,v.name,v.id`).all() as Array<Row & { source_count: number }>
+    return rows.map((row) => {
+      const payload = JSON.parse(row.payload_json) as Partial<TemplatePackage> & {
+        nodes?: Array<string | { kind: string; instruction: string; required: boolean }>
+      }
+      return {
+        templateVersionId: row.id,
+        templateId: row.template_id,
+        name: row.name,
+        applicability: payload.applicability ?? { ipTags: [], audiences: [], goals: [] },
+        nodes: (payload.nodes ?? []).map((node) => typeof node === "string"
+          ? { kind: "section", instruction: node, required: true } : node),
+        qualityRules: payload.qualityRules ?? [],
+        riskRules: payload.riskRules ?? [],
+        isGeneral: Boolean(row.is_general),
+        sourceCount: row.source_count,
+      }
+    })
+  }
+
   activateCandidate(candidateId: string, input: {
     actorUserId: string; reason: string; expectedVersion: number; createdAt: string;
   }) {
-    const candidate = this.database.prepare(`SELECT id FROM platform_structure_candidates
-      WHERE id=? AND version=? AND status='activation_required'`).get(candidateId, input.expectedVersion)
-    if (!candidate) throw new Error("CANDIDATE_NOT_ACTIVATABLE")
-    throw new Error("CANDIDATE_ACTIVATION_NOT_IMPLEMENTED")
+    const candidate = this.requireCandidate(candidateId)
+    if (candidate.version !== input.expectedVersion || candidate.status !== "activation_required") {
+      throw new Error("CANDIDATE_NOT_ACTIVATABLE")
+    }
+    if (!this.latestPreview(candidateId, input.expectedVersion)) throw new Error("PREVIEW_REQUIRED")
+    const templateId = candidate.targetTemplateId ?? `template-${candidate.id}`
+    const next = this.database.prepare(`SELECT COALESCE(MAX(version),0)+1 version
+      FROM platform_template_versions WHERE template_id=?`).get(templateId) as { version: number }
+    const versionId = randomUUID()
+    const result = this.database.transaction(() => {
+      this.database.prepare(`UPDATE platform_template_versions SET status='inactive'
+        WHERE template_id=? AND status='active'`).run(templateId)
+      this.database.prepare(`INSERT INTO platform_template_versions
+        (id,template_id,version,name,payload_json,status,is_general,data_origin,created_by_user_id,created_at,activated_at)
+        VALUES (?,?,?,?,?,'active',0,?,?,?,?)`).run(
+        versionId, templateId, next.version, candidate.payload.name, JSON.stringify(candidate.payload),
+        candidate.dataOrigin, input.actorUserId, input.createdAt, input.createdAt,
+      )
+      this.database.prepare(`UPDATE platform_structure_candidates SET status='active',updated_at=? WHERE id=?`)
+        .run(input.createdAt, candidateId)
+      this.database.prepare(`INSERT INTO platform_template_activation_events
+        (id,template_id,template_version_id,candidate_id,action,actor_user_id,reason,created_at)
+        VALUES (?,?,?,?,'activate',?,?,?)`).run(
+        randomUUID(), templateId, versionId, candidateId, input.actorUserId, input.reason, input.createdAt,
+      )
+      return {
+        id: versionId, templateId, version: next.version, name: candidate.payload.name,
+        nodes: candidate.payload.nodes.map((node) => node.instruction), status: "active" as const,
+      }
+    })
+    return result()
+  }
+
+  deactivateTemplateVersion(versionId: string, input: { actorUserId: string; reason: string; createdAt: string }) {
+    const row = this.database.prepare(`SELECT id,template_id,version,name,status FROM platform_template_versions WHERE id=?`)
+      .get(versionId) as { id: string; template_id: string; version: number; name: string; status: string } | undefined
+    if (!row) throw new Error("TEMPLATE_VERSION_NOT_FOUND")
+    if (row.status !== "active") throw new Error("TEMPLATE_VERSION_NOT_ACTIVE")
+    this.database.transaction(() => {
+      this.database.prepare("UPDATE platform_template_versions SET status='inactive' WHERE id=?").run(versionId)
+      this.database.prepare(`INSERT INTO platform_template_activation_events
+        (id,template_id,template_version_id,candidate_id,action,actor_user_id,reason,created_at)
+        VALUES (?,?,?,NULL,'deactivate',?,?,?)`).run(
+        randomUUID(), row.template_id, versionId, input.actorUserId, input.reason, input.createdAt,
+      )
+    })()
+    return { id: row.id, templateId: row.template_id, version: row.version, name: row.name, status: "inactive" as const }
+  }
+
+  rollbackTemplateVersion(versionId: string, input: { actorUserId: string; reason: string; createdAt: string }) {
+    const row = this.database.prepare(`SELECT id,template_id,version,name,status FROM platform_template_versions WHERE id=?`)
+      .get(versionId) as { id: string; template_id: string; version: number; name: string; status: string } | undefined
+    if (!row) throw new Error("TEMPLATE_VERSION_NOT_FOUND")
+    if (row.status !== "inactive") throw new Error("TEMPLATE_VERSION_NOT_ROLLBACKABLE")
+    this.database.transaction(() => {
+      this.database.prepare(`UPDATE platform_template_versions SET status='inactive'
+        WHERE template_id=? AND status='active'`).run(row.template_id)
+      this.database.prepare(`UPDATE platform_template_versions SET status='active',activated_at=? WHERE id=?`)
+        .run(input.createdAt, versionId)
+      this.database.prepare(`INSERT INTO platform_template_activation_events
+        (id,template_id,template_version_id,candidate_id,action,actor_user_id,reason,created_at)
+        VALUES (?,?,?,NULL,'rollback',?,?,?)`).run(
+        randomUUID(), row.template_id, versionId, input.actorUserId, input.reason, input.createdAt,
+      )
+    })()
+    return { id: row.id, templateId: row.template_id, version: row.version, name: row.name, status: "active" as const }
   }
 }
 

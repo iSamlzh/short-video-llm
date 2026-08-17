@@ -58,6 +58,21 @@ export const structureCandidateSchema = z.object({
   }
 })
 
+export const structurePreviewSchema = z.object({
+  topic: z.string().trim().min(2).max(500),
+  script: z.string().trim().min(20).max(10_000),
+  nodeMappings: z.array(z.object({
+    node: z.string().trim().min(1).max(200),
+    excerpt: z.string().trim().min(1).max(1_000),
+  }).strict()).min(1).max(20),
+  qualityChecks: z.array(z.object({
+    rule: z.string().trim().min(1).max(500), passed: z.boolean(),
+  }).strict()).max(20),
+  riskChecks: z.array(z.object({
+    rule: z.string().trim().min(1).max(500), passed: z.boolean(),
+  }).strict()).max(20),
+}).strict()
+
 export const createContentSampleSchema = z.object({
   title: shortText,
   sourcePlatform: z.string().trim().min(1).max(100),
@@ -72,3 +87,4 @@ export const createContentSampleSchema = z.object({
 
 export type CreateContentSampleInput = z.infer<typeof createContentSampleSchema>
 export type StructureCandidateInput = z.infer<typeof structureCandidateSchema>
+export type StructurePreview = z.infer<typeof structurePreviewSchema>

@@ -19,3 +19,9 @@ export function requirePlatformOperator(context: AccessContext) {
   if (context.audience !== "platform") throw new AccessError("PLATFORM_AUDIENCE_REQUIRED")
   return context
 }
+
+export function requirePlatformAdmin(context: AccessContext) {
+  const platform = requirePlatformOperator(context)
+  if (platform.platformRole !== "platform_admin") throw new AccessError("PLATFORM_ADMIN_REQUIRED")
+  return platform
+}

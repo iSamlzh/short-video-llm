@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 import { accessContextSchema } from "../../src/domain/access-schemas"
-import { requirePlatformOperator, requireTenantCapability } from "../../src/lib/auth/guards"
+import { requirePlatformAdmin, requirePlatformOperator, requireTenantCapability } from "../../src/lib/auth/guards"
 import type { AccessContext } from "../../src/domain/access"
 
 const tenantContext: AccessContext = {
@@ -58,5 +58,14 @@ describe("access contracts", () => {
       ...tenantContext,
       capabilities: ["publication.record", "review.confirm"],
     })).toMatchObject({ capabilities: ["publication.record", "review.confirm"] })
+  })
+
+  it("只有平台管理员可以启用结构版本", () => {
+    expect(() => requirePlatformAdmin({
+      audience: "platform", userId: "operator", platformRole: "platform_operator",
+    })).toThrow("PLATFORM_ADMIN_REQUIRED")
+    expect(requirePlatformAdmin({
+      audience: "platform", userId: "admin", platformRole: "platform_admin",
+    }).userId).toBe("admin")
   })
 })
