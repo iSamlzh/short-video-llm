@@ -94,7 +94,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .version-label { margin-left: auto; padding: 3px 9px !important; background: #ece5d9; color: var(--ink); }
 .script-paragraph { position: relative; padding: 0 38px 15px 0; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
 .script-paragraph p { margin: 0; white-space: pre-line; font: 18px/1.55 var(--serif); }
-.script-paragraph > svg { position: absolute; right: 6px; top: 16px; color: var(--muted); }
+.paragraph-edit-button { position: absolute; right: 0; top: 8px; width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; display: grid; place-items: center; background: transparent; color: var(--muted); cursor: pointer; }
+.paragraph-edit-button:hover, .paragraph-edit-button:focus-visible, .paragraph-edit-button.is-editing { background: #ece5d9; color: var(--ink); }
+.paragraph-edit-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .script-paragraph textarea { width: 100%; min-height: 132px; padding: 14px; border: 1px solid var(--line); border-radius: 2px; resize: vertical; background: var(--sheet); font: 17px/1.65 var(--serif); }
 .document-footnote { margin: 18px 0 0; color: var(--muted); font: 13px/1.7 var(--serif); }
 .evidence-summary { margin: 0 0 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; color: #667168 !important; }

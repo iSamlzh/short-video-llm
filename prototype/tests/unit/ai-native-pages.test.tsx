@@ -49,6 +49,25 @@ describe("approved AI-native page hierarchy", () => {
     expect(screen.queryByText(demoProductData.draft.paragraphs[0])).not.toBeInTheDocument()
   })
 
+  it("edits one script paragraph without opening the other paragraphs", async () => {
+    render(<DailyCreationView draft={demoProductData.draft} />)
+
+    const editSecondParagraph = screen.getByRole("button", { name: "编辑第 2 段" })
+    expect(editSecondParagraph).toBeEnabled()
+    await userEvent.click(editSecondParagraph)
+
+    const secondParagraph = screen.getByRole("textbox", { name: "第 2 段" })
+    expect(secondParagraph).toBeVisible()
+    expect(screen.queryByRole("textbox", { name: "第 1 段" })).not.toBeInTheDocument()
+
+    await userEvent.clear(secondParagraph)
+    await userEvent.type(secondParagraph, "这是单独修改后的第二段。")
+    await userEvent.click(screen.getByRole("button", { name: "完成第 2 段编辑" }))
+
+    expect(screen.getByText("这是单独修改后的第二段。")).toBeVisible()
+    expect(screen.queryByRole("textbox", { name: "第 2 段" })).not.toBeInTheDocument()
+  })
+
   it("keeps account review conclusions tenant-private", () => {
     render(<ReviewBriefView brief={demoProductData.review} />)
 
