@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import { topicBatchSchema } from "../../src/domain/schemas"
 import { FakeLlmAdapter } from "../../src/lib/llm/fake"
 import { OpenAiCompatibleAdapter, sanitizeModelCall } from "../../src/lib/llm/adapter"
-import { generateStructured } from "../../src/lib/llm/structured"
+import { generateStructured, generateStructuredResult } from "../../src/lib/llm/structured"
 
 const validTopicBatch = Array.from({ length: 3 }, (_, index) => ({
   id: `topic-${index + 1}`,
@@ -76,6 +76,21 @@ describe("structured model client", () => {
       adapter, operation: "topics", input: {}, schema: topicBatchSchema, timeoutMs: 100,
     })).rejects.toMatchObject({ code: "MODEL_SCHEMA_INVALID" })
     expect(adapter.calls).toHaveLength(2)
+  })
+
+  it("保留最终模型并合并首次与修复调用的 Token Usage", async () => {
+    const adapter = new FakeLlmAdapter([
+      { text: "bad", model: "first-model", usage: { promptTokens: 10, completionTokens: 2, totalTokens: 12 } },
+      { json: validTopicBatch, model: "repair-model", usage: { promptTokens: 4, completionTokens: 8, totalTokens: 12 } },
+    ])
+    const result = await generateStructuredResult({
+      adapter, operation: "topics", input: {}, schema: topicBatchSchema, timeoutMs: 100,
+    })
+    expect(result).toMatchObject({
+      data: validTopicBatch,
+      model: "repair-model",
+      usage: { promptTokens: 14, completionTokens: 10, totalTokens: 24 },
+    })
   })
 
   it("never exposes the API key in model call records", () => {

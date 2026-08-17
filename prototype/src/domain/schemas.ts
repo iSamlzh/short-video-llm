@@ -1,4 +1,5 @@
 import { z } from "zod"
+export { realContentReviewSchema } from "./growth-loop-schemas"
 
 export const ipProfileSchema = z.object({
   displayName: z.string().trim().min(1),

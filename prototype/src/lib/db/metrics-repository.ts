@@ -232,6 +232,12 @@ export class MetricsRepository {
     return this.requireBatch(batchId)
   }
 
+  completeReviewReadyBatches(scope: GrowthScope, now: string) {
+    this.database.prepare(`UPDATE metric_import_batches SET status='completed',updated_at=?
+      WHERE tenant_id=? AND ip_profile_id=? AND content_account_id=? AND platform=? AND status='review_ready'`)
+      .run(now, scope.tenantId, scope.ipId, scope.contentAccountId, scope.platform)
+  }
+
   listErrors(batchId: string) {
     return (this.database.prepare(`SELECT row_number, error_code, message, redacted_reference
       FROM metric_import_row_errors WHERE batch_id=? ORDER BY row_number`).all(batchId) as Array<{

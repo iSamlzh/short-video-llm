@@ -1,5 +1,5 @@
 import type { z } from "zod"
-import type { LlmAdapter, LlmOperation } from "./adapter"
+import type { LlmAdapter, LlmOperation, TokenUsage } from "./adapter"
 import { prompts } from "../../prompts"
 
 function parseJson(text: string): unknown {
@@ -17,14 +17,27 @@ function validate<T>(schema: z.ZodType<T>, text: string) {
   }
 }
 
-export async function generateStructured<T>(options: {
+type GenerateOptions<T> = {
   adapter: LlmAdapter
   operation: Exclude<LlmOperation, "repair">
   input: unknown
   schema: z.ZodType<T>
   timeoutMs: number
   jsonRoot?: "object" | "array"
-}): Promise<T> {
+}
+
+export type StructuredLlmResult<T> = { data: T; model: string; usage?: TokenUsage }
+
+function combineUsage(first?: TokenUsage, repaired?: TokenUsage): TokenUsage | undefined {
+  if (!first && !repaired) return undefined
+  return {
+    promptTokens: (first?.promptTokens ?? 0) + (repaired?.promptTokens ?? 0),
+    completionTokens: (first?.completionTokens ?? 0) + (repaired?.completionTokens ?? 0),
+    totalTokens: (first?.totalTokens ?? 0) + (repaired?.totalTokens ?? 0),
+  }
+}
+
+export async function generateStructuredResult<T>(options: GenerateOptions<T>): Promise<StructuredLlmResult<T>> {
   const first = await options.adapter.generate({
     operation: options.operation,
     systemPrompt: prompts[options.operation],
@@ -33,7 +46,7 @@ export async function generateStructured<T>(options: {
     jsonRoot: options.jsonRoot,
   })
   const checked = validate(options.schema, first.text)
-  if (checked.success) return checked.data
+  if (checked.success) return { data: checked.data, model: first.model, usage: first.usage }
 
   const repaired = await options.adapter.generate({
     operation: "repair",
@@ -43,8 +56,14 @@ export async function generateStructured<T>(options: {
     jsonRoot: options.jsonRoot,
   })
   const repairedChecked = validate(options.schema, repaired.text)
-  if (repairedChecked.success) return repairedChecked.data
+  if (repairedChecked.success) {
+    return { data: repairedChecked.data, model: repaired.model, usage: combineUsage(first.usage, repaired.usage) }
+  }
   throw Object.assign(new Error("模型结构化输出修复失败"), { code: "MODEL_SCHEMA_INVALID", retryable: true })
+}
+
+export async function generateStructured<T>(options: GenerateOptions<T>): Promise<T> {
+  return (await generateStructuredResult(options)).data
 }
 
 export class StructuredLlmClient {
@@ -57,5 +76,15 @@ export class StructuredLlmClient {
   ) {
     const timeoutMs = Number(process.env.LLM_TIMEOUT_SECONDS ?? 60) * 1000
     return generateStructured({ adapter: this.adapter, operation, input, schema, timeoutMs, jsonRoot })
+  }
+
+  generateStructuredResult<T>(
+    operation: Exclude<LlmOperation, "repair">,
+    input: unknown,
+    schema: z.ZodType<T>,
+    jsonRoot: "object" | "array" = "object",
+  ) {
+    const timeoutMs = Number(process.env.LLM_TIMEOUT_SECONDS ?? 60) * 1000
+    return generateStructuredResult({ adapter: this.adapter, operation, input, schema, timeoutMs, jsonRoot })
   }
 }

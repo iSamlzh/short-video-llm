@@ -1,6 +1,7 @@
-import type { LlmAdapter, LlmRequest, LlmResponse } from "./adapter"
+import type { LlmAdapter, LlmRequest, LlmResponse, TokenUsage } from "./adapter"
 
-type QueuedResponse = { text: string } | { json: unknown }
+type ResponseMetadata = { model?: string; usage?: TokenUsage }
+type QueuedResponse = ({ text: string } | { json: unknown }) & ResponseMetadata
 
 export class FakeLlmAdapter implements LlmAdapter {
   readonly calls: LlmRequest[] = []
@@ -13,7 +14,11 @@ export class FakeLlmAdapter implements LlmAdapter {
     this.calls.push(request)
     const response = this.queue.shift()
     if (!response) throw new Error(`FAKE_LLM_RESPONSE_MISSING:${request.operation}`)
-    return { text: "json" in response ? JSON.stringify(response.json) : response.text, model: "fake-test-model" }
+    return {
+      text: "json" in response ? JSON.stringify(response.json) : response.text,
+      model: response.model ?? "fake-test-model",
+      usage: response.usage,
+    }
   }
 }
 
@@ -52,6 +57,15 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
       nextContent: "继续沿当前方向拆解一个真实场景中的判断过程。",
       evidenceLimits: "指标全部来自确定性模拟器，不代表平台真实表现，也不能证明因果。",
       claimsRealCausation: false,
+    } : request.operation === "real_review" ? {
+      headline: "真实场景内容值得继续验证",
+      observations: [{
+        text: "当前样本中的真实场景内容表现较稳定",
+        evidenceSnapshotIds: [input.evidence?.[0]?.snapshotId].filter(Boolean),
+      }],
+      hypotheses: [], keep: ["真实人物与具体场景"], avoid: ["无证据的因果结论"],
+      nextContentSignals: ["继续验证同类真实场景"],
+      evidenceLimits: "当前数据只表达账号内相关性，不能证明平台分发或选题因果。",
     } : (() => { throw new Error(`UNEXPECTED_FIXTURE_OPERATION:${request.operation}`) })()
     return { text: JSON.stringify(payload), model: "prototype-e2e-fixture" }
   }
