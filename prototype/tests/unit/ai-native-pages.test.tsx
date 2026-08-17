@@ -5,7 +5,7 @@ import { IpOnboardingView } from "../../src/components/onboarding/IpOnboardingVi
 import { DailyCreationView } from "../../src/components/creation/DailyCreationView"
 import { ReviewBriefView } from "../../src/components/review/ReviewBriefView"
 import { TeamDelegationView } from "../../src/components/team/TeamDelegationView"
-import { ContentBrainView } from "../../src/components/platform/ContentBrainView"
+import { ContentBrainWorkspace } from "../../src/components/content-brain/ContentBrainWorkspace"
 import { demoProductData } from "../../src/presets/product-demo"
 
 describe("approved AI-native page hierarchy", () => {
@@ -140,11 +140,10 @@ describe("approved AI-native page hierarchy", () => {
   })
 
   it("keeps the platform structure ledger separate from customer content", () => {
-    render(<ContentBrainView ledger={demoProductData.contentBrain} />)
+    render(<ContentBrainWorkspace initialSamples={[]} initialStructures={[]} canActivate api={{} as any} />)
 
-    expect(screen.getByText("现有 24 个已启用结构覆盖首期创作，3 个结构需要本周复核")).toBeVisible()
-    expect(screen.getByRole("button", { name: "处理 3 个复核提案" })).toBeVisible()
-    expect(screen.getByText(/租户私有内容未参与/)).toBeVisible()
+    expect(screen.getByRole("button", { name: "新增爆款样本" })).toBeVisible()
+    expect(screen.getByText(/先提供一条真实内容/)).toBeVisible()
     expect(screen.queryByText("林姐说团购")).not.toBeInTheDocument()
   })
 })
