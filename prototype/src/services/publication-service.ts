@@ -8,6 +8,7 @@ import {
 } from "../domain/growth-loop-schemas"
 import type { GrowthScope, Publication } from "../domain/growth-loop"
 import { requireTenantCapability } from "../lib/auth/guards"
+import { normalizeVideoUrl } from "../lib/content-identity"
 import { PublicationRepository } from "../lib/db/publication-repository"
 
 export class PublicationService {
@@ -179,15 +180,4 @@ export class PublicationService {
       createdAt,
     )
   }
-}
-
-export function normalizeVideoUrl(value: string) {
-  const url = new URL(value)
-  url.hostname = url.hostname.toLowerCase()
-  for (const key of ["utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content"]) {
-    url.searchParams.delete(key)
-  }
-  if (url.pathname.length > 1) url.pathname = url.pathname.replace(/\/$/, "")
-  url.hash = ""
-  return url.toString()
 }
