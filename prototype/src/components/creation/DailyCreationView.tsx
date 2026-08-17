@@ -80,7 +80,7 @@ export function DailyCreationView({ draft, regenerating = false, onRegenerate, o
         <p className={`evidence-summary ${draft.status === "needs_qa" ? "evidence-pending" : ""}`}><CheckCircle size={22} weight="fill" />{draft.status === "needs_qa" ? "修改已保存 · 定稿前将重新检查" : "已检查：事实可信 · 符合你的表达 · 无收益承诺"}</p>
         {draft.checks.map((check: any) => <section key={check.title}><h3>{check.title}<span className="pass-text">通过</span></h3><p>{check.note}</p></section>)}
         <section><h3>创作依据（摘要）</h3><ul>{draft.evidence.map((item: string) => <li key={item}>{item}</li>)}</ul><button className="text-link">查看 Agent 的判断依据</button></section>
-        <section><h3><ClockCounterClockwise size={20} />版本历史</h3><div className="version-record"><span className="accent-dot" />{draft.version}<span>2026-08-17 10:15</span></div></section>
+        <section><h3><ClockCounterClockwise size={20} />版本历史</h3><div className="version-record"><span className="accent-dot" /><span>{draft.version}</span>{draft.lockedVersion ? <span>锁稿 {draft.lockedVersion}</span> : <span>尚未锁稿</span>}</div></section>
         {draft.alternatives?.topics?.length > 1 && <details className="alternative-decisions"><summary>返回查看本次其他选题</summary><ol>{draft.alternatives.topics.map((topic: any) => <li key={topic.id}>{topic.title}</li>)}</ol><p>默认已采用 Agent 推荐项；选择“换选题”会生成一篇新的可用稿。</p></details>}
       </aside>
     </div>

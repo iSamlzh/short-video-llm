@@ -109,6 +109,7 @@ describe("approved AI-native page hierarchy", () => {
     render(<DailyCreationView draft={{ ...demoProductData.draft, status: "locked", lockedVersion: 1 }} />)
 
     expect(screen.getByRole("button", { name: "已确认定稿" })).toBeDisabled()
+    expect(screen.getByText("锁稿 1")).toBeVisible()
   })
 
   it("keeps account review conclusions tenant-private", () => {
