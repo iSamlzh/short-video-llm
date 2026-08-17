@@ -39,6 +39,22 @@ export class ContentBrainWorkflowService {
     })
   }
 
+  rejectCandidate(context: AccessContext, candidateId: string, input: { expectedVersion: number; reason: string }) {
+    requirePlatformOperator(context)
+    if (!input.reason.trim()) throw new Error("REJECTION_REASON_REQUIRED")
+    const candidate = this.repository.requireCandidate(candidateId)
+    const createdAt = new Date().toISOString()
+    const persist = this.database.transaction(() => {
+      const rejected = this.repository.rejectCandidate(candidateId, {
+        expectedVersion: input.expectedVersion, reason: input.reason.trim(),
+        actorUserId: context.userId, createdAt,
+      })
+      this.repository.updateSampleStatus(candidate.sampleId, "reviewed", createdAt)
+      return rejected
+    })
+    return persist()
+  }
+
   activateCandidate(context: AccessContext, candidateId: string, input: { reason: string; expectedVersion: number }) {
     const admin = requirePlatformAdmin(context)
     if (!input.reason.trim()) throw new Error("ACTIVATION_REASON_REQUIRED")

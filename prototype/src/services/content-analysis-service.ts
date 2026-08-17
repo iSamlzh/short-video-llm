@@ -9,6 +9,8 @@ import { StructuredLlmClient } from "../lib/llm/structured"
 const PROMPT_VERSION = 1
 
 export class ContentAnalysisService {
+  private readonly inFlight = new Map<string, Promise<ReturnType<ContentBrainRepository["requireAnalysis"]>>>()
+
   constructor(
     private readonly database: Database.Database,
     private readonly llm: StructuredLlmClient,
@@ -18,6 +20,25 @@ export class ContentAnalysisService {
   async analyze(context: AccessContext, sampleId: string) {
     requirePlatformOperator(context)
     const sample = this.repository.requireSample(sampleId)
+    const existing = this.repository.findLatestAnalysisForRevision(sampleId, sample.revisionId)
+    if (existing && existing.status !== "rejected" && sample.status !== "analysis_failed") return existing
+    const key = `${sampleId}:${sample.revisionId}`
+    const running = this.inFlight.get(key)
+    if (running) return running
+    const task = this.runAnalysis(requirePlatformOperator(context), sample)
+    this.inFlight.set(key, task)
+    try {
+      return await task
+    } finally {
+      this.inFlight.delete(key)
+    }
+  }
+
+  private async runAnalysis(
+    context: ReturnType<typeof requirePlatformOperator>,
+    sample: ReturnType<ContentBrainRepository["requireSample"]>,
+  ) {
+    const sampleId = sample.id
     const startedAt = new Date().toISOString()
     this.repository.updateSampleStatus(sampleId, "analyzing", startedAt)
     try {
@@ -43,6 +64,32 @@ export class ContentAnalysisService {
       this.repository.updateSampleStatus(sampleId, "analysis_failed", new Date().toISOString())
       throw error
     }
+  }
+
+  saveDraft(context: AccessContext, analysisId: string, input: { expectedVersion: number; payload: unknown }) {
+    requirePlatformOperator(context)
+    const payload = contentAnalysisSchema.parse(input.payload)
+    validateEvidence(payload)
+    return this.repository.appendAnalysisDraft({
+      id: randomUUID(), sourceAnalysisId: analysisId, expectedVersion: input.expectedVersion,
+      payload, actorUserId: context.userId, createdAt: new Date().toISOString(),
+    })
+  }
+
+  rejectAnalysis(context: AccessContext, analysisId: string, input: { expectedVersion: number; reason: string }) {
+    requirePlatformOperator(context)
+    if (!input.reason.trim()) throw new Error("REJECTION_REASON_REQUIRED")
+    const source = this.repository.requireAnalysis(analysisId)
+    const createdAt = new Date().toISOString()
+    const persist = this.database.transaction(() => {
+      const rejected = this.repository.appendRejectedAnalysis({
+        id: randomUUID(), sourceAnalysisId: analysisId, expectedVersion: input.expectedVersion,
+        reason: input.reason.trim(), actorUserId: context.userId, createdAt,
+      })
+      this.repository.updateSampleStatus(source.sampleId, "rejected", createdAt)
+      return rejected
+    })
+    return persist()
   }
 
   approveAnalysis(context: AccessContext, analysisId: string, input: { expectedVersion: number; payload: unknown }) {
@@ -84,6 +131,12 @@ export class ContentAnalysisService {
       return candidate
     })
     return persist()
+  }
+
+  async approveAndPropose(context: AccessContext, analysisId: string, input: { expectedVersion: number; payload: unknown }) {
+    const analysis = this.approveAnalysis(context, analysisId, input)
+    const candidate = await this.proposeCandidate(context, analysis.id)
+    return { analysis, candidate }
   }
 }
 

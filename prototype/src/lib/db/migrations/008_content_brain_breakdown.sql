@@ -40,6 +40,7 @@ CREATE TABLE platform_content_analysis_versions (
   created_by_user_id TEXT NOT NULL,
   reviewed_by_user_id TEXT,
   reviewed_at TEXT,
+  review_note TEXT,
   created_at TEXT NOT NULL,
   UNIQUE(sample_id, version)
 );
@@ -57,6 +58,7 @@ CREATE TABLE platform_structure_candidates (
   created_by_user_id TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL,
+  review_note TEXT,
   UNIQUE(candidate_key, version)
 );
 

@@ -69,6 +69,13 @@ describe("ContentBrainWorkflowService", () => {
     expect(database.prepare(
       "SELECT action,reason FROM platform_template_activation_events WHERE template_version_id=?",
     ).get(activated.id)).toEqual({ action: "activate", reason: "试生成通过" })
+
+    const repeated = service.activateCandidate(admin, upgradeId, {
+      reason: "重复提交不应产生新版本", expectedVersion: 1,
+    })
+    expect(repeated.id).toBe(activated.id)
+    expect(database.prepare("SELECT COUNT(*) count FROM platform_template_versions WHERE template_id='trust'").get())
+      .toEqual({ count: 2 })
   })
 
   it("人工修改候选时创建新版本并保留来源", () => {
@@ -83,6 +90,15 @@ describe("ContentBrainWorkflowService", () => {
     expect(repository.listCandidateSourceAnalysisIds(reviewed.id)).toEqual(
       repository.listCandidateSourceAnalysisIds(candidateId),
     )
+  })
+
+  it("运营人员可驳回候选且保留版本历史", () => {
+    const rejected = service.rejectCandidate(operator, candidateId, {
+      expectedVersion: 1, reason: "样本过于特殊，暂不具备复用价值",
+    })
+
+    expect(rejected).toMatchObject({ id: candidateId, version: 1, status: "rejected" })
+    expect(repository.requireSample("sample-new").status).toBe("reviewed")
   })
 
   it("管理员可以停用当前版本并回退到历史稳定版本", async () => {

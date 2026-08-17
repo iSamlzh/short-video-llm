@@ -52,6 +52,47 @@ describe("ContentAnalysisService", () => {
     expect(database.prepare("SELECT COUNT(*) count FROM platform_structure_candidates").get()).toEqual({ count: 0 })
   })
 
+  it("同一样本版本重复发起拆解时返回已有结果且不重复调用模型", async () => {
+    adapter.enqueue({ json: validAnalysis })
+
+    const first = await service.analyze(platform, "sample-1")
+    const second = await service.analyze(platform, "sample-1")
+
+    expect(second.id).toBe(first.id)
+    expect(adapter.calls.filter((call) => call.operation === "content_analysis")).toHaveLength(1)
+  })
+
+  it("人工修改拆解保存为新草稿版本，驳回也保留不可变历史", async () => {
+    adapter.enqueue({ json: validAnalysis })
+    const generated = await service.analyze(platform, "sample-1")
+
+    const draft = service.saveDraft(platform, generated.id, {
+      expectedVersion: generated.version,
+      payload: { ...validAnalysis, summary: "人工修正后的拆解摘要，保留证据并澄清适用边界。" },
+    })
+    expect(draft).toMatchObject({ version: 2, status: "generated" })
+    expect(repository.requireAnalysis(generated.id).version).toBe(1)
+
+    const rejected = service.rejectAnalysis(platform, draft.id, {
+      expectedVersion: draft.version, reason: "证据不足，暂不进入结构判断",
+    })
+    expect(rejected).toMatchObject({ version: 3, status: "rejected" })
+    expect(repository.requireSample("sample-1").status).toBe("rejected")
+  })
+
+  it("通过拆解接口会直接生成结构候选", async () => {
+    adapter.enqueue({ json: validAnalysis })
+    adapter.enqueue({ json: validCandidate })
+    const generated = await service.analyze(platform, "sample-1")
+
+    const result = await service.approveAndPropose(platform, generated.id, {
+      expectedVersion: generated.version, payload: validAnalysis,
+    })
+
+    expect(result.analysis.status).toBe("reviewed")
+    expect(result.candidate).toMatchObject({ status: "draft", decision: "create_new" })
+  })
+
   it("人工通过后生成带来源关系的结构候选", async () => {
     adapter.enqueue({ json: validAnalysis })
     adapter.enqueue({ json: validCandidate })
