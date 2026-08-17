@@ -11,11 +11,18 @@ import { RunService } from "@/services/run-service"
 import { AutoCreationOrchestrator } from "@/services/auto-creation-orchestrator"
 import { CreationAppService } from "@/services/creation-app-service"
 import { ContentBrainRepository } from "@/lib/db/content-brain-repository"
+import { z } from "zod"
+import { scriptRevisionParagraphsSchema } from "@/domain/schemas"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 let singleton: CreationAppService | undefined
+const draftMutationSchema = z.object({
+  expectedRevision: z.number().int().positive(),
+  paragraphs: scriptRevisionParagraphsSchema,
+})
+
 function service() {
   if (singleton) return singleton
   const path = resolve(/* turbopackIgnore: true */ process.cwd(), process.env.PROTOTYPE_DB_PATH ?? ".data/prototype.sqlite")
@@ -31,6 +38,14 @@ function service() {
   })
   singleton = new CreationAppService(getAppDatabase(), runs, new AutoCreationOrchestrator(runs))
   return singleton
+}
+
+async function draftMutationInput(request: NextRequest) {
+  const parsed = draftMutationSchema.safeParse(await request.json().catch(() => null))
+  if (!parsed.success) {
+    throw Object.assign(new Error("SCRIPT_PARAGRAPHS_INVALID"), { code: "SCRIPT_PARAGRAPHS_INVALID" })
+  }
+  return parsed.data
 }
 
 function fail(error: unknown) {
@@ -53,6 +68,12 @@ async function dispatch(request: NextRequest, segments: string[]) {
       const body = await request.json().catch(() => ({})) as { intent?: "initial" | "change_topic" | "change_expression"; fromRunId?: string }
       return Response.json(await service().create(access, body), { status: 201 })
     }
+    if (request.method === "PUT" && segments[0] === "runs" && segments[1] && segments[2] === "draft" && segments.length === 3) {
+      return Response.json(service().saveDraft(access, segments[1], await draftMutationInput(request)))
+    }
+    if (request.method === "POST" && segments[0] === "runs" && segments[1] && segments[2] === "finalize" && segments.length === 3) {
+      return Response.json(await service().finalize(access, segments[1], await draftMutationInput(request)))
+    }
     if (request.method === "GET" && segments[0] === "runs" && segments[1]) return Response.json(service().getRun(access, segments[1]))
     return Response.json({ errorCode: "NOT_FOUND" }, { status: 404 })
   } catch (error) {
@@ -63,3 +84,4 @@ async function dispatch(request: NextRequest, segments: string[]) {
 type RouteContext = { params: Promise<{ segments: string[] }> }
 export async function GET(request: NextRequest, context: RouteContext) { return dispatch(request, (await context.params).segments) }
 export async function POST(request: NextRequest, context: RouteContext) { return dispatch(request, (await context.params).segments) }
+export async function PUT(request: NextRequest, context: RouteContext) { return dispatch(request, (await context.params).segments) }

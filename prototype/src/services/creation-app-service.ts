@@ -34,14 +34,15 @@ export class CreationAppService {
     if (options.intent === "change_topic" || options.intent === "change_expression") {
       if (!options.fromRunId || !this.lineage.canAccess(options.fromRunId, context)) throw new Error("PREVIOUS_RUN_NOT_FOUND")
       const previous = this.runs.getRunView(options.fromRunId)
-      if (!previous.topicBatch || !previous.topicSelection || !previous.lockedScript) throw new Error("PREVIOUS_RUN_INCOMPLETE")
+      const previousScript = previous.scriptBatch?.items.find((item) => item.id === previous.scriptSelection?.scriptId)
+      if (!previous.topicBatch || !previous.topicSelection || !previousScript) throw new Error("PREVIOUS_RUN_INCOMPLETE")
       adjustment = {
         intent: options.intent,
         topics: previous.topicBatch.items,
         selectedTopicId: previous.topicSelection.topicId,
         previousScript: {
-          title: previous.lockedScript.script.title,
-          body: previous.lockedScript.script.body,
+          title: previousScript.title,
+          body: previousScript.body,
         },
       }
     }
@@ -60,6 +61,37 @@ export class CreationAppService {
   getRun(context: TenantAccessContext, runId: string) {
     requireTenantCapability(context, "content.create")
     if (!this.lineage.canAccess(runId, context)) throw new Error("RUN_NOT_FOUND")
+    return presentCreationDraft(this.runs.getRunView(runId))
+  }
+
+  saveDraft(
+    context: TenantAccessContext,
+    runId: string,
+    input: { expectedRevision: number; paragraphs: string[] },
+  ) {
+    requireTenantCapability(context, "content.edit")
+    if (!this.lineage.canAccess(runId, context)) throw new Error("RUN_NOT_FOUND")
+    const result = this.runs.saveScriptRevision(runId, input.expectedRevision, input.paragraphs)
+    return { ...presentCreationDraft(result.runView), saved: result.saved }
+  }
+
+  async finalize(
+    context: TenantAccessContext,
+    runId: string,
+    input: { expectedRevision: number; paragraphs: string[] },
+  ) {
+    requireTenantCapability(context, "content.edit")
+    if (!this.lineage.canAccess(runId, context)) throw new Error("RUN_NOT_FOUND")
+    this.runs.saveScriptRevision(runId, input.expectedRevision, input.paragraphs)
+    let run = this.runs.getRun(runId)
+    if (run.state === "READY_FOR_QA") {
+      await this.runs.runQa(runId, run.inputVersion)
+      run = this.runs.getRun(runId)
+    }
+    if (run.state !== "WAITING_LOCK_CONFIRMATION" && run.state !== "LOCKED") {
+      throw new Error("DRAFT_NOT_READY_TO_FINALIZE")
+    }
+    this.runs.lockScript(runId)
     return presentCreationDraft(this.runs.getRunView(runId))
   }
 
