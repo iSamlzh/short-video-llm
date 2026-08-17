@@ -52,4 +52,11 @@ describe("access contracts", () => {
       platformRole: "platform_operator",
     })
   })
+
+  it("accepts the new scoped business capabilities", () => {
+    expect(accessContextSchema.parse({
+      ...tenantContext,
+      capabilities: ["publication.record", "review.confirm"],
+    })).toMatchObject({ capabilities: ["publication.record", "review.confirm"] })
+  })
 })

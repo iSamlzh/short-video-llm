@@ -9,9 +9,9 @@ const now = () => new Date().toISOString()
 const roleCapabilities: Record<string, Capability[]> = {
   owner: [
     "ip.view", "content.create", "content.edit", "content.lock",
-    "metrics.import", "review.generate", "review.view", "team.manage",
+    "publication.record", "metrics.import", "review.generate", "review.view", "review.confirm", "team.manage",
   ],
-  operator: ["ip.view", "content.create", "content.edit"],
+  operator: ["ip.view", "content.create", "content.edit", "publication.record"],
   reviewer: ["ip.view", "metrics.import", "review.generate", "review.view"],
 }
 

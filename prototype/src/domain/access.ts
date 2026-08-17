@@ -3,9 +3,11 @@ export const capabilities = [
   "content.create",
   "content.edit",
   "content.lock",
+  "publication.record",
   "metrics.import",
   "review.generate",
   "review.view",
+  "review.confirm",
   "team.manage",
 ] as const
 

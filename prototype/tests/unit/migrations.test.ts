@@ -43,4 +43,28 @@ describe("database migrations", () => {
       "SELECT COUNT(*) count FROM schema_migrations WHERE version = 6",
     ).get()).toEqual({ count: 1 })
   })
+
+  it("applies version 7 exactly once and adds real-growth lineage", () => {
+    database = openDatabase(":memory:")
+    applyMigrations(database)
+    applyMigrations(database)
+
+    expect(database.prepare(
+      "SELECT COUNT(*) count FROM schema_migrations WHERE version = 7",
+    ).get()).toEqual({ count: 1 })
+    expect(database.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'publications'",
+    ).get()).toEqual({ name: "publications" })
+    expect(database.prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'content_review_versions'",
+    ).get()).toEqual({ name: "content_review_versions" })
+    const columns = database.prepare("PRAGMA table_info(creation_run_context)").all() as Array<{ name: string }>
+    expect(columns.map((column) => column.name)).toContain("tenant_memory_version")
+    expect(database.pragma("busy_timeout", { simple: true })).toBe(5_000)
+  })
+
+  it("does not promote legacy demo metrics into the formal snapshot path", () => {
+    database = openDatabase(":memory:")
+    expect(database.prepare("SELECT COUNT(*) count FROM real_metric_snapshots").get()).toEqual({ count: 0 })
+  })
 })

@@ -16,6 +16,21 @@ describe("demo data lifecycle", () => {
     expect(database.prepare("SELECT COUNT(*) count FROM users WHERE data_origin = 'demo'").get()).toEqual({ count: 4 })
     expect(database.prepare("SELECT COUNT(*) count FROM tenants WHERE data_origin = 'demo'").get()).toEqual({ count: 1 })
     expect(database.prepare("SELECT COUNT(*) count FROM ip_profiles WHERE data_origin = 'demo'").get()).toEqual({ count: 2 })
+    const ownerCapabilities = database.prepare(
+      "SELECT capability FROM membership_capabilities WHERE membership_id = 'membership-owner' ORDER BY capability",
+    ).all() as Array<{ capability: string }>
+    const operatorCapabilities = database.prepare(
+      "SELECT capability FROM membership_capabilities WHERE membership_id = 'membership-operator' ORDER BY capability",
+    ).all() as Array<{ capability: string }>
+    const reviewerCapabilities = database.prepare(
+      "SELECT capability FROM membership_capabilities WHERE membership_id = 'membership-reviewer' ORDER BY capability",
+    ).all() as Array<{ capability: string }>
+
+    expect(ownerCapabilities).toContainEqual({ capability: "publication.record" })
+    expect(ownerCapabilities).toContainEqual({ capability: "review.confirm" })
+    expect(operatorCapabilities).toContainEqual({ capability: "publication.record" })
+    expect(reviewerCapabilities).toContainEqual({ capability: "review.generate" })
+    expect(reviewerCapabilities).not.toContainEqual({ capability: "review.confirm" })
   })
 
   it("clears demo rows without deleting formal rows", async () => {
