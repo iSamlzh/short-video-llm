@@ -1,4 +1,4 @@
-import { autoDraftSchema, contentReviewSchema, qualityReportSchema, scriptBatchSchema, topicBatchSchema } from "../domain/schemas"
+import { autoDraftSchema, contentReviewSchema, qualityReportSchema, scriptBatchSchema, topicBatchSchema, topicDraftSchema, type ScriptCandidate, type TopicDirectionCandidate } from "../domain/schemas"
 import { transition } from "../domain/state-machine"
 import type { IpProfile } from "../domain/models"
 import { PrototypeRepository } from "../lib/db/repository"
@@ -84,6 +84,49 @@ export class RunService {
     } catch (error) {
       const current = this.repository.requireRun(runId)
       if (current.state === "GENERATING_TOPICS") this.repository.setState(runId, "READY_FOR_TOPICS")
+      this.recordFailure(runId, error, this.repository.requireRun(runId).state)
+      throw error
+    }
+  }
+
+  async generateTopicDraft(
+    runId: string,
+    inputVersion: number,
+    topicsInput: TopicDirectionCandidate[],
+    selectedTopicId: string,
+    adjustment: { intent: "change_topic" | "change_expression"; previousScript?: Pick<ScriptCandidate, "title" | "body"> },
+  ) {
+    const run = this.repository.requireVersion(runId, inputVersion)
+    const topics = topicBatchSchema.parse(topicsInput)
+    const selectedTopic = topics.find((item) => item.id === selectedTopicId)
+    if (!selectedTopic) throw new Error("TOPIC_SELECTION_INVALID")
+    this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
+    try {
+      const result = await this.llm.generateStructured("topic_draft", {
+        ipProfile: run.ipProfile,
+        goal: prototypePreset.goal,
+        selectedTopic,
+        adjustment,
+      }, topicDraftSchema)
+      if (result.scripts.some((item) => item.topicDirectionId !== selectedTopic.id)) throw new Error("SCRIPT_DIRECTION_MISMATCH")
+      const selectedScript = result.scripts.find((item) => item.id === result.selectedScriptId)
+      if (!selectedScript) throw new Error("AUTO_SCRIPT_SELECTION_INVALID")
+
+      const topicBatch = this.repository.saveTopicBatch(runId, inputVersion, topics, `${runId}:adjust:topics:${inputVersion}`)
+      this.repository.setState(runId, transition("GENERATING_TOPICS", "TOPICS_GENERATED"))
+      this.selectTopic(runId, topicBatch.version, selectedTopic.id)
+      this.repository.setState(runId, transition("READY_FOR_SCRIPTS", "GENERATE_SCRIPTS"))
+      const scripts = this.repository.saveScriptBatch(runId, inputVersion, result.scripts, `${runId}:adjust:scripts:${inputVersion}`)
+      this.repository.setState(runId, transition("GENERATING_SCRIPTS", "SCRIPTS_GENERATED"))
+      this.selectScript(runId, scripts.version, selectedScript.id)
+      this.repository.setState(runId, transition("READY_FOR_QA", "RUN_QA"))
+      this.repository.saveQualityReport(runId, result.qualityReport)
+      this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
+      if (!result.qualityReport.hardGatePassed) throw Object.assign(new Error("DRAFT_NEEDS_ATTENTION"), { code: "DRAFT_NEEDS_ATTENTION", retryable: true })
+      this.lockScript(runId)
+      return this.getRunView(runId)
+    } catch (error) {
+      if (this.repository.requireRun(runId).state === "GENERATING_TOPICS") this.repository.setState(runId, "READY_FOR_TOPICS")
       this.recordFailure(runId, error, this.repository.requireRun(runId).state)
       throw error
     }

@@ -49,7 +49,10 @@ async function dispatch(request: NextRequest, segments: string[]) {
       const current = service().getCurrent(access)
       return current ? Response.json(current) : new Response(null, { status: 204 })
     }
-    if (request.method === "POST" && segments.join("/") === "auto") return Response.json(await service().create(access), { status: 201 })
+    if (request.method === "POST" && segments.join("/") === "auto") {
+      const body = await request.json().catch(() => ({})) as { intent?: "initial" | "change_topic" | "change_expression"; fromRunId?: string }
+      return Response.json(await service().create(access, body), { status: 201 })
+    }
     if (request.method === "GET" && segments[0] === "runs" && segments[1]) return Response.json(service().getRun(access, segments[1]))
     return Response.json({ errorCode: "NOT_FOUND" }, { status: 404 })
   } catch (error) {

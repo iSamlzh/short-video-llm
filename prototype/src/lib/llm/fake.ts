@@ -32,7 +32,7 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
     const selectedTopic = input.selectedTopic ?? topics[0]
     const scripts = Array.from({ length: 3 }, (_, index) => ({
       id: `script-${index + 1}`, topicDirectionId: selectedTopic.id,
-      title: index === 0 ? "真正难的不是找货，是让邻居愿意一直信你" : `同方向表达路径 ${index + 1}`,
+      title: index === 0 ? (request.operation === "topic_draft" ? `${selectedTopic.title}：今天这样讲` : "真正难的不是找货，是让邻居愿意一直信你") : `同方向表达路径 ${index + 1}`,
       hook: ["大家好，我是林姐，在小区做团长七年了。很多人问我，做团购最难的是什么？后来才发现，真正难的不是找货，是让邻居愿意一直信你。", "新团长别急着追求规模", "真正能长期合作的人，会先问这件事"][index],
       body: index === 0 ? "我刚开始做团的时候，也踩过不少坑。有一次，为了凑单，我上了一个自己都没吃过的零食，结果口感一般。邻居的一句话让我挺心虚。从那以后，我给自己定了三条底线：不熟悉的不推，不确定的不推，口碑不稳定的不推。\n\n这几年，我慢慢摸出一套自己的选品办法。第一，先试吃、试用，自己满意才发；第二，看最近一个月的真实反馈；第三，考虑邻居的真实场景。我不追爆款，只做合适的好货。\n\n信任不是靠一单建立的，是靠一次次把小事做好。坏果包赔不拖，售后亲自盯，有问题先承担，再复盘改进。邻居说跟着林姐买心里踏实，这句话比什么都重要。" : `这是围绕唯一方向的第 ${index + 1} 种完整表达。我会从自己的社区团购经历讲起，把当时的判断、踩过的坑和后来验证有效的动作说明白，让听众获得可以结合自身情况使用的方法，而不是一个无法核实的收益承诺。`,
       callToAction: index === 0 ? "如果你也在做团长，记住：货可以贵一点，但人品一定要贵。把邻居当朋友，把团购当长期的事，你会走得更稳、更远。" : "如果你也在做本地业务，可以留言说说你的具体情况。", estimatedSeconds: index === 0 ? 130 : 75,
@@ -44,6 +44,8 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
     }
     const payload = request.operation === "topics" ? topics : request.operation === "scripts" ? scripts : request.operation === "qa" ? qualityReport : request.operation === "auto_draft" ? {
       topics, selectedTopicId: topics[0].id, scripts, selectedScriptId: scripts[0].id, qualityReport,
+    } : request.operation === "topic_draft" ? {
+      scripts, selectedScriptId: scripts[0].id, qualityReport,
     } : request.operation === "review" ? {
       summary: "本轮模拟结果用于验证从创作到复盘的完整交互。",
       keep: ["真实经历与选题方向保持一致"], improve: ["下一稿可让开头更快进入受众矛盾"],

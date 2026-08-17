@@ -1,18 +1,25 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { CheckCircle, ClockCounterClockwise, Copy, PencilSimple, Repeat, ShuffleAngular } from "@phosphor-icons/react"
 
-export function DailyCreationView({ draft, regenerating = false, onRegenerate }: { draft: any; regenerating?: boolean; onRegenerate?: () => void }) {
+type RegenerationIntent = "change_topic" | "change_expression"
+
+export function DailyCreationView({ draft, regenerating = false, onRegenerate }: { draft: any; regenerating?: boolean; onRegenerate?: (intent: RegenerationIntent) => void }) {
   const [paragraphs, setParagraphs] = useState<string[]>([...draft.paragraphs])
   const [editing, setEditing] = useState(false)
   const [locked, setLocked] = useState(false)
+  useEffect(() => {
+    setParagraphs([...draft.paragraphs])
+    setEditing(false)
+    setLocked(false)
+  }, [draft.runId, draft.paragraphs])
   const scriptText = useMemo(() => paragraphs.join("\n\n"), [paragraphs])
   async function copyScript() { await navigator.clipboard?.writeText(scriptText) }
   return <div className="document-page daily-creation-view">
     <section className="result-lead">
       <div><p className="eyebrow">{draft.lead}</p><p>我根据你的真实经历、近期账号表现和表达边界，完成了选题、口播稿和发布前检查。</p></div>
-      <div className="lead-actions"><button className="primary-button" onClick={copyScript}><Copy size={20} />复制并去拍</button><button className="secondary-button" onClick={() => setLocked(true)}>{locked ? "已确认定稿" : "确认定稿"}</button><div className="text-actions"><button disabled={regenerating} onClick={onRegenerate}><Repeat size={19} />换选题</button><button disabled={regenerating} onClick={onRegenerate}><ShuffleAngular size={19} />换个讲法</button><button onClick={() => setEditing(!editing)}><PencilSimple size={19} />编辑这篇</button></div></div>
+      <div className="lead-actions"><button className="primary-button" onClick={copyScript}><Copy size={20} />复制并去拍</button><button className="secondary-button" onClick={() => setLocked(true)}>{locked ? "已确认定稿" : "确认定稿"}</button><div className="text-actions"><button disabled={regenerating} onClick={() => onRegenerate?.("change_topic")}><Repeat size={19} />换选题</button><button disabled={regenerating} onClick={() => onRegenerate?.("change_expression")}><ShuffleAngular size={19} />换个讲法</button><button onClick={() => setEditing(!editing)}><PencilSimple size={19} />编辑这篇</button></div></div>
     </section>
     <div className="document-grid">
       <article className="primary-document script-document">

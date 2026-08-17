@@ -27,10 +27,25 @@ export class CreationAppService {
     return presentCreationDraft(this.runs.getRunView(lineage.runId))
   }
 
-  async create(context: TenantAccessContext, businessDate = chinaBusinessDate()) {
+  async create(context: TenantAccessContext, options: { intent?: "initial" | "change_topic" | "change_expression"; fromRunId?: string } = {}, businessDate = chinaBusinessDate()) {
     requireTenantCapability(context, "content.create")
     const current = this.currentContext(context)
-    const result = await this.orchestrator.createUsableDraft(current.profile)
+    let adjustment
+    if (options.intent === "change_topic" || options.intent === "change_expression") {
+      if (!options.fromRunId || !this.lineage.canAccess(options.fromRunId, context)) throw new Error("PREVIOUS_RUN_NOT_FOUND")
+      const previous = this.runs.getRunView(options.fromRunId)
+      if (!previous.topicBatch || !previous.topicSelection || !previous.lockedScript) throw new Error("PREVIOUS_RUN_INCOMPLETE")
+      adjustment = {
+        intent: options.intent,
+        topics: previous.topicBatch.items,
+        selectedTopicId: previous.topicSelection.topicId,
+        previousScript: {
+          title: previous.lockedScript.script.title,
+          body: previous.lockedScript.script.body,
+        },
+      }
+    }
+    const result = await this.orchestrator.createUsableDraft(current.profile, adjustment)
     this.lineage.attach({
       runId: result.run.id,
       tenantId: context.tenantId,

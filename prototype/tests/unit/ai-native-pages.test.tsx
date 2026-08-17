@@ -29,6 +29,26 @@ describe("approved AI-native page hierarchy", () => {
     expect(screen.queryByText("模拟发布表现")).not.toBeInTheDocument()
   })
 
+  it("sends different intents for changing the topic and changing the expression", async () => {
+    const regenerate = vi.fn()
+    render(<DailyCreationView draft={demoProductData.draft} onRegenerate={regenerate} />)
+
+    await userEvent.click(screen.getByRole("button", { name: "换选题" }))
+    expect(regenerate).toHaveBeenLastCalledWith("change_topic")
+    await userEvent.click(screen.getByRole("button", { name: "换个讲法" }))
+    expect(regenerate).toHaveBeenLastCalledWith("change_expression")
+  })
+
+  it("replaces the visible script paragraphs when a changed-topic draft arrives", () => {
+    const { rerender } = render(<DailyCreationView draft={demoProductData.draft} />)
+    const changed = { ...demoProductData.draft, runId: "run-2", title: "换题后的标题", paragraphs: ["这是换题后的新正文。"] }
+
+    rerender(<DailyCreationView draft={changed} />)
+
+    expect(screen.getByText("这是换题后的新正文。")).toBeVisible()
+    expect(screen.queryByText(demoProductData.draft.paragraphs[0])).not.toBeInTheDocument()
+  })
+
   it("keeps account review conclusions tenant-private", () => {
     render(<ReviewBriefView brief={demoProductData.review} />)
 
