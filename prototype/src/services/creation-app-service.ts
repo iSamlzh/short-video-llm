@@ -6,11 +6,13 @@ import { CreationLineageRepository } from "../lib/db/creation-lineage-repository
 import { presentCreationDraft } from "./creation-presenter"
 import { AutoCreationOrchestrator } from "./auto-creation-orchestrator"
 import { RunService } from "./run-service"
+import { CreationContextProvider } from "./creation-context-provider"
 
-type CurrentRow = { ip_profile_id: string; content_account_id: string | null; profile_json: string }
+type CurrentRow = { ip_profile_id: string; content_account_id: string | null; platform: string | null; profile_json: string }
 
 export class CreationAppService {
   private readonly lineage: CreationLineageRepository
+  private readonly creationContext: CreationContextProvider
 
   constructor(
     private readonly database: Database.Database,
@@ -18,13 +20,17 @@ export class CreationAppService {
     private readonly orchestrator: AutoCreationOrchestrator,
   ) {
     this.lineage = new CreationLineageRepository(database)
+    this.creationContext = new CreationContextProvider(database)
   }
 
   getCurrent(context: TenantAccessContext, businessDate = chinaBusinessDate()) {
     const current = this.currentContext(context)
     const lineage = this.lineage.current(context.tenantId, current.ipId, current.accountId, businessDate)
     if (!lineage) return null
-    return presentCreationDraft(this.runs.getRunView(lineage.runId))
+    return presentCreationDraft(
+      this.runs.getRunView(lineage.runId),
+      this.memoryFor(current, lineage.tenantMemoryVersion),
+    )
   }
 
   async create(context: TenantAccessContext, options: { intent?: "initial" | "change_topic" | "change_expression"; fromRunId?: string } = {}, businessDate = chinaBusinessDate()) {
@@ -46,7 +52,8 @@ export class CreationAppService {
         },
       }
     }
-    const result = await this.orchestrator.createUsableDraft(current.profile, adjustment)
+    const tenantMemory = this.currentMemory(current)
+    const result = await this.orchestrator.createUsableDraft(current.profile, adjustment, tenantMemory ?? undefined)
     this.lineage.attach({
       runId: result.run.id,
       tenantId: context.tenantId,
@@ -54,14 +61,15 @@ export class CreationAppService {
       ipId: current.ipId,
       accountId: current.accountId,
       businessDate,
+      tenantMemoryVersion: tenantMemory?.version ?? null,
     })
-    return presentCreationDraft(result)
+    return presentCreationDraft(result, tenantMemory)
   }
 
   getRun(context: TenantAccessContext, runId: string) {
     requireTenantCapability(context, "content.create")
     if (!this.lineage.canAccess(runId, context)) throw new Error("RUN_NOT_FOUND")
-    return presentCreationDraft(this.runs.getRunView(runId))
+    return this.presentRun(runId)
   }
 
   saveDraft(
@@ -72,7 +80,7 @@ export class CreationAppService {
     requireTenantCapability(context, "content.edit")
     if (!this.lineage.canAccess(runId, context)) throw new Error("RUN_NOT_FOUND")
     const result = this.runs.saveScriptRevision(runId, input.expectedRevision, input.paragraphs)
-    return { ...presentCreationDraft(result.runView), saved: result.saved }
+    return { ...presentCreationDraft(result.runView, this.memoryForRun(runId)), saved: result.saved }
   }
 
   async finalize(
@@ -92,12 +100,13 @@ export class CreationAppService {
       throw new Error("DRAFT_NOT_READY_TO_FINALIZE")
     }
     this.runs.lockScript(runId)
-    return presentCreationDraft(this.runs.getRunView(runId))
+    return presentCreationDraft(this.runs.getRunView(runId), this.memoryForRun(runId))
   }
 
   private currentContext(context: TenantAccessContext) {
-    const row = this.database.prepare(`SELECT c.ip_profile_id, c.content_account_id, i.profile_json
+    const row = this.database.prepare(`SELECT c.ip_profile_id, c.content_account_id, a.platform, i.profile_json
       FROM user_current_context c JOIN ip_profiles i ON i.id = c.ip_profile_id
+      LEFT JOIN content_accounts a ON a.id=c.content_account_id AND a.tenant_id=c.tenant_id
       WHERE c.user_id = ? AND c.tenant_id = ? AND i.status = 'active'`)
       .get(context.userId, context.tenantId) as CurrentRow | undefined
     if (!row) throw Object.assign(new Error("CURRENT_IP_REQUIRED"), { code: "CURRENT_IP_REQUIRED" })
@@ -106,11 +115,53 @@ export class CreationAppService {
       contentAccountId: row.content_account_id ?? undefined,
     })
     return {
+      tenantId: context.tenantId,
       ipId: row.ip_profile_id,
       accountId: row.content_account_id,
+      platform: row.platform,
       profile: ipProfileSchema.parse(JSON.parse(row.profile_json)),
     }
   }
+
+  private currentMemory(current: { tenantId: string; ipId: string; accountId: string | null; platform: string | null }) {
+    if (!current.accountId || !current.platform) return null
+    return this.creationContext.getCurrent({
+      tenantId: current.tenantId,
+      ipId: current.ipId,
+      contentAccountId: current.accountId,
+      platform: current.platform,
+    })
+  }
+
+  private memoryFor(
+    current: { tenantId: string; ipId: string; accountId: string | null; platform: string | null },
+    version: number | null,
+  ) {
+    if (!version || !current.accountId || !current.platform) return null
+    return this.creationContext.getVersion({
+      tenantId: current.tenantId,
+      ipId: current.ipId,
+      contentAccountId: current.accountId,
+      platform: current.platform,
+    }, version)
+  }
+
+  private memoryForRun(runId: string) {
+    const lineage = this.lineage.get(runId)
+    if (!lineage?.tenantMemoryVersion || !lineage.accountId) return null
+    const row = this.database.prepare("SELECT platform FROM content_accounts WHERE id=? AND tenant_id=?")
+      .get(lineage.accountId, lineage.tenantId) as { platform: string } | undefined
+    if (!row) return null
+    return this.creationContext.getVersion({
+      tenantId: lineage.tenantId, ipId: lineage.ipId,
+      contentAccountId: lineage.accountId, platform: row.platform,
+    }, lineage.tenantMemoryVersion)
+  }
+
+  private presentRun(runId: string) {
+    return presentCreationDraft(this.runs.getRunView(runId), this.memoryForRun(runId))
+  }
+
 }
 
 export function chinaBusinessDate(date = new Date()) {

@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto"
 import { autoDraftSchema, contentReviewSchema, qualityReportSchema, scriptBatchSchema, scriptRevisionParagraphsSchema, topicBatchSchema, topicDraftSchema, type ScriptCandidate, type TopicDirectionCandidate } from "../domain/schemas"
 import { transition } from "../domain/state-machine"
 import type { IpProfile } from "../domain/models"
+import type { ConfirmedCreationMemory } from "../domain/growth-loop"
 import { PrototypeRepository } from "../lib/db/repository"
 import { StructuredLlmClient } from "../lib/llm/structured"
 import { prototypePreset } from "../presets"
@@ -53,7 +54,7 @@ export class RunService {
     }
   }
 
-  async generateAutoDraft(runId: string, inputVersion: number) {
+  async generateAutoDraft(runId: string, inputVersion: number, tenantMemory?: ConfirmedCreationMemory) {
     const run = this.repository.requireVersion(runId, inputVersion)
     this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
     try {
@@ -62,6 +63,7 @@ export class RunService {
         goal: prototypePreset.goal,
         structures: this.structureProvider(),
         presetVersion: prototypePreset.version,
+        ...(tenantMemory ? { tenantMemory } : {}),
       }, autoDraftSchema)
       const topic = result.topics.find((item) => item.id === result.selectedTopicId)
       if (!topic) throw new Error("AUTO_TOPIC_SELECTION_INVALID")
@@ -95,6 +97,7 @@ export class RunService {
     topicsInput: TopicDirectionCandidate[],
     selectedTopicId: string,
     adjustment: { intent: "change_topic" | "change_expression"; previousScript?: Pick<ScriptCandidate, "title" | "body"> },
+    tenantMemory?: ConfirmedCreationMemory,
   ) {
     const run = this.repository.requireVersion(runId, inputVersion)
     const topics = topicBatchSchema.parse(topicsInput)
@@ -107,6 +110,7 @@ export class RunService {
         goal: prototypePreset.goal,
         selectedTopic,
         adjustment,
+        ...(tenantMemory ? { tenantMemory } : {}),
       }, topicDraftSchema)
       if (result.scripts.some((item) => item.topicDirectionId !== selectedTopic.id)) throw new Error("SCRIPT_DIRECTION_MISMATCH")
       const selectedScript = result.scripts.find((item) => item.id === result.selectedScriptId)

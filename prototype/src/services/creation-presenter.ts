@@ -21,7 +21,7 @@ type RunView = {
   } | null
 }
 
-export function presentCreationDraft(view: RunView) {
+export function presentCreationDraft(view: RunView, memory?: ConfirmedCreationMemory | null) {
   const selection = view.scriptSelection
   const script = view.scriptBatch?.items.find((item) => item.id === selection?.scriptId)
   if (!selection || !script) throw new Error("SCRIPT_SELECTION_REQUIRED")
@@ -60,5 +60,10 @@ export function presentCreationDraft(view: RunView) {
     alternatives: {
       topics: view.topicBatch?.items?.map((item) => ({ id: item.id, title: item.title })) ?? [],
     },
+    memoryInfluence: memory ? {
+      version: memory.version,
+      summary: [...memory.keep.slice(0, 1), ...memory.nextContentSignals.slice(0, 1)].join("；"),
+    } : null,
   }
 }
+import type { ConfirmedCreationMemory } from "../domain/growth-loop"

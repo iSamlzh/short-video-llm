@@ -1,5 +1,6 @@
 import type { IpProfile } from "../domain/models"
 import type { ScriptCandidate, TopicDirectionCandidate } from "../domain/schemas"
+import type { ConfirmedCreationMemory } from "../domain/growth-loop"
 import { RunService } from "./run-service"
 
 export type CreationAdjustment = {
@@ -12,7 +13,7 @@ export type CreationAdjustment = {
 export class AutoCreationOrchestrator {
   constructor(private readonly runs: RunService) {}
 
-  async createUsableDraft(profile: IpProfile, adjustment?: CreationAdjustment) {
+  async createUsableDraft(profile: IpProfile, adjustment?: CreationAdjustment, tenantMemory?: ConfirmedCreationMemory) {
     const run = this.runs.createRun(profile)
     if (adjustment) {
       const currentIndex = adjustment.topics.findIndex((item) => item.id === adjustment.selectedTopicId)
@@ -24,9 +25,9 @@ export class AutoCreationOrchestrator {
       await this.runs.generateTopicDraft(run.id, run.inputVersion, adjustment.topics, selectedTopic.id, {
         intent: adjustment.intent,
         previousScript: adjustment.previousScript,
-      })
+      }, tenantMemory)
     } else {
-      await this.runs.generateAutoDraft(run.id, run.inputVersion)
+      await this.runs.generateAutoDraft(run.id, run.inputVersion, tenantMemory)
     }
     return { run: this.runs.getRun(run.id), ...this.runs.getRunView(run.id) }
   }

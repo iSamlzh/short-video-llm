@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3"
-import type { ContentReviewVersion, GrowthScope, RealContentReview, SampleTier } from "../../domain/growth-loop"
+import type {
+  ConfirmedCreationMemory, ContentReviewVersion, GrowthScope, RealContentReview, SampleTier, TenantMemoryVersion,
+} from "../../domain/growth-loop"
 import type { TokenUsage } from "../llm/adapter"
 
 type ReviewRow = {
@@ -14,6 +16,20 @@ type ReviewRow = {
   evidence_set_hash: string
   payload_json: string
   status: "generated" | "superseded" | "confirmed"
+  created_at: string
+}
+
+type MemoryRow = {
+  id: string
+  tenant_id: string
+  ip_profile_id: string
+  content_account_id: string
+  platform: string
+  version: number
+  payload_json: string
+  source_review_id: string
+  content_hash: string
+  confirmed_by_user_id: string
   created_at: string
 }
 
@@ -127,6 +143,63 @@ export class ReviewMemoryRepository {
     ) as ReviewRow[]).map((row) => this.mapReview(row))
   }
 
+  findMemoryByReviewHash(sourceReviewId: string, contentHash: string) {
+    const row = this.database.prepare(`SELECT m.*,a.platform FROM tenant_memory_versions m
+      JOIN content_accounts a ON a.id=m.content_account_id
+      WHERE m.source_review_id=? AND m.content_hash=? LIMIT 1`).get(sourceReviewId, contentHash) as MemoryRow | undefined
+    return row ? this.mapMemory(row) : null
+  }
+
+  nextMemoryVersion(scope: GrowthScope) {
+    const row = this.database.prepare(`SELECT COALESCE(MAX(version),0)+1 version FROM tenant_memory_versions
+      WHERE tenant_id=? AND ip_profile_id=? AND content_account_id=?`).get(
+      scope.tenantId, scope.ipId, scope.contentAccountId,
+    ) as { version: number }
+    return row.version
+  }
+
+  insertMemory(input: {
+    id: string; scope: GrowthScope; version: number; sourceReviewId: string; contentHash: string;
+    payload: TenantMemoryVersion["payload"]; userId: string; now: string
+  }) {
+    this.database.prepare(`INSERT INTO tenant_memory_versions
+      (id,tenant_id,ip_profile_id,content_account_id,version,payload_json,confirmed_by_user_id,created_at,
+       source_review_id,content_hash,schema_version)
+      VALUES (?,?,?,?,?,?,?,?,?,?,1)`).run(
+      input.id, input.scope.tenantId, input.scope.ipId, input.scope.contentAccountId, input.version,
+      JSON.stringify(input.payload), input.userId, input.now, input.sourceReviewId, input.contentHash,
+    )
+    return this.requireMemory(input.scope, input.version)
+  }
+
+  markReviewConfirmed(scope: GrowthScope, reviewId: string) {
+    const result = this.database.prepare(`UPDATE content_review_versions SET status='confirmed'
+      WHERE id=? AND tenant_id=? AND ip_profile_id=? AND content_account_id=? AND status='generated'`).run(
+      reviewId, scope.tenantId, scope.ipId, scope.contentAccountId,
+    )
+    if (!result.changes) throw new Error("REVIEW_SUPERSEDED")
+  }
+
+  getCurrentMemory(scope: GrowthScope) {
+    const row = this.database.prepare(`SELECT m.*,a.platform FROM tenant_memory_versions m
+      JOIN content_accounts a ON a.id=m.content_account_id
+      WHERE m.tenant_id=? AND m.ip_profile_id=? AND m.content_account_id=? AND a.platform=?
+      ORDER BY m.version DESC LIMIT 1`).get(
+      scope.tenantId, scope.ipId, scope.contentAccountId, scope.platform,
+    ) as MemoryRow | undefined
+    return row ? this.mapMemory(row) : null
+  }
+
+  requireMemory(scope: GrowthScope, version: number) {
+    const row = this.database.prepare(`SELECT m.*,a.platform FROM tenant_memory_versions m
+      JOIN content_accounts a ON a.id=m.content_account_id
+      WHERE m.tenant_id=? AND m.ip_profile_id=? AND m.content_account_id=? AND a.platform=? AND m.version=?`).get(
+      scope.tenantId, scope.ipId, scope.contentAccountId, scope.platform, version,
+    ) as MemoryRow | undefined
+    if (!row) throw new Error("TENANT_MEMORY_NOT_FOUND")
+    return this.mapMemory(row)
+  }
+
   private mapReview(row: ReviewRow): ContentReviewVersion {
     return {
       id: row.id, tenantId: row.tenant_id, ipId: row.ip_profile_id,
@@ -135,5 +208,24 @@ export class ReviewMemoryRepository {
       evidenceSetHash: row.evidence_set_hash, payload: JSON.parse(row.payload_json) as RealContentReview,
       status: row.status, createdAt: row.created_at,
     }
+  }
+
+  private mapMemory(row: MemoryRow): TenantMemoryVersion {
+    const payload = JSON.parse(row.payload_json) as TenantMemoryVersion["payload"]
+    return {
+      id: row.id, tenantId: row.tenant_id, ipId: row.ip_profile_id,
+      contentAccountId: row.content_account_id, platform: row.platform, version: row.version,
+      sourceReviewId: row.source_review_id, contentHash: row.content_hash, payload,
+      confirmedByUserId: row.confirmed_by_user_id, createdAt: row.created_at,
+    }
+  }
+}
+
+export function toConfirmedCreationMemory(memory: TenantMemoryVersion): ConfirmedCreationMemory {
+  return {
+    version: memory.version,
+    keep: memory.payload.keep,
+    avoid: memory.payload.avoid,
+    nextContentSignals: memory.payload.nextContentSignals,
   }
 }

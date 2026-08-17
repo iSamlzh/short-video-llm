@@ -7,24 +7,29 @@ type ContextInput = {
   ipId: string
   accountId: string | null
   businessDate: string
+  tenantMemoryVersion?: number | null
 }
 
 type Scope = { tenantId: string; ipIds: string[]; contentAccountIds: string[] }
-type Row = { run_id: string; tenant_id: string; ip_profile_id: string; content_account_id: string | null; business_date: string }
+type Row = {
+  run_id: string; tenant_id: string; ip_profile_id: string; content_account_id: string | null;
+  business_date: string; tenant_memory_version: number | null
+}
 
 export class CreationLineageRepository {
   constructor(private readonly database: Database.Database) {}
 
   attach(input: ContextInput) {
     this.database.prepare(`INSERT INTO creation_run_context
-      (run_id,tenant_id,actor_user_id,ip_profile_id,content_account_id,business_date,created_at)
-      VALUES (?,?,?,?,?,?,?)`).run(
+      (run_id,tenant_id,actor_user_id,ip_profile_id,content_account_id,business_date,tenant_memory_version,created_at)
+      VALUES (?,?,?,?,?,?,?,?)`).run(
       input.runId,
       input.tenantId,
       input.actorUserId,
       input.ipId,
       input.accountId,
       input.businessDate,
+      input.tenantMemoryVersion ?? null,
       new Date().toISOString(),
     )
   }
@@ -56,6 +61,7 @@ export class CreationLineageRepository {
       ipId: row.ip_profile_id,
       accountId: row.content_account_id,
       businessDate: row.business_date,
+      tenantMemoryVersion: row.tenant_memory_version,
     }
   }
 }
