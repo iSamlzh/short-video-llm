@@ -30,6 +30,7 @@ export const scriptCandidateSchema = z.object({
   estimatedSeconds: z.number().int().min(15).max(300),
 })
 export const scriptBatchSchema = z.array(scriptCandidateSchema).length(3)
+export const scriptRevisionParagraphsSchema = z.array(z.string().trim().min(1)).min(2).max(30)
 
 const scoreSchema = z.number().min(0).max(100)
 export const qualityReportSchema = z.object({

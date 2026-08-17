@@ -1,4 +1,5 @@
-import { autoDraftSchema, contentReviewSchema, qualityReportSchema, scriptBatchSchema, topicBatchSchema, topicDraftSchema, type ScriptCandidate, type TopicDirectionCandidate } from "../domain/schemas"
+import { createHash, randomUUID } from "node:crypto"
+import { autoDraftSchema, contentReviewSchema, qualityReportSchema, scriptBatchSchema, scriptRevisionParagraphsSchema, topicBatchSchema, topicDraftSchema, type ScriptCandidate, type TopicDirectionCandidate } from "../domain/schemas"
 import { transition } from "../domain/state-machine"
 import type { IpProfile } from "../domain/models"
 import { PrototypeRepository } from "../lib/db/repository"
@@ -79,7 +80,6 @@ export class RunService {
       this.repository.saveQualityReport(runId, result.qualityReport, selection.version)
       this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
       if (!result.qualityReport.hardGatePassed) throw Object.assign(new Error("DRAFT_NEEDS_ATTENTION"), { code: "DRAFT_NEEDS_ATTENTION", retryable: true })
-      this.lockScript(runId)
       return this.getRunView(runId)
     } catch (error) {
       const current = this.repository.requireRun(runId)
@@ -123,7 +123,6 @@ export class RunService {
       this.repository.saveQualityReport(runId, result.qualityReport, selection.version)
       this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
       if (!result.qualityReport.hardGatePassed) throw Object.assign(new Error("DRAFT_NEEDS_ATTENTION"), { code: "DRAFT_NEEDS_ATTENTION", retryable: true })
-      this.lockScript(runId)
       return this.getRunView(runId)
     } catch (error) {
       if (this.repository.requireRun(runId).state === "GENERATING_TOPICS") this.repository.setState(runId, "READY_FOR_TOPICS")
@@ -200,12 +199,53 @@ export class RunService {
     }
   }
 
+  saveScriptRevision(runId: string, expectedRevision: number, paragraphsInput: string[]) {
+    const run = this.repository.requireRun(runId)
+    const paragraphs = scriptRevisionParagraphsSchema.parse(paragraphsInput)
+    const currentSelection = this.repository.getCurrentScriptSelection(runId)
+    const currentScript = this.repository.getSelectedScript(runId)
+    if (!currentSelection || !currentScript) throw new Error("SCRIPT_SELECTION_REQUIRED")
+
+    const hook = paragraphs[0]
+    const body = paragraphs.slice(1, -1).join("\n\n")
+    const callToAction = paragraphs.at(-1)!
+    const unchanged = hook === currentScript.hook
+      && body === currentScript.body.trim()
+      && callToAction === currentScript.callToAction
+    if (unchanged) {
+      return { saved: false, revision: currentSelection.version, runView: this.getRunView(runId) }
+    }
+    if (currentSelection.version !== expectedRevision) throw new Error("SCRIPT_VERSION_CONFLICT")
+
+    const edited: ScriptCandidate = {
+      ...currentScript,
+      id: randomUUID(),
+      hook,
+      body,
+      callToAction,
+      estimatedSeconds: Math.max(15, Math.ceil([hook, body, callToAction].join("").length / 4.5)),
+    }
+    const contentHash = createHash("sha256").update(JSON.stringify(edited)).digest("hex")
+    const batch = this.repository.saveScriptBatch(
+      runId,
+      run.inputVersion,
+      [edited],
+      `${runId}:manual:${currentSelection.version}:${contentHash}`,
+    )
+    const selection = this.repository.selectScript(runId, batch.version, edited.id)
+    this.repository.setState(runId, transition(run.state, "SAVE_SCRIPT_REVISION"))
+    return { saved: true, revision: selection.version, runView: this.getRunView(runId) }
+  }
+
   lockScript(runId: string) {
     const run = this.repository.requireRun(runId)
     const report = this.repository.getLatestQualityReport(runId)
-    if (!report?.hardGatePassed) throw new Error("QA_HARD_GATE_BLOCKED")
     const selection = this.repository.getCurrentScriptSelection(runId)
     if (!selection) throw new Error("SCRIPT_SELECTION_REQUIRED")
+    if (!report || report.scriptSelectionVersion !== selection.version) throw new Error("QA_RESULT_STALE")
+    if (!report.hardGatePassed) throw new Error("QA_HARD_GATE_BLOCKED")
+    const existing = this.repository.getLockedScriptForSelection(runId, selection.version)
+    if (existing) return existing
     const locked = this.repository.lockSelectedScript(runId, selection.version)
     this.repository.setState(runId, transition(run.state, "LOCK"))
     return locked

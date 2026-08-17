@@ -31,6 +31,11 @@ describe("prototype domain", () => {
       .toThrow("INVALID_TRANSITION")
   })
 
+  it("moves a confirmed or locked script back to QA after a saved revision", () => {
+    expect(transition("WAITING_LOCK_CONFIRMATION", "SAVE_SCRIPT_REVISION")).toBe("READY_FOR_QA")
+    expect(transition("LOCKED", "SAVE_SCRIPT_REVISION")).toBe("READY_FOR_QA")
+  })
+
   it("restores the current run after reopening SQLite", () => {
     const dbPath = join(mkdtempSync(join(tmpdir(), "content-prototype-")), "run.sqlite")
     const first = repositoryAt(dbPath)

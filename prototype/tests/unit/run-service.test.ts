@@ -163,6 +163,65 @@ describe("RunService QA and locking", () => {
     service.lockScript(run.id)
     expect(repository.getLatestLockedScript(run.id)?.scriptSelectionVersion).toBe(selection.version)
   })
+
+  it("saves an edited script as a new immutable selection", async () => {
+    const { repository, service, adapter, run } = await selectedScriptFixture()
+    adapter.enqueue({ json: qualityReport(true) })
+    await service.runQa(run.id, run.inputVersion)
+    const before = repository.getCurrentScriptSelection(run.id)!
+
+    const result = service.saveScriptRevision(run.id, before.version, ["新开头", "这是人工修改后的完整正文内容，保存后必须形成一个不可覆盖的新版本。", "新结尾"])
+
+    expect(result.saved).toBe(true)
+    expect(result.revision).toBe(before.version + 1)
+    expect(service.getRun(run.id).state).toBe("READY_FOR_QA")
+    expect(repository.listScriptBatches(run.id)).toHaveLength(2)
+  })
+
+  it("rejects a save based on a stale script revision", async () => {
+    const { repository, service, adapter, run } = await selectedScriptFixture()
+    adapter.enqueue({ json: qualityReport(true) })
+    await service.runQa(run.id, run.inputVersion)
+    const before = repository.getCurrentScriptSelection(run.id)!
+    service.saveScriptRevision(run.id, before.version, ["版本二开头", "这是版本二的完整正文内容，用于验证并发编辑时不能静默覆盖。", "版本二结尾"])
+
+    expect(() => service.saveScriptRevision(run.id, before.version, ["冲突开头", "这是冲突客户端提交的正文内容，不应该覆盖已经保存的新版本。", "冲突结尾"]))
+      .toThrow("SCRIPT_VERSION_CONFLICT")
+  })
+
+  it("does not create a revision when paragraphs are unchanged", async () => {
+    const { repository, service, adapter, run } = await selectedScriptFixture()
+    adapter.enqueue({ json: qualityReport(true) })
+    await service.runQa(run.id, run.inputVersion)
+    const selection = repository.getCurrentScriptSelection(run.id)!
+    const script = repository.getSelectedScript(run.id)!
+
+    const result = service.saveScriptRevision(run.id, selection.version, [script.hook, script.body, script.callToAction])
+
+    expect(result).toMatchObject({ saved: false, revision: selection.version })
+    expect(repository.listScriptBatches(run.id)).toHaveLength(1)
+  })
+
+  it("rejects locking when QA belongs to an older script revision", async () => {
+    const { repository, service, adapter, run } = await selectedScriptFixture()
+    adapter.enqueue({ json: qualityReport(true) })
+    await service.runQa(run.id, run.inputVersion)
+    const selection = repository.getCurrentScriptSelection(run.id)!
+    service.saveScriptRevision(run.id, selection.version, ["更新开头", "这是 QA 之后更新的正文内容，旧质量报告不能用于锁定这个版本。", "更新结尾"])
+
+    expect(() => service.lockScript(run.id)).toThrow("QA_RESULT_STALE")
+  })
+
+  it("returns the same lock when the same revision is finalized twice", async () => {
+    const { service, adapter, run } = await selectedScriptFixture()
+    adapter.enqueue({ json: qualityReport(true) })
+    await service.runQa(run.id, run.inputVersion)
+
+    const first = service.lockScript(run.id)
+    const second = service.lockScript(run.id)
+
+    expect(second.version).toBe(first.version)
+  })
 })
 
 describe("RunService review", () => {
