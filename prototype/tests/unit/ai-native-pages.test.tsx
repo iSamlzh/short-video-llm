@@ -68,6 +68,49 @@ describe("approved AI-native page hierarchy", () => {
     expect(screen.queryByRole("textbox", { name: "第 2 段" })).not.toBeInTheDocument()
   })
 
+  it("saves all paragraphs before closing one paragraph editor", async () => {
+    const save = vi.fn().mockResolvedValue(undefined)
+    render(<DailyCreationView draft={demoProductData.draft} onSave={save} />)
+
+    await userEvent.click(screen.getByRole("button", { name: "编辑第 2 段" }))
+    const secondParagraph = screen.getByRole("textbox", { name: "第 2 段" })
+    await userEvent.clear(secondParagraph)
+    await userEvent.type(secondParagraph, "持久化后的第二段")
+    await userEvent.click(screen.getByRole("button", { name: "完成第 2 段编辑" }))
+
+    expect(save).toHaveBeenCalledWith([
+      demoProductData.draft.paragraphs[0],
+      "持久化后的第二段",
+      ...demoProductData.draft.paragraphs.slice(2),
+    ])
+    expect(screen.queryByRole("textbox", { name: "第 2 段" })).not.toBeInTheDocument()
+  })
+
+  it("keeps edited text open when saving fails", async () => {
+    const save = vi.fn().mockRejectedValue(new Error("保存失败"))
+    render(<DailyCreationView draft={demoProductData.draft} onSave={save} />)
+
+    await userEvent.click(screen.getByRole("button", { name: "编辑第 2 段" }))
+    await userEvent.click(screen.getByRole("button", { name: "完成第 2 段编辑" }))
+
+    expect(screen.getByRole("textbox", { name: "第 2 段" })).toBeVisible()
+  })
+
+  it("finalizes the visible paragraphs before copying", async () => {
+    const finalize = vi.fn().mockResolvedValue(undefined)
+    render(<DailyCreationView draft={demoProductData.draft} onFinalize={finalize} />)
+
+    await userEvent.click(screen.getByRole("button", { name: "复制并去拍" }))
+
+    expect(finalize).toHaveBeenCalledWith({ paragraphs: [...demoProductData.draft.paragraphs], copyAfter: true })
+  })
+
+  it("uses server status for the locked label", () => {
+    render(<DailyCreationView draft={{ ...demoProductData.draft, status: "locked", lockedVersion: 1 }} />)
+
+    expect(screen.getByRole("button", { name: "已确认定稿" })).toBeDisabled()
+  })
+
   it("keeps account review conclusions tenant-private", () => {
     render(<ReviewBriefView brief={demoProductData.review} />)
 

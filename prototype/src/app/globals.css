@@ -100,6 +100,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .script-paragraph textarea { width: 100%; min-height: 132px; padding: 14px; border: 1px solid var(--line); border-radius: 2px; resize: vertical; background: var(--sheet); font: 17px/1.65 var(--serif); }
 .document-footnote { margin: 18px 0 0; color: var(--muted); font: 13px/1.7 var(--serif); }
 .evidence-summary { margin: 0 0 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; color: #667168 !important; }
+.evidence-summary.evidence-pending { color: var(--warning) !important; }
 .pass-text { margin-left: auto; padding: 2px 7px; background: #e5eadf; font-size: 12px; font-weight: 400; }
 .version-record { min-height: 56px; padding: 14px 12px; border: 1px solid var(--line); display: flex; align-items: center; gap: 14px; color: var(--muted); font-size: 13px; }
 
