@@ -65,18 +65,22 @@ export class ContentBrainRepository {
   createSample(input: {
     id: string; title: string; sourcePlatform: string; sourceUrl?: string | null;
     authorReference?: string | null; transcript: string; rightsNote: string;
+    publishedAt?: string | null; capturedAt?: string | null; metrics?: Record<string, number>;
+    contentHash?: string;
     dataOrigin: "demo" | "formal"; actorUserId: string; createdAt: string;
   }) {
-    const contentHash = hashTranscript(input.transcript)
+    const contentHash = input.contentHash ?? hashTranscript(input.transcript)
     const revisionId = `${input.id}-revision-1`
     this.database.transaction(() => {
       this.database.prepare(`INSERT INTO platform_content_samples
         (id,title,source_platform,source_text,rights_note,status,data_origin,created_by_user_id,created_at,
-         source_url,normalized_source_url,author_reference,current_revision_version,workflow_status,updated_at)
-        VALUES (?,?,?,?,?,'pending',?,?,?, ?,?,?,1,'draft',?)`).run(
+         source_url,normalized_source_url,author_reference,published_at,captured_at,metrics_json,
+         current_revision_version,workflow_status,updated_at)
+        VALUES (?,?,?,?,?,'pending',?,?,?, ?,?,?,?,?,?,1,'draft',?)`).run(
         input.id, input.title, input.sourcePlatform, input.transcript, input.rightsNote,
         input.dataOrigin, input.actorUserId, input.createdAt, input.sourceUrl ?? null,
-        input.sourceUrl ?? null, input.authorReference ?? null, input.createdAt,
+        input.sourceUrl ?? null, input.authorReference ?? null, input.publishedAt ?? null,
+        input.capturedAt ?? null, input.metrics ? JSON.stringify(input.metrics) : null, input.createdAt,
       )
       this.database.prepare(`INSERT INTO platform_content_sample_revisions
         (id,sample_id,version,transcript,content_hash,created_by_user_id,created_at)
@@ -85,6 +89,17 @@ export class ContentBrainRepository {
       )
     })()
     return { id: input.id, revisionId, version: 1, contentHash, status: "draft" as const }
+  }
+
+  findSampleByContentHash(contentHash: string) {
+    const row = this.database.prepare(`SELECT r.sample_id,r.id revision_id,r.version
+      FROM platform_content_sample_revisions r
+      JOIN platform_content_samples s ON s.id=r.sample_id
+      WHERE r.content_hash=? AND s.workflow_status!='rejected'
+      ORDER BY r.created_at DESC LIMIT 1`).get(contentHash) as {
+        sample_id: string; revision_id: string; version: number
+      } | undefined
+    return row ? { sampleId: row.sample_id, revisionId: row.revision_id, version: row.version } : null
   }
 
   appendSampleRevision(sampleId: string, input: {
