@@ -67,4 +67,27 @@ describe("database migrations", () => {
     database = openDatabase(":memory:")
     expect(database.prepare("SELECT COUNT(*) count FROM real_metric_snapshots").get()).toEqual({ count: 0 })
   })
+
+  it("应用版本 8 并建立爆款拆解与创作结构谱系", () => {
+    database = openDatabase(":memory:")
+    applyMigrations(database)
+
+    expect(database.prepare(
+      "SELECT COUNT(*) count FROM schema_migrations WHERE version = 8",
+    ).get()).toEqual({ count: 1 })
+    for (const table of [
+      "platform_content_sample_revisions",
+      "platform_content_analysis_versions",
+      "platform_structure_candidates",
+      "platform_candidate_source_links",
+      "platform_structure_previews",
+      "platform_template_activation_events",
+    ]) {
+      expect(database.prepare(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+      ).get(table)).toEqual({ name: table })
+    }
+    const columns = database.prepare("PRAGMA table_info(creation_run_context)").all() as Array<{ name: string }>
+    expect(columns.map((column) => column.name)).toContain("structure_version_ids_json")
+  })
 })

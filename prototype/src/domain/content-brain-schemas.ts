@@ -1,0 +1,45 @@
+import { z } from "zod"
+
+const shortText = z.string().trim().min(1).max(500)
+const list = (item: z.ZodType<string>, max = 20) => z.array(item).max(max)
+
+export const candidateDecisionSchema = z.enum(["merge_existing", "upgrade_existing", "create_new"])
+
+export const contentAnalysisSchema = z.object({
+  summary: z.string().trim().min(5).max(2_000),
+  nodes: z.array(z.object({
+    kind: shortText,
+    instruction: z.string().trim().min(2).max(1_000),
+    required: z.boolean(),
+    evidenceRefs: z.array(z.string().trim().min(1).max(100)).min(1).max(10),
+  }).strict()).min(1).max(12),
+  reusablePatterns: list(z.string().trim().min(2).max(500)),
+  nonReusableFacts: list(z.string().trim().min(2).max(500)),
+  applicability: z.object({
+    ipTags: list(shortText, 12),
+    audiences: list(shortText, 12),
+    goals: list(shortText, 12),
+  }).strict(),
+  riskNotes: list(z.string().trim().min(2).max(500)),
+  evidenceRefs: z.array(z.object({
+    id: z.string().trim().min(1).max(100),
+    quote: z.string().trim().min(1).max(1_000),
+    start: z.number().int().nonnegative(),
+    end: z.number().int().positive(),
+  }).strict().refine((value) => value.end > value.start, "EVIDENCE_RANGE_INVALID")).min(1).max(30),
+  suggestedDecision: candidateDecisionSchema,
+}).strict()
+
+export const createContentSampleSchema = z.object({
+  title: shortText,
+  sourcePlatform: z.string().trim().min(1).max(100),
+  sourceUrl: z.string().trim().url().max(2_048).nullable().optional(),
+  authorReference: z.string().trim().max(500).nullable().optional(),
+  transcript: z.string().trim().min(40).max(30_000),
+  rightsNote: z.string().trim().min(2).max(2_000),
+  publishedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  capturedAt: z.string().datetime({ offset: true }).nullable().optional(),
+  metrics: z.record(z.string(), z.number().nonnegative()).optional(),
+}).strict()
+
+export type CreateContentSampleInput = z.infer<typeof createContentSampleSchema>
