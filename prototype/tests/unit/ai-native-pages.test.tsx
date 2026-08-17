@@ -112,6 +112,16 @@ describe("approved AI-native page hierarchy", () => {
     expect(screen.getByText("锁稿 1")).toBeVisible()
   })
 
+  it("显示已自动生效的记忆版本，但不增加选择器或权重设置", () => {
+    render(<DailyCreationView draft={{
+      ...demoProductData.draft,
+      memoryInfluence: { version: 1, summary: "保留真实邻里场景；开头更快进入冲突" },
+    }} />)
+    expect(screen.getAllByText(/记忆 v1/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/已参考上次确认的复盘/)).toBeVisible()
+    expect(screen.queryByText(/权重|选择记忆|是否使用记忆/)).not.toBeInTheDocument()
+  })
+
   it("keeps account review conclusions tenant-private", () => {
     render(<ReviewBriefView brief={demoProductData.review} />)
 

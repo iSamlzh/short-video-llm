@@ -99,6 +99,29 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .paragraph-edit-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .script-paragraph textarea { width: 100%; min-height: 132px; padding: 14px; border: 1px solid var(--line); border-radius: 2px; resize: vertical; background: var(--sheet); font: 17px/1.65 var(--serif); }
 .document-footnote { margin: 18px 0 0; color: var(--muted); font: 13px/1.7 var(--serif); }
+.memory-influence-lead { margin-top: 10px !important; color: var(--accent) !important; font-size: 13px !important; }
+.publication-receipt { margin-top: 28px; padding-top: 20px; border-top: 1px dotted var(--line); font-family: var(--serif); }
+.publication-receipt-prompt, .publication-form-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.publication-receipt p { margin: 0; font: 600 16px/1.5 var(--serif); }
+.publication-receipt span { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.publication-receipt-prompt > button, .publication-additional { min-height: 44px; padding: 0 2px; color: var(--accent); text-decoration: underline; text-underline-offset: 4px; font-family: var(--serif); }
+.publication-receipt-form { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(170px, .6fr); gap: 16px; padding: 18px; border: 1px solid var(--line); background: rgba(255,255,255,.28); }
+.publication-form-heading, .publication-form-actions, .publication-error { grid-column: 1 / -1; }
+.publication-form-heading > button { width: 44px; height: 44px; display: grid; place-items: center; color: var(--muted); }
+.publication-receipt-form label { display: grid; gap: 7px; color: var(--muted); font-size: 12px; }
+.publication-receipt-form label:nth-of-type(2) { grid-column: 1; }
+.publication-receipt-form label:nth-of-type(3) { grid-column: 2; }
+.publication-receipt-form select, .publication-receipt-form input { width: 100%; min-width: 0; min-height: 46px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 2px; background: var(--sheet); color: var(--ink); font: 14px/1.4 var(--serif); }
+.publication-receipt-form label:first-of-type { grid-column: 1 / -1; }
+.publication-form-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.publication-form-actions .primary-button, .publication-form-actions .secondary-button { min-height: 46px; }
+.publication-error { color: var(--danger) !important; font-size: 13px !important; }
+.publication-records { display: grid; gap: 10px; }
+.publication-record { min-width: 0; padding: 10px 0; display: flex; align-items: flex-start; gap: 10px; border-bottom: 1px solid var(--soft-line); color: var(--success); }
+.publication-record > span { min-width: 0; display: grid; }
+.publication-record strong { color: var(--ink); font: 500 14px/1.5 var(--serif); }
+.publication-record small { color: var(--muted); overflow-wrap: anywhere; }
+.publication-additional { width: fit-content; display: inline-flex; align-items: center; gap: 6px; }
 .evidence-summary { margin: 0 0 22px; padding-bottom: 18px; border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 10px; color: #667168 !important; }
 .evidence-summary.evidence-pending { color: var(--warning) !important; }
 .pass-text { margin-left: auto; padding: 2px 7px; background: #e5eadf; font-size: 12px; font-weight: 400; }
@@ -212,6 +235,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
   .direction-row { grid-template-columns: 1fr; }
   .direction-row span { text-align: left; }
   .script-paragraph p { font-size: 17px; }
+  .publication-receipt-prompt { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .publication-receipt-form { grid-template-columns: 1fr; padding: 14px; }
+  .publication-receipt-form label, .publication-receipt-form label:nth-of-type(2), .publication-receipt-form label:nth-of-type(3) { grid-column: 1 / -1; }
+  .publication-form-actions { display: grid; grid-template-columns: 1fr; }
   .document-meta span { padding: 0 8px; }
   .version-label { margin: 8px 0 0; }
   .evidence-row summary { grid-template-columns: 24px minmax(0, 1fr) 18px; }
