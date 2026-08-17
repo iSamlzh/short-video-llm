@@ -143,6 +143,12 @@ export class ReviewMemoryRepository {
     ) as ReviewRow[]).map((row) => this.mapReview(row))
   }
 
+  countEvidencePublications(reviewId: string) {
+    const row = this.database.prepare(`SELECT COUNT(DISTINCT publication_id) count
+      FROM review_evidence_links WHERE review_id=?`).get(reviewId) as { count: number }
+    return row.count
+  }
+
   findMemoryByReviewHash(sourceReviewId: string, contentHash: string) {
     const row = this.database.prepare(`SELECT m.*,a.platform FROM tenant_memory_versions m
       JOIN content_accounts a ON a.id=m.content_account_id

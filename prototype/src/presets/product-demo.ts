@@ -38,15 +38,21 @@ export const demoProductData = {
     evidence: ["近期账号表现：真实经历类内容互动率更高", "表达边界：不夸大、不承诺、不贬低竞品", "邻居关注点：信任、售后、省心、适合家庭"],
   },
   review: {
-    lead: "林姐视频号本周最值得保留的是：真实邻里场景",
-    summary: "本周真实邻里场景的内容在拉新与互动上整体更优，尤其是‘邻里互助、日常烟火气’类选题更容易被推荐并引发共鸣。非邻里主题在触达上不稳定，泛议题容易被淹没或引发争议。",
-    evidence: [
-      { title: "楼道里的一份邻里约定，暖到心里", finding: "互动显著高于周均，更能引发评论与转发。", metrics: ["互动率：明显更高", "评论率：明显更高", "转发率：明显更高"] },
-      { title: "小区里的暖心接力，太治愈了", finding: "触达显著高于周均，获得更多自然推荐。", metrics: ["播放：高于周均", "完播：高于周均"] },
-      { title: "关于车位矛盾，我们这样解决", finding: "负向反馈偏高，容易引发争议。", metrics: ["负反馈：高于周均"] },
-    ],
-    uncertain: "非邻里选题的分化原因暂不明确：部分生活技巧类表现中等，部分泛议题出现评论走偏。需要更多样本验证。",
-    next: ["继续侧重邻里互助、日常烟火气，强化真实人物与具体场景。", "避免泛议题发散表达，减少价值判断与对立叙事。", "加强结尾的行动指引与互动提问，提升评论与转发。"],
+    id: "demo-review-1", version: 1, status: "generated", sampleTier: "memory_eligible", sampleCount: 5,
+    canConfirm: true,
+    evidenceLimits: "当前样本只表达本账号内的相关性，不能证明平台分发或选题因果。",
+    payload: {
+      headline: "真实邻里场景值得继续验证",
+      observations: [
+        { text: "五条真实发布中，具体邻里人物和日常冲突的内容更常高于账号播放中位数。", evidenceSnapshotIds: ["snapshot-1", "snapshot-2"] },
+        { text: "泛议题内容的负反馈更高，但样本不足以判断原因。", evidenceSnapshotIds: ["snapshot-3"] },
+      ],
+      hypotheses: [{ text: "具体人物可能帮助用户更快进入情境。", confidence: "low", evidenceFor: ["snapshot-1"], evidenceAgainst: ["snapshot-4"] }],
+      keep: ["真实人物与具体邻里场景"],
+      avoid: ["泛议题发散和价值对立"],
+      nextContentSignals: ["开头更快进入具体冲突", "连续验证三条同类内容"],
+      evidenceLimits: "当前样本只表达本账号内的相关性，不能证明平台分发或选题因果。",
+    },
   },
   delegation: {
     lead: "我已把你的安排整理成一份可执行的分工",

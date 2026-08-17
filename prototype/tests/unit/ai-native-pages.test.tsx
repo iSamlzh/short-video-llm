@@ -125,9 +125,9 @@ describe("approved AI-native page hierarchy", () => {
   it("keeps account review conclusions tenant-private", () => {
     render(<ReviewBriefView brief={demoProductData.review} />)
 
-    expect(screen.getByText("林姐视频号本周最值得保留的是：真实邻里场景")).toBeVisible()
-    expect(screen.getByRole("button", { name: "确认并形成创作记忆" })).toBeVisible()
-    expect(screen.getByText(/不会改动系统模板或通用策略/)).toBeVisible()
+    expect(screen.getByText("真实邻里场景值得继续验证")).toBeVisible()
+    expect(screen.getByRole("button", { name: "确认并用于后续创作" })).toBeVisible()
+    expect(screen.getByText(/不会改动平台模板或通用策略/)).toBeVisible()
   })
 
   it("explains a natural-language team delegation before confirming it", () => {

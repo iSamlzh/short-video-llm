@@ -34,7 +34,7 @@ export class ReviewService {
     const baseline = this.baselines.build(scope)
     if (baseline.latestSnapshots.some((item) => item.isSimulated)) throw codedError("REAL_METRICS_REQUIRED")
     const existing = this.reviews.findReviewByEvidenceHash(scope, baseline.evidenceSetHash)
-    if (existing) return existing
+    if (existing) return this.withSampleCount(existing)
     const now = new Date().toISOString()
     this.reviews.startCheckpoint({ id: randomUUID(), scope, evidenceSetHash: baseline.evidenceSetHash, now })
 
@@ -71,7 +71,7 @@ export class ReviewService {
         this.persistEvidence(review.id, payload, baseline.latestSnapshots, createdAt)
         this.reviews.completeCheckpoint(scope, baseline.evidenceSetHash, review.id, createdAt)
         this.metrics.completeReviewReadyBatches(scope, createdAt)
-        return review
+        return this.withSampleCount(review)
       })
       return persist()
     } catch (error) {
@@ -83,12 +83,13 @@ export class ReviewService {
 
   getCurrent(context: TenantAccessContext, contentAccountId: string) {
     const scope = this.requireScope(context, contentAccountId, "review.view")
-    return this.reviews.getCurrent(scope)
+    const review = this.reviews.getCurrent(scope)
+    return review ? this.withSampleCount(review) : null
   }
 
   getHistory(context: TenantAccessContext, contentAccountId: string) {
     const scope = this.requireScope(context, contentAccountId, "review.view")
-    return this.reviews.getHistory(scope)
+    return this.reviews.getHistory(scope).map((review) => this.withSampleCount(review))
   }
 
   private requireScope(
@@ -112,6 +113,10 @@ export class ReviewService {
 
   private persistEvidence(reviewId: string, payload: RealContentReview, snapshots: BaselineSnapshot[], now: string) {
     const byId = new Map(snapshots.map((item) => [item.snapshotId, item]))
+    snapshots.forEach((snapshot) => this.reviews.insertEvidenceLink({
+      id: randomUUID(), reviewId, publicationId: snapshot.publicationId,
+      snapshotId: snapshot.snapshotId, purpose: "baseline", now,
+    }))
     const links = new Map<string, "observation" | "hypothesis_for" | "hypothesis_against">()
     payload.observations.forEach((item) => item.evidenceSnapshotIds.forEach((id) => links.set(`observation:${id}`, "observation")))
     payload.hypotheses.forEach((item) => {
@@ -126,6 +131,10 @@ export class ReviewService {
         id: randomUUID(), reviewId, publicationId: snapshot.publicationId, snapshotId, purpose, now,
       })
     })
+  }
+
+  private withSampleCount<T extends { id: string }>(review: T) {
+    return { ...review, sampleCount: this.reviews.countEvidencePublications(review.id) }
   }
 }
 
