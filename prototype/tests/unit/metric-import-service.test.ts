@@ -33,7 +33,7 @@ describe("MetricImportService", () => {
   it("一行无效时仍持久化有效行和脱敏错误", async () => {
     const result = await service.import(owner, mixedFile())
 
-    expect(result).toMatchObject({ inserted: 1, errors: 1, status: "parsed", total: 2 })
+    expect(result).toMatchObject({ inserted: 1, errors: 1, status: "review_ready", total: 2, unmatched: 1 })
     expect(repository.listSnapshots(result.batchId)).toHaveLength(1)
     expect(repository.listErrors(result.batchId)).toEqual([
       expect.objectContaining({ rowNumber: 3, errorCode: "PLAYS_INVALID" }),

@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3"
-import type { GrowthScope, MetricImportResult, MetricImportRow } from "../../domain/growth-loop"
+import type {
+  GrowthScope, MatchMethod, MatchStatus, MetricImportResult, MetricImportRow, PublicationMatch,
+} from "../../domain/growth-loop"
 
 type BatchRow = {
   id: string
@@ -39,6 +41,35 @@ type SnapshotRow = {
   source_batch_id: string
   source_row_number: number
   created_at: string
+}
+
+export type MetricSnapshot = GrowthScope & {
+  id: string
+  platformContentKey: string
+  platformVideoId: string | null
+  videoUrl: string | null
+  normalizedVideoUrl: string | null
+  title: string
+  publishedAt: string | null
+  capturedAt: string
+  sourceBatchId: string
+  sourceRowNumber: number
+}
+
+type MatchRow = {
+  id: string
+  tenant_id: string
+  ip_profile_id: string
+  content_account_id: string
+  platform: string
+  snapshot_id: string
+  publication_id: string | null
+  candidate_ids_json: string
+  method: MatchMethod
+  status: MatchStatus
+  explanation: string
+  version: number
+  is_current: number
 }
 
 export class MetricsRepository {
@@ -122,9 +153,83 @@ export class MetricsRepository {
     return this.mapResult(row)
   }
 
+  requireBatchScope(batchId: string, tenantId: string) {
+    const row = this.database.prepare(`SELECT tenant_id,ip_profile_id,content_account_id,platform,status
+      FROM metric_import_batches WHERE id=? AND tenant_id=?`).get(batchId, tenantId) as {
+        tenant_id: string; ip_profile_id: string; content_account_id: string; platform: string;
+        status: MetricImportResult["status"]
+      } | undefined
+    if (!row) throw new Error("METRIC_BATCH_NOT_FOUND")
+    return {
+      scope: {
+        tenantId: row.tenant_id, ipId: row.ip_profile_id,
+        contentAccountId: row.content_account_id, platform: row.platform,
+      } satisfies GrowthScope,
+      status: row.status,
+    }
+  }
+
   listSnapshots(batchId: string) {
     return this.database.prepare("SELECT * FROM real_metric_snapshots WHERE source_batch_id=? ORDER BY source_row_number")
       .all(batchId) as SnapshotRow[]
+  }
+
+  listSnapshotModels(batchId: string): MetricSnapshot[] {
+    return (this.listSnapshots(batchId) as SnapshotRow[]).map((row) => this.mapSnapshot(row))
+  }
+
+  requireSnapshot(snapshotId: string) {
+    const row = this.database.prepare("SELECT * FROM real_metric_snapshots WHERE id=?")
+      .get(snapshotId) as SnapshotRow | undefined
+    if (!row) throw new Error("METRIC_SNAPSHOT_NOT_FOUND")
+    return this.mapSnapshot(row)
+  }
+
+  currentMatchForSnapshot(snapshotId: string) {
+    const row = this.database.prepare(`SELECT m.*, s.platform FROM publication_match_versions m
+      JOIN real_metric_snapshots s ON s.id=m.snapshot_id
+      WHERE m.snapshot_id=? AND m.is_current=1`).get(snapshotId) as MatchRow | undefined
+    return row ? this.mapMatch(row) : null
+  }
+
+  requireCurrentMatch(matchId: string) {
+    const row = this.database.prepare(`SELECT m.*, s.platform FROM publication_match_versions m
+      JOIN real_metric_snapshots s ON s.id=m.snapshot_id
+      WHERE m.id=? AND m.is_current=1`).get(matchId) as MatchRow | undefined
+    if (!row) throw new Error("MATCH_VERSION_CONFLICT")
+    return this.mapMatch(row)
+  }
+
+  listCurrentMatches(batchId: string) {
+    return (this.database.prepare(`SELECT m.*, s.platform FROM publication_match_versions m
+      JOIN real_metric_snapshots s ON s.id=m.snapshot_id
+      WHERE s.source_batch_id=? AND m.is_current=1 ORDER BY s.source_row_number`).all(batchId) as MatchRow[])
+      .map((row) => this.mapMatch(row))
+  }
+
+  appendMatch(input: {
+    id: string; snapshot: MetricSnapshot; publicationId: string | null; candidateIds: string[];
+    method: MatchMethod; status: MatchStatus; explanation: string; version: number;
+    confirmedByUserId?: string; confirmedAt?: string; createdAt: string
+  }) {
+    this.database.prepare("UPDATE publication_match_versions SET is_current=0 WHERE snapshot_id=? AND is_current=1")
+      .run(input.snapshot.id)
+    this.database.prepare(`INSERT INTO publication_match_versions
+      (id,tenant_id,ip_profile_id,content_account_id,snapshot_id,publication_id,candidate_ids_json,
+       method,status,explanation,version,is_current,confirmed_by_user_id,confirmed_at,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`).run(
+      input.id, input.snapshot.tenantId, input.snapshot.ipId, input.snapshot.contentAccountId,
+      input.snapshot.id, input.publicationId, JSON.stringify(input.candidateIds), input.method,
+      input.status, input.explanation, input.version, input.confirmedByUserId ?? null,
+      input.confirmedAt ?? null, input.createdAt,
+    )
+    return this.requireCurrentMatch(input.id)
+  }
+
+  updateMatchProgress(batchId: string, input: { status: "matched" | "review_ready"; candidates: number; unmatched: number }) {
+    this.database.prepare(`UPDATE metric_import_batches SET status=?,candidate_rows=?,unmatched_rows=?,updated_at=? WHERE id=?`)
+      .run(input.status, input.candidates, input.unmatched, new Date().toISOString(), batchId)
+    return this.requireBatch(batchId)
   }
 
   listErrors(batchId: string) {
@@ -144,6 +249,28 @@ export class MetricsRepository {
       batchId: row.id, status: row.status, total: row.total_rows, inserted: row.inserted_rows,
       duplicates: row.duplicate_rows, errors: row.error_rows, candidates: row.candidate_rows,
       unmatched: row.unmatched_rows,
+    }
+  }
+
+  private mapSnapshot(row: SnapshotRow): MetricSnapshot {
+    return {
+      id: row.id, tenantId: row.tenant_id, ipId: row.ip_profile_id,
+      contentAccountId: row.content_account_id, platform: row.platform,
+      platformContentKey: row.platform_content_key, platformVideoId: row.platform_video_id,
+      videoUrl: row.video_url, normalizedVideoUrl: row.normalized_video_url, title: row.title,
+      publishedAt: row.published_at, capturedAt: row.captured_at,
+      sourceBatchId: row.source_batch_id, sourceRowNumber: row.source_row_number,
+    }
+  }
+
+  private mapMatch(row: MatchRow): PublicationMatch {
+    return {
+      id: row.id, tenantId: row.tenant_id, ipId: row.ip_profile_id,
+      contentAccountId: row.content_account_id, platform: row.platform,
+      snapshotId: row.snapshot_id, publicationId: row.publication_id,
+      candidateIds: JSON.parse(row.candidate_ids_json) as string[], method: row.method,
+      status: row.status, explanation: row.explanation, version: row.version,
+      isCurrent: row.is_current === 1,
     }
   }
 }

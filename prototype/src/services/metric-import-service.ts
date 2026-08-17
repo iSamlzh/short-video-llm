@@ -6,6 +6,7 @@ import { requireTenantCapability } from "../lib/auth/guards"
 import { normalizeContentTitle, normalizeVideoUrl } from "../lib/content-identity"
 import { MetricsRepository } from "../lib/db/metrics-repository"
 import { parseMetricFile, type ParsedMetricFile } from "../lib/import/spreadsheet-parser"
+import { PublicationMatcher } from "./publication-matcher"
 
 type ImportInput = { contentAccountId: string; filename: string; mimeType: string; bytes: Buffer }
 type Parser = (input: Pick<ImportInput, "filename" | "mimeType" | "bytes">) => Promise<ParsedMetricFile>
@@ -15,6 +16,7 @@ export class MetricImportService {
     private readonly database: Database.Database,
     private readonly repository = new MetricsRepository(database),
     private readonly parser: Parser = parseMetricFile,
+    private readonly matcher = new PublicationMatcher(database, repository),
   ) {}
 
   async import(context: TenantAccessContext, input: ImportInput) {
@@ -67,7 +69,8 @@ export class MetricImportService {
         errors: parsed.errors.length,
       }, persistedAt)
     })
-    return persist()
+    persist()
+    return this.matcher.matchBatch(context, batchId)
   }
 }
 

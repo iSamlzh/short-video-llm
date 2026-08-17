@@ -133,6 +133,14 @@ export class PublicationRepository {
       .map((row) => this.map(row))
   }
 
+  listActiveByScope(scope: GrowthScope) {
+    return (this.database.prepare(`SELECT * FROM publications
+      WHERE tenant_id=? AND ip_profile_id=? AND content_account_id=? AND platform=? AND status='active'
+      ORDER BY published_at, id`).all(
+      scope.tenantId, scope.ipId, scope.contentAccountId, scope.platform,
+    ) as PublicationRow[]).map((row) => this.map(row))
+  }
+
   supplementIdentity(
     scope: GrowthScope,
     publicationId: string,

@@ -10,5 +10,7 @@ export function normalizeVideoUrl(value: string) {
 }
 
 export function normalizeContentTitle(value: string) {
-  return value.normalize("NFKC").trim().toLocaleLowerCase("zh-CN").replace(/\s+/g, " ")
+  return value.normalize("NFKC").trim().toLocaleLowerCase("zh-CN")
+    .replace(/\s+/g, " ")
+    .replace(/^[\p{P}\s]+|[\p{P}\s]+$/gu, "")
 }
