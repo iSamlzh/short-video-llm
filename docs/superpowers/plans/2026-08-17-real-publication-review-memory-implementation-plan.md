@@ -1,81 +1,81 @@
-# Real Publication, Review, and Private Memory Loop Implementation Plan
+# 真实发布、复盘与私有记忆闭环实施计划
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **面向执行 Agent：** 必须使用 `superpowers:subagent-driven-development`（推荐）或 `superpowers:executing-plans`，逐任务执行本计划。所有步骤使用复选框（`- [ ]`）跟踪进度。
 
-**Goal:** Complete the first-version growth loop from an immutable locked script through real publication evidence, deterministic metric matching, evidence-bounded review, human-confirmed tenant-private memory, and traceable reuse of that memory in the next creation run.
+**目标：** 完成首版内容增长闭环：从不可变锁稿出发，经过真实发布凭证、确定性指标匹配、有证据边界的复盘、人工确认的租户私有记忆，并在下一次创作 Run 中可追溯地复用该记忆。
 
-**Architecture:** Keep the existing Next.js Node process and SQLite database, but separate the new behavior into publication, import, matching, review, memory, and creation-context modules. File import and model review execute in-process with persisted checkpoints; matching and evidence calculations remain deterministic, while the LLM only summarizes a server-approved evidence set.
+**架构：** 保留现有 Next.js Node 进程和 SQLite 数据库，将新增行为拆分为发布、导入、匹配、复盘、记忆和创作上下文模块。文件导入与模型复盘在进程内执行并持久化检查点；匹配与证据计算保持确定性，LLM 只总结服务端批准的证据集合。
 
-**Tech Stack:** Next.js 16 Route Handlers, React 19, TypeScript 5.9, SQLite/better-sqlite3, Zod 4, ExcelJS 4.4.0 for CSV/XLSX input, the existing provider-neutral structured LLM client, Vitest, Testing Library, and Playwright.
+**技术栈：** Next.js 16 Route Handlers、React 19、TypeScript 5.9、SQLite/better-sqlite3、Zod 4、用于 CSV/XLSX 输入的 ExcelJS 4.4.0、现有厂商中立的结构化 LLM 客户端、Vitest、Testing Library 和 Playwright。
 
-## Global Constraints
+## 全局约束
 
-- Work from `prototype/` unless a step names a repository-root document.
-- The production path is `locked script → publication → real metric snapshot → deterministic match → review version → confirmed memory version → next creation run`.
-- Keep the first version deployable as one Next.js Node process with one SQLite persistent volume on a 4-core, 8-GB server.
-- Do not add Redis, an external queue, a worker process, object storage, platform OAuth, platform data APIs, digital-human generation, or multi-instance coordination.
-- Limit each upload to exactly 10 MB and 10,000 data rows; accept only `.csv` and `.xlsx`.
-- Delete uploaded bytes after the request finishes; persist batch metadata and redacted row errors, never the original file.
-- Reject simulated metrics from the formal review path; development fixtures remain available only under existing test-mode gates.
-- Match only inside the exact tenant, IP, content-account, and platform scope. The LLM never chooses or changes a publication match.
-- Use the latest snapshot per unique publication for horizontal review while retaining all immutable snapshots for historical growth.
-- Use sample tiers exactly as follows: 0–2 `facts_only`; 3–4 `tentative`; 5+ `memory_eligible`.
-- Only `memory_eligible`, current, non-superseded reviews can be confirmed; only `review.confirm` can create memory.
-- Confirmed memory is immutable and scoped to tenant + IP + content account. It never writes to platform content-brain tables.
-- Creation receives only `version`, `keep`, `avoid`, and `nextContentSignals`; do not pass raw metrics, employee identity, full review history, or hidden model reasoning.
-- Preserve the approved editorial visual system in `src/app/globals.css`: result-first hierarchy, low-radius controls, one accent, no dashboard card grid, and responsive behavior at 1100 px and 760 px.
-- Follow TDD: write a focused failing test, verify RED, implement the minimum coherent behavior, verify GREEN, then commit.
-- This plan supersedes `docs/superpowers/plans/2026-08-17-real-metrics-review-implementation-plan.md`, whose schema and permission assumptions predate the approved detailed design.
+- 除非某一步明确指向仓库根目录文档，否则所有命令都在 `prototype/` 中执行。
+- 生产链路固定为：`锁稿 → 发布记录 → 真实指标快照 → 确定性匹配 → 复盘版本 → 已确认记忆版本 → 下一次创作 Run`。
+- 首版保持单个 Next.js Node 进程和一个 SQLite 持久卷，可部署在 4 核 8 GB 服务器上。
+- 不引入 Redis、外部队列、独立 Worker、对象存储、平台 OAuth、平台数据 API、数字人生成或多实例协调。
+- 单次上传严格限制为 10 MB、10,000 行数据，仅接受 `.csv` 和 `.xlsx`。
+- 请求处理结束后删除上传字节；只持久化批次元数据和脱敏行错误，不保存原文件。
+- 正式复盘链路拒绝模拟指标；开发 Fixture 仅在现有测试模式开关下可用。
+- 匹配只能发生在完全相同的租户、IP、内容账号和平台作用域内。LLM 不得选择或修改发布匹配关系。
+- 横向复盘对每条独立发布只取最新快照，同时保留全部不可变历史快照用于增长趋势分析。
+- 样本分层固定为：0–2 条 `facts_only`；3–4 条 `tentative`；5 条及以上 `memory_eligible`。
+- 只有当前、未失效且属于 `memory_eligible` 的复盘可以确认；只有 `review.confirm` 能力可以创建记忆。
+- 已确认记忆不可变，严格限定在租户 + IP + 内容账号作用域，绝不写入平台内容大脑表。
+- 创作只接收 `version`、`keep`、`avoid` 和 `nextContentSignals`；不得传入原始指标、员工身份、完整复盘历史或隐藏模型推理。
+- 保留 `src/app/globals.css` 中已确认的编辑型视觉系统：结果优先、低圆角、单一强调色、无仪表盘卡片网格，并在 1100 px 和 760 px 断点正确响应。
+- 全程遵守 TDD：先写聚焦的失败测试并验证 RED，再实现最小完整行为并验证 GREEN，最后提交。
+- 本计划取代 `docs/superpowers/plans/2026-08-17-real-metrics-review-implementation-plan.md`；旧计划的表结构与权限假设早于已确认的详细设计。
 
-## File and Responsibility Map
+## 文件与职责映射
 
-| File | Responsibility |
+| 文件 | 职责 |
 |---|---|
-| `src/domain/growth-loop.ts` | Shared publication, import, match, review, and memory types |
-| `src/domain/growth-loop-schemas.ts` | Strict Zod input/output schemas and stable enums |
-| `src/lib/db/migrations/007_real_publication_review_memory.sql` | Additive version-7 schema and lineage columns |
-| `src/lib/db/current-scope-repository.ts` | Resolve and validate the current tenant/IP/account/platform scope |
-| `src/lib/db/publication-repository.ts` | Publication persistence and locked-script lookups |
-| `src/lib/db/metrics-repository.ts` | Batch, row-error, snapshot, and match-version persistence |
-| `src/lib/db/review-memory-repository.ts` | Review checkpoints, review evidence, and immutable memory versions |
-| `src/lib/import/spreadsheet-parser.ts` | Bounded CSV/XLSX parsing and field normalization only |
-| `src/services/publication-service.ts` | Publication authorization, lineage validation, and idempotency |
-| `src/services/metric-import-service.ts` | File policy, parsing, partial-success persistence, and batch summary |
-| `src/services/publication-matcher.ts` | Deterministic matching and audited human resolution |
-| `src/services/account-baseline-service.ts` | Same-account medians, ranges, latest-snapshot selection, and sample tier |
-| `src/services/review-service.ts` | Checkpointed evidence-bounded review generation and supersession |
-| `src/services/tenant-memory-service.ts` | Human confirmation and immutable private memory |
-| `src/services/creation-context-provider.ts` | Minimal confirmed-memory retrieval for a creation run |
-| `src/app/api/app/publications/route.ts` | Locked-script publication receipt API |
-| `src/app/api/app/metrics/[...segments]/route.ts` | Multipart import, batch result, and match-resolution API |
-| `src/app/api/app/reviews/[...segments]/route.ts` | Current review, generation, and confirmation API |
-| `src/components/creation/PublicationReceipt.tsx` | Approved inline publication receipt below a locked script |
-| `src/components/review/ImportOutcome.tsx` | Result-first batch summary and anomaly-only resolution queue |
-| `src/components/review/ReviewBriefView.tsx` | Facts, hypotheses, limits, and private-memory preview |
+| `src/domain/growth-loop.ts` | 发布、导入、匹配、复盘和记忆的共享类型 |
+| `src/domain/growth-loop-schemas.ts` | 严格的 Zod 输入/输出 Schema 与稳定枚举 |
+| `src/lib/db/migrations/007_real_publication_review_memory.sql` | 增量版本 7 表结构与谱系字段 |
+| `src/lib/db/current-scope-repository.ts` | 解析并验证当前租户/IP/账号/平台作用域 |
+| `src/lib/db/publication-repository.ts` | 发布记录持久化与锁稿查询 |
+| `src/lib/db/metrics-repository.ts` | 批次、行错误、快照和匹配版本持久化 |
+| `src/lib/db/review-memory-repository.ts` | 复盘检查点、复盘证据和不可变记忆版本 |
+| `src/lib/import/spreadsheet-parser.ts` | 仅负责受限 CSV/XLSX 解析和字段归一化 |
+| `src/services/publication-service.ts` | 发布授权、谱系校验和幂等 |
+| `src/services/metric-import-service.ts` | 文件策略、解析、部分成功持久化和批次摘要 |
+| `src/services/publication-matcher.ts` | 确定性匹配和带审计的人工处理 |
+| `src/services/account-baseline-service.ts` | 同账号中位数、区间、最新快照选择和样本层级 |
+| `src/services/review-service.ts` | 带检查点和证据边界的复盘生成及失效处理 |
+| `src/services/tenant-memory-service.ts` | 人工确认和不可变私有记忆 |
+| `src/services/creation-context-provider.ts` | 为创作 Run 获取最小化已确认记忆 |
+| `src/app/api/app/publications/route.ts` | 锁稿发布回执 API |
+| `src/app/api/app/metrics/[...segments]/route.ts` | Multipart 导入、批次结果和匹配处理 API |
+| `src/app/api/app/reviews/[...segments]/route.ts` | 当前复盘、生成和确认 API |
+| `src/components/creation/PublicationReceipt.tsx` | 已确认的锁稿正文下方内联发布回执 |
+| `src/components/review/ImportOutcome.tsx` | 结果优先的批次摘要与仅异常处理队列 |
+| `src/components/review/ReviewBriefView.tsx` | 事实、假设、边界和私有记忆预览 |
 
 ---
 
-### Task 1: Add Version-7 Contracts, Capabilities, and Additive Schema
+### 任务 1：增加版本 7 契约、能力项和增量表结构
 
-**Files:**
-- Create: `prototype/src/domain/growth-loop.ts`
-- Create: `prototype/src/domain/growth-loop-schemas.ts`
-- Create: `prototype/src/lib/db/current-scope-repository.ts`
-- Create: `prototype/src/lib/db/migrations/007_real_publication_review_memory.sql`
-- Modify: `prototype/src/lib/db/migrations.ts`
-- Modify: `prototype/src/lib/db/database.ts`
-- Modify: `prototype/src/domain/access.ts`
-- Modify: `prototype/src/scripts/demo-data.ts`
-- Test: `prototype/tests/unit/growth-loop-domain.test.ts`
-- Modify: `prototype/tests/unit/migrations.test.ts`
-- Modify: `prototype/tests/unit/access-domain.test.ts`
-- Modify: `prototype/tests/unit/demo-seed.test.ts`
+**文件：**
+- 新建： `prototype/src/domain/growth-loop.ts`
+- 新建： `prototype/src/domain/growth-loop-schemas.ts`
+- 新建： `prototype/src/lib/db/current-scope-repository.ts`
+- 新建： `prototype/src/lib/db/migrations/007_real_publication_review_memory.sql`
+- 修改： `prototype/src/lib/db/migrations.ts`
+- 修改： `prototype/src/lib/db/database.ts`
+- 修改： `prototype/src/domain/access.ts`
+- 修改： `prototype/src/scripts/demo-data.ts`
+- 测试： `prototype/tests/unit/growth-loop-domain.test.ts`
+- 修改： `prototype/tests/unit/migrations.test.ts`
+- 修改： `prototype/tests/unit/access-domain.test.ts`
+- 修改： `prototype/tests/unit/demo-seed.test.ts`
 
-**Interfaces:**
-- Consumes: existing `TenantAccessContext`, `creation_run_context`, `tenant_memory_versions`, locked-script tables, current IP/account context, and migration runner.
-- Produces: `GrowthScope`, `Publication`, `MetricImportRow`, `MetricImportResult`, `PublicationMatch`, `ContentReviewVersion`, `TenantMemoryVersion`, strict schemas, `CurrentScopeRepository.get(context)`, and capabilities `publication.record` and `review.confirm`.
+**接口：**
+- 输入：现有 `TenantAccessContext`、`creation_run_context`、`tenant_memory_versions`、锁稿表、当前 IP/账号上下文和迁移执行器。
+- 输出：`GrowthScope`、`Publication`、`MetricImportRow`、`MetricImportResult`、`PublicationMatch`、`ContentReviewVersion`、`TenantMemoryVersion`、严格 Schema、`CurrentScopeRepository.get(context)`，以及 `publication.record`、`review.confirm` 能力项。
 
-- [ ] **Step 1: Write failing contract and migration tests**
+- [ ] **步骤 1：编写失败的契约和迁移测试**
 
 ```ts
 it("adds the two explicit capabilities", () => {
@@ -104,13 +104,13 @@ it("keeps review confirmation out of the reviewer preset", async () => {
 })
 ```
 
-- [ ] **Step 2: Run the focused tests and verify RED**
+- [ ] **步骤 2：运行聚焦测试并验证 RED**
 
-Run: `npm test -- growth-loop-domain.test.ts migrations.test.ts access-domain.test.ts demo-seed.test.ts`
+运行：`npm test -- growth-loop-domain.test.ts migrations.test.ts access-domain.test.ts demo-seed.test.ts`
 
-Expected: FAIL because version 7, the new contracts, and the two capabilities do not exist.
+预期：FAIL，因为版本 7、新契约和两个能力项尚不存在。
 
-- [ ] **Step 3: Define exact shared contracts and schemas**
+- [ ] **步骤 3：定义精确的共享契约和 Schema**
 
 ```ts
 export type GrowthScope = {
@@ -134,11 +134,11 @@ export type ConfirmedCreationMemory = {
 }
 ```
 
-Define strict Zod schemas for both publication inputs, import row normalization, candidate confirmation with `expectedVersion`, real-review output, and memory confirmation. Use `.strict()` on HTTP-facing objects. Reject empty strings, invalid ISO timestamps, negative metrics, completion rates outside `0..1`, and `isSimulated !== false`.
+为两类发布输入、导入行归一化、带 `expectedVersion` 的候选确认、真实复盘输出和记忆确认定义严格 Zod Schema。面向 HTTP 的对象使用 `.strict()`。拒绝空字符串、无效 ISO 时间、负指标、超出 `0..1` 的完播率，以及 `isSimulated !== false`。
 
-- [ ] **Step 4: Add the complete additive migration**
+- [ ] **步骤 4：增加完整的增量迁移**
 
-Migration 007 uses the following complete table and index contract:
+迁移 007 使用以下完整表与索引契约：
 
 ```sql
 CREATE TABLE publications (
@@ -305,9 +305,9 @@ CREATE INDEX idx_batches_scope_time ON metric_import_batches(tenant_id,ip_profil
 CREATE INDEX idx_reviews_scope_version ON content_review_versions(tenant_id,ip_profile_id,content_account_id,version);
 ```
 
-Keep existing `imported_content_metrics` rows in place. Current demo rows lack a reliable platform key and publication time, so version 7 must not promote them into the formal snapshot/review path. In `openDatabase`, set `database.pragma("busy_timeout = 5000")` in addition to the existing WAL and foreign-key settings.
+保留现有 `imported_content_metrics` 数据。当前演示行缺少可靠的平台内容键和发布时间，因此版本 7 不得把它们迁入正式快照/复盘链路。在 `openDatabase` 中，除现有 WAL 和外键设置外，再设置 `database.pragma("busy_timeout = 5000")`。
 
-- [ ] **Step 5: Add current-scope resolution and role defaults**
+- [ ] **步骤 5：增加当前作用域解析和角色默认能力**
 
 ```ts
 export class CurrentScopeRepository {
@@ -327,31 +327,31 @@ export class CurrentScopeRepository {
 }
 ```
 
-Owner gets both new capabilities; Operator gets `publication.record`; Reviewer keeps import/generate/view but does not get `review.confirm`. Preserve the existing ability for Owner to delegate `review.confirm` through `TeamService`.
+Owner 获得两个新能力；Operator 获得 `publication.record`；Reviewer 保留导入、生成和查看能力，但默认不获得 `review.confirm`。继续允许 Owner 通过 `TeamService` 把 `review.confirm` 委派给指定成员。
 
-- [ ] **Step 6: Verify GREEN and commit**
+- [ ] **步骤 6：验证 GREEN 并提交**
 
-Run: `npm test -- growth-loop-domain.test.ts migrations.test.ts access-domain.test.ts demo-seed.test.ts`
+运行：`npm test -- growth-loop-domain.test.ts migrations.test.ts access-domain.test.ts demo-seed.test.ts`
 
-Expected: PASS, including double migration and idempotent demo seeding.
+预期：PASS，包括重复执行迁移和演示数据幂等初始化。
 
 ```bash
 git add src/domain/growth-loop.ts src/domain/growth-loop-schemas.ts src/domain/access.ts src/lib/db/current-scope-repository.ts src/lib/db/database.ts src/lib/db/migrations.ts src/lib/db/migrations/007_real_publication_review_memory.sql src/scripts/demo-data.ts tests/unit/growth-loop-domain.test.ts tests/unit/migrations.test.ts tests/unit/access-domain.test.ts tests/unit/demo-seed.test.ts
 git commit -m "feat: add real growth loop contracts and schema"
 ```
 
-### Task 2: Record System and External Publications with Locked-Script Lineage
+### 任务 2：记录带锁稿谱系的系统发布和外部发布
 
-**Files:**
-- Create: `prototype/src/lib/db/publication-repository.ts`
-- Create: `prototype/src/services/publication-service.ts`
-- Test: `prototype/tests/unit/publication-service.test.ts`
+**文件：**
+- 新建： `prototype/src/lib/db/publication-repository.ts`
+- 新建： `prototype/src/services/publication-service.ts`
+- 测试： `prototype/tests/unit/publication-service.test.ts`
 
-**Interfaces:**
-- Consumes: `CurrentScopeRepository`, `requireTenantCapability`, `locked_scripts`, `creation_run_context`, `content_accounts`, and `audit_logs`.
-- Produces: `PublicationService.recordSystem(context, input)`, `createExternal(context, input)`, `supplementIdentity(context, publicationId, input)`, `disable(context, publicationId, reason)`, `getByCurrentLock(context, runId, lockedVersion)`, and repository lookups used by matching.
+**接口：**
+- 输入：`CurrentScopeRepository`、`requireTenantCapability`、`locked_scripts`、`creation_run_context`、`content_accounts` 和 `audit_logs`。
+- 输出：`PublicationService.recordSystem(context, input)`、`createExternal(context, input)`、`supplementIdentity(context, publicationId, input)`、`disable(context, publicationId, reason)`、`getByCurrentLock(context, runId, lockedVersion)`，以及匹配模块所需的仓储查询。
 
-- [ ] **Step 1: Write failing publication-lineage tests**
+- [ ] **步骤 1：编写失败的发布谱系测试**
 
 ```ts
 it("reads the title from the exact locked version and ignores client title", () => {
@@ -391,13 +391,13 @@ it("excludes a disabled publication from future matching", () => {
 })
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [ ] **步骤 2：运行并验证 RED**
 
-Run: `npm test -- publication-service.test.ts`
+运行：`npm test -- publication-service.test.ts`
 
-Expected: FAIL because the repository and service are absent.
+预期：FAIL，因为仓储和服务尚不存在。
 
-- [ ] **Step 3: Implement publication persistence and URL normalization**
+- [ ] **步骤 3：实现发布持久化和 URL 规范化**
 
 ```ts
 export function normalizeVideoUrl(value: string) {
@@ -409,45 +409,45 @@ export function normalizeVideoUrl(value: string) {
 }
 ```
 
-Do not resolve or expand short URLs. `PublicationRepository` returns active candidates only, exposes exact ID/URL/title-window queries, and stores all writes inside one local transaction. On unique conflicts, load and return the identical record; if the same identity points at another lock/publication, throw `PUBLICATION_ID_CONFLICT` or `PUBLICATION_URL_CONFLICT`.
+不得解析或展开短链接。`PublicationRepository` 只返回有效候选，提供精确 ID、URL 和标题时间窗查询，并把相关写入放入一个本地事务。发生唯一键冲突时，如请求完全相同则读取并返回已有记录；如同一身份指向另一锁稿或发布记录，则抛出 `PUBLICATION_ID_CONFLICT` 或 `PUBLICATION_URL_CONFLICT`。
 
-- [ ] **Step 4: Implement system and external publication policies**
+- [ ] **步骤 4：实现系统发布和外部发布策略**
 
-`recordSystem` requires `publication.record`, assigned IP/account, one of video ID or URL, an accessible `creation_run_context`, and the exact `locked_scripts(run_id, version)`. It copies title and `script_selection_version` from the lock. `createExternal` requires `metrics.import`, title + published time, and at least video ID, URL, or the explicit title/time external identity. `supplementIdentity` adds an ID or URL to the same external record after conflict checks. `disable` keeps the row and lineage but removes it from active matching. Create, supplement, and disable actions write redacted `audit_logs` records.
+`recordSystem` 要求 `publication.record`、已授权 IP/账号、视频 ID 或 URL 之一、可访问的 `creation_run_context`，以及精确的 `locked_scripts(run_id, version)`。标题和 `script_selection_version` 必须从锁稿复制。`createExternal` 要求 `metrics.import`、标题 + 发布时间，并至少具备视频 ID、URL 或明确的标题/时间外部身份。`supplementIdentity` 在冲突校验后为同一外部记录补充 ID 或 URL。`disable` 保留数据与谱系，但把记录排除在有效匹配之外。创建、补充和停用均写入脱敏 `audit_logs`。
 
-- [ ] **Step 5: Verify GREEN and commit**
+- [ ] **步骤 5：验证 GREEN 并提交**
 
-Run: `npm test -- publication-service.test.ts creation-lineage.test.ts`
+运行：`npm test -- publication-service.test.ts creation-lineage.test.ts`
 
-Expected: PASS with no changes to existing creation lineage behavior.
+预期：PASS，且现有创作谱系行为不发生变化。
 
 ```bash
 git add src/lib/db/publication-repository.ts src/services/publication-service.ts tests/unit/publication-service.test.ts
 git commit -m "feat: record published locked scripts"
 ```
 
-### Task 3: Parse Bounded CSV/XLSX Imports and Persist Partial Success
+### 任务 3：解析受限 CSV/XLSX 并持久化部分成功结果
 
-**Files:**
-- Modify: `prototype/package.json`
-- Modify: `prototype/package-lock.json`
-- Create: `prototype/src/lib/import/spreadsheet-parser.ts`
-- Create: `prototype/src/lib/db/metrics-repository.ts`
-- Create: `prototype/src/services/metric-import-service.ts`
-- Test: `prototype/tests/unit/spreadsheet-parser.test.ts`
-- Test: `prototype/tests/unit/metric-import-service.test.ts`
+**文件：**
+- 修改： `prototype/package.json`
+- 修改： `prototype/package-lock.json`
+- 新建： `prototype/src/lib/import/spreadsheet-parser.ts`
+- 新建： `prototype/src/lib/db/metrics-repository.ts`
+- 新建： `prototype/src/services/metric-import-service.ts`
+- 测试： `prototype/tests/unit/spreadsheet-parser.test.ts`
+- 测试： `prototype/tests/unit/metric-import-service.test.ts`
 
-**Interfaces:**
-- Consumes: exact `GrowthScope`, `metrics.import`, request file bytes, and version-7 batch/snapshot/error tables.
-- Produces: `parseMetricFile(input): Promise<ParsedMetricFile>`, `MetricImportService.import(context, input): Promise<MetricImportResult>`, and immutable real snapshots for matching.
+**接口：**
+- 输入：精确 `GrowthScope`、`metrics.import`、请求文件字节和版本 7 的批次/快照/错误表。
+- 输出：`parseMetricFile(input): Promise<ParsedMetricFile>`、`MetricImportService.import(context, input): Promise<MetricImportResult>`，以及供匹配使用的不可变真实快照。
 
-- [ ] **Step 1: Install the pinned spreadsheet dependency**
+- [ ] **步骤 1：安装固定版本的表格解析依赖**
 
-Run: `npm install --save-exact exceljs@4.4.0`
+运行：`npm install --save-exact exceljs@4.4.0`
 
-Expected: `exceljs: "4.4.0"` appears in dependencies and the lockfile changes. Use the [official ExcelJS v4.4.0 workbook APIs](https://github.com/exceljs/exceljs/releases/tag/v4.4.0); do not write an upload to disk.
+预期：依赖中出现 `exceljs: "4.4.0"`，锁文件同步更新。使用[官方 ExcelJS v4.4.0 Workbook API](https://github.com/exceljs/exceljs/releases/tag/v4.4.0)，不得把上传文件写入磁盘。
 
-- [ ] **Step 2: Write failing parser and partial-success tests**
+- [ ] **步骤 2：编写失败的解析和部分成功测试**
 
 ```ts
 it("normalizes Chinese CSV headers and percentage values", async () => {
@@ -475,27 +475,27 @@ it("persists valid rows when another row is invalid", async () => {
 })
 ```
 
-- [ ] **Step 3: Run and verify RED**
+- [ ] **步骤 3：运行并验证 RED**
 
-Run: `npm test -- spreadsheet-parser.test.ts metric-import-service.test.ts`
+运行：`npm test -- spreadsheet-parser.test.ts metric-import-service.test.ts`
 
-Expected: FAIL because parsing and persistence modules do not exist.
+预期：FAIL，因为解析和持久化模块尚不存在。
 
-- [ ] **Step 4: Implement exact file and row policy**
+- [ ] **步骤 4：实现精确的文件和行级策略**
 
-`parseMetricFile` must:
+`parseMetricFile` 必须：
 
-- reject bytes above `10 * 1024 * 1024` with `FILE_TOO_LARGE` before workbook parsing;
-- reject extensions other than `.csv` and `.xlsx` with `FILE_TYPE_UNSUPPORTED`;
-- accept MIME types `text/csv`, `application/csv`, `application/vnd.ms-excel`, and `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`; when a browser sends an empty or generic MIME, require a valid extension and successful parser signature instead of trusting MIME alone;
-- stop after 10,000 data rows with `ROW_LIMIT_EXCEEDED`;
-- normalize the aliases listed in section 6 of the approved design;
-- require a title and one identity form: ID, URL, or title + published time;
-- accept counts as non-negative integers and rates as `0.35` or `35%`;
-- convert dates to UTC ISO while preserving a redacted original reference for errors;
-- derive the title/time-only key as SHA-256 of `platform|accountId|normalizedTitle|publishedAt` in the service, never as an automatic match key.
+- 在解析 Workbook 之前，字节数超过 `10 * 1024 * 1024` 时返回 `FILE_TOO_LARGE`；
+- 扩展名不是 `.csv` 或 `.xlsx` 时返回 `FILE_TYPE_UNSUPPORTED`；
+- 接受 MIME：`text/csv`、`application/csv`、`application/vnd.ms-excel` 和 `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet`；浏览器发送空 MIME 或通用 MIME 时，必须同时满足有效扩展名和解析器签名，不能只信任 MIME；
+- 数据行超过 10,000 时返回 `ROW_LIMIT_EXCEEDED`；
+- 归一化已确认详细设计第 6 节中的字段别名；
+- 每行必须有标题，并具备一种身份形式：ID、URL 或标题 + 发布时间；
+- 计数仅接受非负整数，比率接受 `0.35` 或 `35%`；
+- 日期统一转换为 UTC ISO，同时为错误保留脱敏的原始引用；
+- 在服务层以 `platform|accountId|normalizedTitle|publishedAt` 的 SHA-256 生成仅标题/时间键，但该键永远不得作为自动匹配依据。
 
-Return this exact shape:
+返回以下精确结构：
 
 ```ts
 type ParsedMetricFile = {
@@ -505,36 +505,36 @@ type ParsedMetricFile = {
 }
 ```
 
-- [ ] **Step 5: Implement batch idempotency and immutable snapshots**
+- [ ] **步骤 5：实现批次幂等和不可变快照**
 
-`MetricImportService.import` requires `metrics.import` for the current account before parsing bytes. It hashes the file, returns the existing batch for the same account + SHA-256, creates the batch as `processing`, writes valid snapshots with `is_simulated=0`, records duplicates and row errors, moves the batch to `parsed`, and never stores `bytes`. A parser-level fatal error moves the batch to `failed`; row errors do not roll back valid snapshots.
+`MetricImportService.import` 必须在解析字节前校验当前账号的 `metrics.import`。服务计算文件哈希；相同账号 + SHA-256 返回已有批次；新批次以 `processing` 创建；有效快照以 `is_simulated=0` 写入；重复和行错误分别记录；最后转为 `parsed`；任何时候都不保存 `bytes`。解析器级致命错误把批次转为 `failed`，行级错误不得回滚有效快照。
 
-- [ ] **Step 6: Verify GREEN and commit**
+- [ ] **步骤 6：验证 GREEN 并提交**
 
-Run: `npm test -- spreadsheet-parser.test.ts metric-import-service.test.ts`
+运行：`npm test -- spreadsheet-parser.test.ts metric-import-service.test.ts`
 
-Expected: PASS for CSV, XLSX, size/type/row limits, duplicate import, and partial success.
+预期：CSV、XLSX、大小/类型/行数限制、重复导入和部分成功测试全部 PASS。
 
 ```bash
 git add package.json package-lock.json src/lib/import/spreadsheet-parser.ts src/lib/db/metrics-repository.ts src/services/metric-import-service.ts tests/unit/spreadsheet-parser.test.ts tests/unit/metric-import-service.test.ts
 git commit -m "feat: import immutable real metric snapshots"
 ```
 
-### Task 4: Deterministically Match Metrics and Audit Human Resolution
+### 任务 4：确定性匹配指标并审计人工处理
 
-**Files:**
-- Create: `prototype/src/services/publication-matcher.ts`
-- Modify: `prototype/src/services/metric-import-service.ts`
-- Modify: `prototype/src/lib/db/metrics-repository.ts`
-- Modify: `prototype/src/lib/db/publication-repository.ts`
-- Test: `prototype/tests/unit/publication-matcher.test.ts`
-- Modify: `prototype/tests/unit/metric-import-service.test.ts`
+**文件：**
+- 新建： `prototype/src/services/publication-matcher.ts`
+- 修改： `prototype/src/services/metric-import-service.ts`
+- 修改： `prototype/src/lib/db/metrics-repository.ts`
+- 修改： `prototype/src/lib/db/publication-repository.ts`
+- 测试： `prototype/tests/unit/publication-matcher.test.ts`
+- 修改： `prototype/tests/unit/metric-import-service.test.ts`
 
-**Interfaces:**
-- Consumes: normalized snapshots, active publication candidates, `PublicationService.createExternal`, and `expectedVersion`.
-- Produces: `PublicationMatcher.matchBatch(context, batchId)`, `confirmCandidate(context, matchId, publicationId, expectedVersion)`, and `rejectCandidateAndCreateExternal(context, matchId, expectedVersion)`.
+**接口：**
+- 输入：已归一化快照、有效发布候选、`PublicationService.createExternal` 和 `expectedVersion`。
+- 输出：`PublicationMatcher.matchBatch(context, batchId)`、`confirmCandidate(context, matchId, publicationId, expectedVersion)` 和 `rejectCandidateAndCreateExternal(context, matchId, expectedVersion)`。
 
-- [ ] **Step 1: Write failing priority, ambiguity, and concurrency tests**
+- [ ] **步骤 1：编写失败的优先级、歧义和并发测试**
 
 ```ts
 it("uses ID, then URL, then one exact title inside ±7 days", () => {
@@ -558,15 +558,15 @@ it("rejects a stale human confirmation", () => {
 })
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [ ] **步骤 2：运行并验证 RED**
 
-Run: `npm test -- publication-matcher.test.ts metric-import-service.test.ts`
+运行：`npm test -- publication-matcher.test.ts metric-import-service.test.ts`
 
-Expected: FAIL because match decisions and versioned confirmation are missing.
+预期：FAIL，因为匹配决策和版本化确认尚未实现。
 
-- [ ] **Step 3: Implement exact normalization and decision order**
+- [ ] **步骤 3：实现精确归一化和决策顺序**
 
-Normalize titles with Unicode NFKC, lowercase Latin text, collapsed whitespace, and removal of surrounding punctuation only. Exact title matching requires one active candidate inside an inclusive ±7-day window. Similarity uses a deterministic Dice score over two-character shingles; scores at or above `0.72` inside ±30 days produce at most three ranked candidates but never `matched`. No candidate becomes `unmatched`.
+标题采用 Unicode NFKC、拉丁字符小写、空白折叠，并且只移除首尾标点。精确标题匹配要求在包含边界的 ±7 天窗口内只有一个有效候选。相似度对双字符 Shingle 计算确定性 Dice 分数；±30 天内分数不低于 `0.72` 时最多给出三个排序候选，但永远不能直接成为 `matched`。没有候选时才进入 `unmatched`。
 
 ```ts
 type MatchDecision = {
@@ -578,48 +578,48 @@ type MatchDecision = {
 }
 ```
 
-- [ ] **Step 4: Persist append-only match versions and audit manual changes**
+- [ ] **步骤 4：持久化只追加的匹配版本并审计人工变更**
 
-For every snapshot, mark the old row `is_current=0` and append the next version in one transaction. Human resolution requires `metrics.import` plus scope, compares `expectedVersion`, and writes `metrics.match.confirmed` or `metrics.match.external_created` to `audit_logs`. A candidate may bind an existing active publication or create an external publication from the immutable imported identity.
+对每个快照，在同一事务中把旧行标记为 `is_current=0` 并追加下一版本。人工处理要求 `metrics.import` 和正确作用域，比较 `expectedVersion`，并向 `audit_logs` 写入 `metrics.match.confirmed` 或 `metrics.match.external_created`。候选可以绑定已有有效发布，也可以基于不可变导入身份创建外部发布记录。
 
-- [ ] **Step 5: Connect import completion to matching without blocking valid rows**
+- [ ] **步骤 5：连接导入完成与匹配，且不阻断有效行**
 
-After parsing, `MetricImportService.import` invokes `matchBatch`, updates counters, and sets `matched` then `review_ready`. Candidate and unmatched rows remain visible while exact matches proceed. A failure in one match writes a row-level error and does not undo other matched snapshots.
+解析完成后，`MetricImportService.import` 调用 `matchBatch`、更新计数，并依次转为 `matched` 和 `review_ready`。候选和未匹配行保持可见，精确匹配数据继续向复盘推进。单条匹配失败只写入行级错误，不得撤销其他已匹配快照。
 
-- [ ] **Step 6: Verify GREEN and commit**
+- [ ] **步骤 6：验证 GREEN 并提交**
 
-Run: `npm test -- publication-matcher.test.ts metric-import-service.test.ts publication-service.test.ts`
+运行：`npm test -- publication-matcher.test.ts metric-import-service.test.ts publication-service.test.ts`
 
-Expected: PASS for priority, ambiguity, similarity, external creation, audit, version conflict, and partial continuation.
+预期：优先级、歧义、相似候选、外部创建、审计、版本冲突和部分继续全部 PASS。
 
 ```bash
 git add src/services/publication-matcher.ts src/services/metric-import-service.ts src/lib/db/metrics-repository.ts src/lib/db/publication-repository.ts tests/unit/publication-matcher.test.ts tests/unit/metric-import-service.test.ts
 git commit -m "feat: match imported metrics deterministically"
 ```
 
-### Task 5: Generate Checkpointed, Evidence-Bounded Real Reviews
+### 任务 5：生成带检查点和证据边界的真实复盘
 
-**Files:**
-- Modify: `prototype/src/domain/schemas.ts`
-- Create: `prototype/src/prompts/real-review.ts`
-- Modify: `prototype/src/prompts/index.ts`
-- Modify: `prototype/src/lib/llm/adapter.ts`
-- Modify: `prototype/src/lib/llm/structured.ts`
-- Modify: `prototype/src/lib/llm/fake.ts`
-- Create: `prototype/src/services/account-baseline-service.ts`
-- Create: `prototype/src/lib/db/review-memory-repository.ts`
-- Create: `prototype/src/services/review-service.ts`
-- Modify: `prototype/src/lib/db/metrics-repository.ts`
-- Test: `prototype/tests/unit/account-baseline-service.test.ts`
-- Test: `prototype/tests/unit/real-review-schema.test.ts`
-- Test: `prototype/tests/unit/review-service.test.ts`
-- Modify: `prototype/tests/unit/llm.test.ts`
+**文件：**
+- 修改： `prototype/src/domain/schemas.ts`
+- 新建： `prototype/src/prompts/real-review.ts`
+- 修改： `prototype/src/prompts/index.ts`
+- 修改： `prototype/src/lib/llm/adapter.ts`
+- 修改： `prototype/src/lib/llm/structured.ts`
+- 修改： `prototype/src/lib/llm/fake.ts`
+- 新建： `prototype/src/services/account-baseline-service.ts`
+- 新建： `prototype/src/lib/db/review-memory-repository.ts`
+- 新建： `prototype/src/services/review-service.ts`
+- 修改： `prototype/src/lib/db/metrics-repository.ts`
+- 测试： `prototype/tests/unit/account-baseline-service.test.ts`
+- 测试： `prototype/tests/unit/real-review-schema.test.ts`
+- 测试： `prototype/tests/unit/review-service.test.ts`
+- 修改： `prototype/tests/unit/llm.test.ts`
 
-**Interfaces:**
-- Consumes: latest matched real snapshot per publication, IP expression boundaries, structured LLM, and review checkpoints.
-- Produces: `AccountBaselineService.build(scope)`, LLM operation `real_review`, `StructuredLlmResult<T>`, `ReviewService.generateCurrent(context, contentAccountId)`, `getCurrent(context, contentAccountId)`, `getHistory(context, contentAccountId)`, and immutable evidence links.
+**接口：**
+- 输入：每条发布的最新已匹配真实快照、IP 表达边界、结构化 LLM 和复盘检查点。
+- 输出：`AccountBaselineService.build(scope)`、LLM 操作 `real_review`、`StructuredLlmResult<T>`、`ReviewService.generateCurrent(context, contentAccountId)`、`getCurrent(context, contentAccountId)`、`getHistory(context, contentAccountId)` 和不可变证据链接。
 
-- [ ] **Step 1: Write failing baseline, tier, evidence, and retry tests**
+- [ ] **步骤 1：编写失败的基线、层级、证据和重试测试**
 
 ```ts
 it.each([[2, "facts_only"], [3, "tentative"], [4, "tentative"], [5, "memory_eligible"]])(
@@ -658,13 +658,13 @@ it("keeps immutable review history after a newer evidence set arrives", async ()
 })
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [ ] **步骤 2：运行并验证 RED**
 
-Run: `npm test -- account-baseline-service.test.ts real-review-schema.test.ts review-service.test.ts llm.test.ts`
+运行：`npm test -- account-baseline-service.test.ts real-review-schema.test.ts review-service.test.ts llm.test.ts`
 
-Expected: FAIL because the real-review operation, metadata result, checkpoints, and service do not exist.
+预期：FAIL，因为真实复盘操作、元数据结果、检查点和服务尚不存在。
 
-- [ ] **Step 3: Add the exact real-review schema and prompt**
+- [ ] **步骤 3：增加精确的真实复盘 Schema 和 Prompt**
 
 ```ts
 export const realContentReviewSchema = z.object({
@@ -681,9 +681,9 @@ export const realContentReviewSchema = z.object({
 }).strict()
 ```
 
-Add `real_review` to `LlmOperation` and `prompts`. The system prompt must require JSON only, forbid causal claims, forbid missing metrics, restrict evidence IDs to the supplied allowlist, and keep hypothesis confidence at `low|medium`.
+把 `real_review` 加入 `LlmOperation` 和 `prompts`。System Prompt 必须要求只返回 JSON，禁止因果断言、禁止编造缺失指标、把证据 ID 限定在输入白名单内，并将假设置信度限制为 `low|medium`。
 
-- [ ] **Step 4: Preserve model and token metadata without breaking existing callers**
+- [ ] **步骤 4：在不破坏现有调用方的前提下保留模型与 Token 元数据**
 
 ```ts
 export type StructuredLlmResult<T> = { data: T; model: string; usage?: TokenUsage }
@@ -727,49 +727,49 @@ export async function generateStructured<T>(options: GenerateOptions<T>): Promis
 }
 ```
 
-Add `StructuredLlmClient.generateStructuredResult`; retain the existing `generateStructured` signature so creation tests remain unchanged. When repair is used, persist the final model and combined available usage rather than the invalid raw response.
+增加 `StructuredLlmClient.generateStructuredResult`；保留现有 `generateStructured` 签名，避免影响创作测试。发生 Repair 时，保存最终模型和合并后的可用 Usage，而不是无效原始响应。
 
-- [ ] **Step 5: Implement deterministic baseline and evidence set hashing**
+- [ ] **步骤 5：实现确定性基线与证据集合哈希**
 
-Compute medians and percentile ranges only from the current account and compatible content type. Include missing-field markers, unique publication count, latest snapshots, complete historical snapshots, and a SHA-256 over sorted `publicationId:snapshotId`. Do not calculate a conversion rate when its denominator is absent.
+只使用当前账号和兼容内容类型计算中位数与分位区间。结果包含缺失字段标记、独立发布数量、最新快照、完整历史快照，以及对排序后 `publicationId:snapshotId` 计算的 SHA-256。分母缺失时不得计算转化率。
 
-- [ ] **Step 6: Implement checkpoints, generation, reuse, and supersession**
+- [ ] **步骤 6：实现检查点、生成、复用和失效**
 
-`generateCurrent` requires `review.generate`, rejects any simulated snapshot, returns deterministic facts without LLM for 0–2 samples, and otherwise creates/reuses a checkpoint by evidence hash. Save model, prompt version, token usage, evidence cutoff, payload, and individual evidence links. If new data or a match changes the hash, mark an unconfirmed previous review `superseded`. After a review is persisted, mark eligible `review_ready` batches in the same scope as `completed`; on timeout/schema/evidence errors they remain `review_ready`, the checkpoint keeps the stable code, and retry never requires re-upload. `getCurrent` and `getHistory` require `review.view` and never return cross-scope rows.
+`generateCurrent` 要求 `review.generate`，拒绝任何模拟快照；0–2 条样本只返回确定性事实而不调用 LLM；其他层级按证据哈希创建或复用检查点。保存模型、Prompt 版本、Token Usage、证据截止时间、Payload 和逐条证据链接。新数据或匹配变更导致哈希变化时，把未确认旧复盘标记为 `superseded`。复盘持久化后，把同作用域内符合条件的 `review_ready` 批次标记为 `completed`；超时、Schema 或证据错误时保持 `review_ready`，检查点保存稳定错误码，重试不需要重新上传。`getCurrent` 和 `getHistory` 要求 `review.view`，不得返回跨作用域数据。
 
-- [ ] **Step 7: Verify GREEN and commit**
+- [ ] **步骤 7：验证 GREEN 并提交**
 
-Run: `npm test -- account-baseline-service.test.ts real-review-schema.test.ts review-service.test.ts llm.test.ts`
+运行：`npm test -- account-baseline-service.test.ts real-review-schema.test.ts review-service.test.ts llm.test.ts`
 
-Expected: PASS for all tiers, latest snapshot selection, model boundaries, evidence allowlist, one repair, checkpoint reuse, retry, and supersession.
+预期：全部层级、最新快照选择、模型边界、证据白名单、单次 Repair、检查点复用、重试和失效测试均 PASS。
 
 ```bash
 git add src/domain/schemas.ts src/prompts/real-review.ts src/prompts/index.ts src/lib/llm/adapter.ts src/lib/llm/structured.ts src/lib/llm/fake.ts src/services/account-baseline-service.ts src/lib/db/metrics-repository.ts src/lib/db/review-memory-repository.ts src/services/review-service.ts tests/unit/account-baseline-service.test.ts tests/unit/real-review-schema.test.ts tests/unit/review-service.test.ts tests/unit/llm.test.ts
 git commit -m "feat: generate evidence-bounded real reviews"
 ```
 
-### Task 6: Confirm Immutable Memory and Feed Its Exact Version into Creation
+### 任务 6：确认不可变记忆，并把精确版本回流到创作
 
-**Files:**
-- Create: `prototype/src/services/tenant-memory-service.ts`
-- Create: `prototype/src/services/creation-context-provider.ts`
-- Modify: `prototype/src/lib/db/review-memory-repository.ts`
-- Modify: `prototype/src/lib/db/creation-lineage-repository.ts`
-- Modify: `prototype/src/services/creation-app-service.ts`
-- Modify: `prototype/src/services/auto-creation-orchestrator.ts`
-- Modify: `prototype/src/services/run-service.ts`
-- Modify: `prototype/src/services/creation-presenter.ts`
-- Modify: `prototype/src/lib/llm/fake.ts`
-- Test: `prototype/tests/unit/tenant-memory-service.test.ts`
-- Test: `prototype/tests/unit/creation-memory-integration.test.ts`
-- Modify: `prototype/tests/unit/creation-lineage.test.ts`
-- Modify: `prototype/tests/unit/creation-app-service.test.ts`
+**文件：**
+- 新建： `prototype/src/services/tenant-memory-service.ts`
+- 新建： `prototype/src/services/creation-context-provider.ts`
+- 修改： `prototype/src/lib/db/review-memory-repository.ts`
+- 修改： `prototype/src/lib/db/creation-lineage-repository.ts`
+- 修改： `prototype/src/services/creation-app-service.ts`
+- 修改： `prototype/src/services/auto-creation-orchestrator.ts`
+- 修改： `prototype/src/services/run-service.ts`
+- 修改： `prototype/src/services/creation-presenter.ts`
+- 修改： `prototype/src/lib/llm/fake.ts`
+- 测试： `prototype/tests/unit/tenant-memory-service.test.ts`
+- 测试： `prototype/tests/unit/creation-memory-integration.test.ts`
+- 修改： `prototype/tests/unit/creation-lineage.test.ts`
+- 修改： `prototype/tests/unit/creation-app-service.test.ts`
 
-**Interfaces:**
-- Consumes: `review.confirm`, a current `memory_eligible` review, `CreationContextProvider.getCurrent/getVersion`, and the existing creation pipeline.
-- Produces: immutable `TenantMemoryVersion`, creation input `tenantMemory`, persisted `tenant_memory_version`, and a light `memoryInfluence` presenter object.
+**接口：**
+- 输入：`review.confirm`、当前 `memory_eligible` 复盘、`CreationContextProvider.getCurrent/getVersion` 和现有创作链路。
+- 输出：不可变 `TenantMemoryVersion`、创作输入 `tenantMemory`、持久化的 `tenant_memory_version` 和轻量 `memoryInfluence` 展示对象。
 
-- [ ] **Step 1: Write failing confirmation and creation-lineage tests**
+- [ ] **步骤 1：编写失败的确认和创作谱系测试**
 
 ```ts
 it("requires review.confirm and at least five unique matched videos", () => {
@@ -799,17 +799,17 @@ it("pins the memory version used by the run", async () => {
 })
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [ ] **步骤 2：运行并验证 RED**
 
-Run: `npm test -- tenant-memory-service.test.ts creation-memory-integration.test.ts creation-lineage.test.ts creation-app-service.test.ts`
+运行：`npm test -- tenant-memory-service.test.ts creation-memory-integration.test.ts creation-lineage.test.ts creation-app-service.test.ts`
 
-Expected: FAIL because confirmation and creation memory context are missing.
+预期：FAIL，因为确认服务和创作记忆上下文尚不存在。
 
-- [ ] **Step 3: Implement guarded immutable confirmation**
+- [ ] **步骤 3：实现带权限保护的不可变确认**
 
-`TenantMemoryService.confirm` validates `review.confirm`, exact scope, `memory_eligible`, status `generated`, and current evidence-set hash inside one transaction. It accepts edits only to `keep`, `avoid`, and `nextContentSignals`; it copies `evidenceLimits` from the review, computes a stable content hash, returns the existing row for the same review + hash, otherwise allocates the next scoped version, marks the review `confirmed`, and writes `review.memory.confirmed` to `audit_logs`.
+`TenantMemoryService.confirm` 在同一事务中校验 `review.confirm`、精确作用域、`memory_eligible`、`generated` 状态和当前证据集合哈希。只接受对 `keep`、`avoid` 和 `nextContentSignals` 的编辑；`evidenceLimits` 从复盘复制；计算稳定内容哈希；同一复盘 + 哈希返回已有行，否则分配下一作用域版本、把复盘标记为 `confirmed`，并向 `audit_logs` 写入 `review.memory.confirmed`。
 
-- [ ] **Step 4: Add minimal memory retrieval and pinned run lineage**
+- [ ] **步骤 4：增加最小化记忆读取和固定 Run 谱系**
 
 ```ts
 export class CreationContextProvider {
@@ -818,11 +818,11 @@ export class CreationContextProvider {
 }
 ```
 
-Extend `CreationLineageRepository.attach` and its mapped row with `tenantMemoryVersion: number | null`. The value is written once when the Run is attached and is never backfilled.
+扩展 `CreationLineageRepository.attach` 及其映射结果，增加 `tenantMemoryVersion: number | null`。该值只在 Run 绑定时写入一次，之后不得回填或更新。
 
-- [ ] **Step 5: Thread memory through generation without coupling to platform templates**
+- [ ] **步骤 5：把记忆传入生成链路，但不耦合平台模板**
 
-Change the exact signatures to:
+把函数签名精确调整为：
 
 ```ts
 AutoCreationOrchestrator.createUsableDraft(profile, adjustment?, tenantMemory?: ConfirmedCreationMemory)
@@ -830,11 +830,11 @@ RunService.generateAutoDraft(runId, inputVersion, tenantMemory?: ConfirmedCreati
 RunService.generateTopicDraft(runId, inputVersion, topics, selectedTopicId, adjustment, tenantMemory?: ConfirmedCreationMemory)
 ```
 
-Add `tenantMemory` only to LLM input beside the IP profile; do not mutate the content-brain repository or platform template ranking tables. `CreationAppService` reads memory before generation, attaches its version after Run creation, and uses `getVersion` when presenting an older Run.
+只在 LLM 输入中把 `tenantMemory` 放在 IP 画像旁；不得修改内容大脑仓储或平台模板排序表。`CreationAppService` 在生成前读取记忆，在 Run 创建后绑定其版本，并在展示历史 Run 时通过 `getVersion` 读取当时使用的版本。
 
-- [ ] **Step 6: Present a light, truthful influence summary**
+- [ ] **步骤 6：展示轻量且真实的影响摘要**
 
-`presentCreationDraft(view, memory?)` returns:
+`presentCreationDraft(view, memory?)` 返回：
 
 ```ts
 memoryInfluence: memory ? {
@@ -843,33 +843,33 @@ memoryInfluence: memory ? {
 } : null
 ```
 
-The presenter never claims that memory affected a specific word unless that effect is represented by the supplied keep/signal summary.
+除非 `keep` 或 Signal 摘要能够支持，否则展示层不得声称记忆影响了某个具体词句。
 
-- [ ] **Step 7: Verify GREEN and commit**
+- [ ] **步骤 7：验证 GREEN 并提交**
 
-Run: `npm test -- tenant-memory-service.test.ts creation-memory-integration.test.ts creation-lineage.test.ts creation-app-service.test.ts auto-creation-orchestrator.test.ts`
+运行：`npm test -- tenant-memory-service.test.ts creation-memory-integration.test.ts creation-lineage.test.ts creation-app-service.test.ts auto-creation-orchestrator.test.ts`
 
-Expected: PASS for permissions, tier gate, superseded review rejection, idempotency, minimal prompt input, exact run lineage, and no platform-template write.
+预期：权限、样本门槛、失效复盘拒绝、幂等、最小 Prompt 输入、精确 Run 谱系和平台模板零写入测试均 PASS。
 
 ```bash
 git add src/services/tenant-memory-service.ts src/services/creation-context-provider.ts src/lib/db/review-memory-repository.ts src/lib/db/creation-lineage-repository.ts src/services/creation-app-service.ts src/services/auto-creation-orchestrator.ts src/services/run-service.ts src/services/creation-presenter.ts src/lib/llm/fake.ts tests/unit/tenant-memory-service.test.ts tests/unit/creation-memory-integration.test.ts tests/unit/creation-lineage.test.ts tests/unit/creation-app-service.test.ts
 git commit -m "feat: apply confirmed private memory to creation"
 ```
 
-### Task 7: Expose Strict Publication, Import, Match, Review, and Memory APIs
+### 任务 7：提供严格的发布、导入、匹配、复盘和记忆 API
 
-**Files:**
-- Create: `prototype/src/services/growth-loop-service-factory.ts`
-- Create: `prototype/src/app/api/app/publications/route.ts`
-- Create: `prototype/src/app/api/app/metrics/[...segments]/route.ts`
-- Create: `prototype/src/app/api/app/reviews/[...segments]/route.ts`
-- Test: `prototype/tests/unit/growth-loop-routes.test.ts`
+**文件：**
+- 新建： `prototype/src/services/growth-loop-service-factory.ts`
+- 新建： `prototype/src/app/api/app/publications/route.ts`
+- 新建： `prototype/src/app/api/app/metrics/[...segments]/route.ts`
+- 新建： `prototype/src/app/api/app/reviews/[...segments]/route.ts`
+- 测试： `prototype/tests/unit/growth-loop-routes.test.ts`
 
-**Interfaces:**
-- Consumes: all six focused services, `resolveCurrentAccess`, strict Zod schemas, and current scope.
-- Produces: the approved HTTP contract with stable error codes. The existing singular `/api/app/review/*` route remains untouched until Task 9 replaces its UI consumer, so every intermediate commit still has a working review page.
+**接口：**
+- 输入：六个聚焦服务、`resolveCurrentAccess`、严格 Zod Schema 和当前作用域。
+- 输出：已确认且具有稳定错误码的 HTTP 契约。现有单数 `/api/app/review/*` 路由保留到任务 9 替换其 UI 调用方，确保每个中间提交都维持可用的复盘页面。
 
-- [ ] **Step 1: Write failing route tests for auth-before-body, strict bodies, and conflicts**
+- [ ] **步骤 1：编写失败的先鉴权、严格请求体和冲突路由测试**
 
 ```ts
 it("rejects metric import before reading an unauthorized body", async () => {
@@ -892,17 +892,17 @@ it("returns 409 for stale match and review confirmation", async () => {
 })
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [ ] **步骤 2：运行并验证 RED**
 
-Run: `npm test -- growth-loop-routes.test.ts`
+运行：`npm test -- growth-loop-routes.test.ts`
 
-Expected: FAIL because the production routes and dependency factory do not exist.
+预期：FAIL，因为生产路由和依赖工厂尚不存在。
 
-- [ ] **Step 3: Build one production service factory without merging responsibilities**
+- [ ] **步骤 3：建立生产服务工厂，但不合并模块职责**
 
-`growth-loop-service-factory.ts` wires repositories, services, the existing structured LLM client, and the current app database. It may cache the dependency graph per process, but services remain individually exportable for unit tests. Do not move business rules into route files.
+`growth-loop-service-factory.ts` 连接仓储、服务、现有结构化 LLM 客户端和当前应用数据库。允许按进程缓存依赖图，但各服务仍应独立导出以便单元测试。不得把业务规则移入 Route 文件。
 
-- [ ] **Step 4: Implement publication and multipart metric endpoints**
+- [ ] **步骤 4：实现发布与 Multipart 指标端点**
 
 - `POST /api/app/publications`
 - `GET /api/app/publications?runId={id}&lockedVersion={n}`
@@ -911,17 +911,17 @@ Expected: FAIL because the production routes and dependency factory do not exist
 - `POST /api/app/metrics/matches/{matchId}/confirm`
 - `POST /api/app/metrics/matches/{matchId}/external`
 
-Resolve the session, tenant audience, capability, and current account scope before calling `request.formData()` or `request.json()`. Return 413 for byte limit, 409 for version/identity conflict, 404 for out-of-scope resources, and redacted stable errors for every other known failure.
+在调用 `request.formData()` 或 `request.json()` 前解析 Session、租户 Audience、能力项和当前账号作用域。字节超限返回 413，版本/身份冲突返回 409，超出作用域资源返回 404，其他已知失败返回脱敏稳定错误。
 
-- [ ] **Step 5: Implement review and confirmation endpoints**
+- [ ] **步骤 5：实现复盘与确认端点**
 
 - `GET /api/app/reviews/current?contentAccountId={id}`
 - `POST /api/app/reviews/generate` with `{ contentAccountId }`
 - `POST /api/app/reviews/{reviewId}/confirm` with editable memory fields
 
-Viewing requires `review.view`, generation requires `review.generate`, and confirmation requires `review.confirm`. The response includes tier, evidence limits, confirmation eligibility, version lineage, and retryable state, never prompt text or model reasoning.
+查看要求 `review.view`，生成要求 `review.generate`，确认要求 `review.confirm`。响应包含样本层级、证据边界、是否可确认、版本谱系和可重试状态，绝不返回 Prompt 原文或模型推理。
 
-Map known failures exactly:
+已知失败按以下规则精确映射：
 
 ```ts
 const statusByCode: Record<string, number> = {
@@ -945,33 +945,33 @@ const statusByCode: Record<string, number> = {
 }
 ```
 
-- [ ] **Step 6: Verify the new routes while preserving the working intermediate UI**
+- [ ] **步骤 6：验证新路由，同时保持中间 UI 可用**
 
-Run: `npm test -- growth-loop-routes.test.ts access-domain.test.ts runtime-features.test.ts`
+运行：`npm test -- growth-loop-routes.test.ts access-domain.test.ts runtime-features.test.ts`
 
-Expected: PASS for the new plural `/reviews` and `/metrics` contracts; the old singular route is removed only after Task 9 switches its final consumer.
+预期：新的复数 `/reviews` 和 `/metrics` 契约 PASS；旧单数路由只在任务 9 完成最终调用方切换后删除。
 
 ```bash
 git add src/services/growth-loop-service-factory.ts src/app/api/app/publications/route.ts src/app/api/app/metrics src/app/api/app/reviews tests/unit/growth-loop-routes.test.ts
 git commit -m "feat: expose secure real growth loop APIs"
 ```
 
-### Task 8: Add the Approved Inline Publication Receipt and Memory Influence to Today
+### 任务 8：在今日创作增加已确认的内联发布回执和记忆影响
 
-**Files:**
-- Create: `prototype/src/components/creation/PublicationReceipt.tsx`
-- Modify: `prototype/src/components/creation/DailyCreationView.tsx`
-- Modify: `prototype/src/components/creation/DailyCreationWorkspace.tsx`
-- Modify: `prototype/src/app/globals.css`
-- Modify: `prototype/src/presets/product-demo.ts`
-- Test: `prototype/tests/unit/publication-receipt-ui.test.tsx`
-- Modify: `prototype/tests/unit/ai-native-pages.test.tsx`
+**文件：**
+- 新建： `prototype/src/components/creation/PublicationReceipt.tsx`
+- 修改： `prototype/src/components/creation/DailyCreationView.tsx`
+- 修改： `prototype/src/components/creation/DailyCreationWorkspace.tsx`
+- 修改： `prototype/src/app/globals.css`
+- 修改： `prototype/src/presets/product-demo.ts`
+- 测试： `prototype/tests/unit/publication-receipt-ui.test.tsx`
+- 修改： `prototype/tests/unit/ai-native-pages.test.tsx`
 
-**Interfaces:**
-- Consumes: locked draft `runId + lockedVersion`, publication APIs, and `draft.memoryInfluence`.
-- Produces: the approved A-layout below the locked script and a light, traceable memory-use line in creation evidence.
+**接口：**
+- 输入：已锁稿的 `runId + lockedVersion`、发布 API 和 `draft.memoryInfluence`。
+- 输出：锁稿正文下方已确认的 A 版布局，以及创作依据中轻量、可追溯的记忆使用说明。
 
-- [ ] **Step 1: Write failing interaction and hierarchy tests**
+- [ ] **步骤 1：编写失败的交互和层级测试**
 
 ```tsx
 it("does not interrupt copying or appear before a script is locked", () => {
@@ -1002,55 +1002,55 @@ it("shows memory version without a selector or weight control", () => {
 })
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [ ] **步骤 2：运行并验证 RED**
 
-Run: `npm test -- publication-receipt-ui.test.tsx ai-native-pages.test.tsx`
+运行：`npm test -- publication-receipt-ui.test.tsx ai-native-pages.test.tsx`
 
-Expected: FAIL because the receipt and memory-use view are absent.
+预期：FAIL，因为发布回执和记忆使用视图尚不存在。
 
-- [ ] **Step 3: Implement the exact approved A interaction**
+- [ ] **步骤 3：实现已确认的精确 A 版交互**
 
-Render `PublicationReceipt` after the document footnote only when `status === "locked"`. Its collapsed prompt is “这条视频已经发布了吗？” with one secondary “记录已发布” action. The expanded form has one identity field, one editable publication time, save/cancel, inline validation, and retained input after failure. Success collapses to platform + time + “已关联发布”; a separate small action adds another account publication without replacing the first.
+仅当 `status === "locked"` 时，在文稿脚注之后渲染 `PublicationReceipt`。折叠状态显示“这条视频已经发布了吗？”和一个次级“记录已发布”操作。展开表单包含一个身份字段、一个可编辑发布时间、保存/取消、内联校验，并在失败后保留输入。成功后折叠为平台 + 时间 +“已关联发布”；另设轻量操作用于增加其他账号发布，不能覆盖第一条记录。
 
-- [ ] **Step 4: Add automatic memory influence to existing evidence hierarchy**
+- [ ] **步骤 4：把自动生效的记忆影响加入现有依据层级**
 
-Add one sentence beneath the lead and one item inside “创作依据（摘要）”: `已参考上次确认的复盘：{summary} · 记忆 v{version}`. Do not add a settings panel, toggle, modal, or extra pre-generation step.
+在 Lead 下方增加一句话，并在“创作依据（摘要）”中增加一项：`已参考上次确认的复盘：{summary} · 记忆 v{version}`。不得增加设置面板、开关、弹窗或生成前额外步骤。
 
-- [ ] **Step 5: Preserve responsive and accessible behavior**
+- [ ] **步骤 5：保持响应式和无障碍行为**
 
-Use the existing serif typography, color tokens, button classes, visible focus, minimum 44 px mobile targets, and the 760 px one-column breakpoint. The receipt must not create horizontal overflow at 390 × 844 and must expose status through `role="status"`.
+使用现有衬线字体、颜色 Token、按钮类、可见焦点、移动端最小 44 px 点击区域和 760 px 单列断点。发布回执在 390 × 844 下不得产生横向溢出，并通过 `role="status"` 暴露状态。
 
-- [ ] **Step 6: Verify GREEN and commit**
+- [ ] **步骤 6：验证 GREEN 并提交**
 
-Run: `npm test -- publication-receipt-ui.test.tsx ai-native-pages.test.tsx daily-ui.test.tsx`
+运行：`npm test -- publication-receipt-ui.test.tsx ai-native-pages.test.tsx daily-ui.test.tsx`
 
-Expected: PASS for locked/unlocked, failure retention, multiple publication status, memory trace, and no extra configuration UI.
+预期：锁定/未锁定、失败保留、多发布状态、记忆追踪及无额外配置 UI 测试均 PASS。
 
 ```bash
 git add src/components/creation/PublicationReceipt.tsx src/components/creation/DailyCreationView.tsx src/components/creation/DailyCreationWorkspace.tsx src/app/globals.css src/presets/product-demo.ts tests/unit/publication-receipt-ui.test.tsx tests/unit/ai-native-pages.test.tsx
 git commit -m "feat: add inline publication receipt to creation"
 ```
 
-### Task 9: Replace the Review Page with Result-First Import, Anomaly Resolution, and Memory Preview
+### 任务 9：以结果优先导入、异常处理和记忆预览替换复盘页面
 
-**Files:**
-- Create: `prototype/src/components/review/ImportOutcome.tsx`
-- Create: `prototype/src/components/review/MatchResolutionList.tsx`
-- Create: `prototype/src/components/review/MemoryPreview.tsx`
-- Modify: `prototype/src/components/review/ReviewWorkspace.tsx`
-- Modify: `prototype/src/components/review/ReviewBriefView.tsx`
-- Modify: `prototype/src/app/app/review/page.tsx`
-- Delete: `prototype/src/app/api/app/review/[...segments]/route.ts`
-- Modify: `prototype/src/app/globals.css`
-- Modify: `prototype/src/presets/product-demo.ts`
-- Test: `prototype/tests/unit/review-workspace-ui.test.tsx`
-- Modify: `prototype/tests/unit/ai-native-pages.test.tsx`
+**文件：**
+- 新建： `prototype/src/components/review/ImportOutcome.tsx`
+- 新建： `prototype/src/components/review/MatchResolutionList.tsx`
+- 新建： `prototype/src/components/review/MemoryPreview.tsx`
+- 修改： `prototype/src/components/review/ReviewWorkspace.tsx`
+- 修改： `prototype/src/components/review/ReviewBriefView.tsx`
+- 修改： `prototype/src/app/app/review/page.tsx`
+- 删除： `prototype/src/app/api/app/review/[...segments]/route.ts`
+- 修改： `prototype/src/app/globals.css`
+- 修改： `prototype/src/presets/product-demo.ts`
+- 测试： `prototype/tests/unit/review-workspace-ui.test.tsx`
+- 修改： `prototype/tests/unit/ai-native-pages.test.tsx`
 
-**Interfaces:**
-- Consumes: multipart import, batch/match APIs, current/generate/confirm review APIs, sample tiers, and current capability state.
-- Produces: the approved A review flow: conclusion first, only anomalies expanded, automatic review continuation, and guarded private-memory confirmation.
+**接口：**
+- 输入：Multipart 导入、批次/匹配 API、当前/生成/确认复盘 API、样本层级和当前能力状态。
+- 输出：已确认的 A 版复盘流程：结论优先、只展开异常、自动继续复盘，以及带权限保护的私有记忆确认。
 
-- [ ] **Step 1: Write failing result-first and tier-gate tests**
+- [ ] **步骤 1：编写失败的结果优先和层级门槛测试**
 
 ```tsx
 it("summarizes success first and expands only candidate matches", () => {
@@ -1084,33 +1084,33 @@ it("shows editable memory fields but keeps evidence limits read-only", () => {
 })
 ```
 
-- [ ] **Step 2: Run and verify RED**
+- [ ] **步骤 2：运行并验证 RED**
 
-Run: `npm test -- review-workspace-ui.test.tsx ai-native-pages.test.tsx`
+运行：`npm test -- review-workspace-ui.test.tsx ai-native-pages.test.tsx`
 
-Expected: FAIL because the page still uses the old CSV brief and unguarded confirm behavior.
+预期：FAIL，因为页面仍使用旧 CSV Brief 和无权限保护的确认行为。
 
-- [ ] **Step 3: Implement multipart import with persisted recovery**
+- [ ] **步骤 3：实现可持久化恢复的 Multipart 导入**
 
-`ReviewWorkspace` receives current account ID/capabilities from the server page, posts `FormData`, displays the persisted batch outcome, then calls review generation. Refresh reloads the latest batch/review instead of relying on component memory. Accept `.csv,.xlsx`; never read XLSX through `file.text()`. After this consumer is switched, delete the singular `/api/app/review/*` route so production cannot reach the old demo/formal-mixing implementation.
+`ReviewWorkspace` 从服务端页面接收当前账号 ID/能力，提交 `FormData`，显示已持久化的批次结果，然后调用复盘生成。刷新时重新读取最新批次/复盘，而不是依赖组件内存。接受 `.csv,.xlsx`；不得通过 `file.text()` 读取 XLSX。调用方切换后删除单数 `/api/app/review/*` 路由，确保生产环境无法访问旧的演示/正式混合实现。
 
-- [ ] **Step 4: Implement anomaly-only resolution**
+- [ ] **步骤 4：实现仅异常处理**
 
-Lead with processed, matched, candidate, unmatched, duplicate, and error counts in one sentence. Expand candidate rows only. Each row shows the imported title/time, up to three deterministic candidates with match explanation, and actions to confirm an existing publication or create an external record. Duplicates and errors remain in a collapsed secondary disclosure with row number and repair message.
+首句直接说明已处理、已匹配、候选、未匹配、重复和错误数量。只展开候选行。每行显示导入标题/时间、最多三个带解释的确定性候选，以及确认已有发布或创建外部记录的操作。重复和错误放在折叠的次级说明中，包含行号和修复提示。
 
-- [ ] **Step 5: Implement the approved conclusion + evidence + memory composition**
+- [ ] **步骤 5：实现已确认的结论 + 证据 + 记忆组合**
 
-The main column renders, in order: headline, “能确定什么”, “比较可能但不能确定”, “不能推断什么”, and “下一轮建议”. Every observation links to its permitted evidence snapshots; hypotheses display low/medium confidence without pretending causality. The right rail contains editable `keep`, `avoid`, and `nextContentSignals`, a read-only evidence limit, exact team/IP/account scope, and the confirm action only when both tier and capability allow it.
+主栏依次渲染：Headline、“能确定什么”“比较可能但不能确定”“不能推断什么”和“下一轮建议”。每条观察链接到允许的证据快照；假设显示低/中置信度，不伪装成因果。右侧栏包含可编辑的 `keep`、`avoid` 和 `nextContentSignals`、只读证据边界、精确团队/IP/账号作用域，并且只有样本层级和能力同时满足时才显示确认操作。
 
-- [ ] **Step 6: Preserve the AI-native visual contract**
+- [ ] **步骤 6：保持 AI Native 视觉契约**
 
-Do not add metric dashboards, batch tables, filter bars, charts, generic stat-card grids, or a template-management entry. Reuse the existing document/evidence rail, Phosphor icons, low-radius controls, current breakpoints, loading language, and inline retry status.
+不得增加指标仪表盘、批次表格、筛选栏、图表、通用统计卡片网格或模板管理入口。复用现有文档/证据侧栏、Phosphor 图标、低圆角控件、当前断点、加载文案和内联重试状态。
 
-- [ ] **Step 7: Verify GREEN and commit**
+- [ ] **步骤 7：验证 GREEN 并提交**
 
-Run: `npm test -- review-workspace-ui.test.tsx ai-native-pages.test.tsx app-shell.test.tsx`
+运行：`npm test -- review-workspace-ui.test.tsx ai-native-pages.test.tsx app-shell.test.tsx`
 
-Expected: PASS for multipart upload, partial success, automatic review, candidate resolution, all sample tiers, permission-aware confirmation, and responsive hierarchy.
+预期：Multipart 上传、部分成功、自动复盘、候选处理、全部样本层级、权限感知确认和响应式层级测试均 PASS。
 
 ```bash
 git add src/components/review/ImportOutcome.tsx src/components/review/MatchResolutionList.tsx src/components/review/MemoryPreview.tsx src/components/review/ReviewWorkspace.tsx src/components/review/ReviewBriefView.tsx src/app/app/review/page.tsx src/app/globals.css src/presets/product-demo.ts tests/unit/review-workspace-ui.test.tsx tests/unit/ai-native-pages.test.tsx
@@ -1118,26 +1118,26 @@ git rm "src/app/api/app/review/[...segments]/route.ts"
 git commit -m "feat: deliver result-first real review workspace"
 ```
 
-### Task 10: Prove the Complete Real-Data Loop and Document Single-Server Operations
+### 任务 10：验证完整真实数据闭环并记录单机运维方案
 
-**Files:**
-- Create: `prototype/tests/e2e/fixtures/real-metrics.csv`
-- Create: `prototype/tests/e2e/real-growth-loop.spec.ts`
-- Modify: `prototype/tests/e2e/content-loop.spec.ts`
-- Modify: `prototype/src/scripts/e2e-server.ts`
-- Modify: `prototype/src/scripts/demo-data.ts`
-- Modify: `prototype/src/scripts/clear-demo.ts`
-- Modify: `prototype/README.md`
-- Modify: `prototype/.env.example`
-- Create: `prototype/docs/operations/real-growth-loop.md`
+**文件：**
+- 新建： `prototype/tests/e2e/fixtures/real-metrics.csv`
+- 新建： `prototype/tests/e2e/real-growth-loop.spec.ts`
+- 修改： `prototype/tests/e2e/content-loop.spec.ts`
+- 修改： `prototype/src/scripts/e2e-server.ts`
+- 修改： `prototype/src/scripts/demo-data.ts`
+- 修改： `prototype/src/scripts/clear-demo.ts`
+- 修改： `prototype/README.md`
+- 修改： `prototype/.env.example`
+- 新建： `prototype/docs/operations/real-growth-loop.md`
 
-**Interfaces:**
-- Consumes: the finished APIs/UI and existing fixture-model test gate.
-- Produces: browser proof of the full loop, clean demo-data removal, and exact first-version deployment/backup guidance.
+**接口：**
+- 输入：已完成的 API/UI 和现有 Fixture 模型测试开关。
+- 输出：完整闭环的浏览器证据、干净的演示数据清理能力，以及精确的首版部署/备份说明。
 
-- [ ] **Step 1: Write the failing end-to-end scenario**
+- [ ] **步骤 1：编写失败的端到端场景**
 
-The browser test must perform these exact assertions:
+浏览器测试必须执行以下精确断言：
 
 ```ts
 test("real publication data becomes confirmed memory for the next creation run", async ({ page }) => {
@@ -1156,66 +1156,66 @@ test("real publication data becomes confirmed memory for the next creation run",
 })
 ```
 
-Add separate browser checks for: four samples cannot confirm; a Reviewer without `review.confirm` cannot confirm; mixed valid/duplicate/error/candidate rows continue review; refresh preserves batch/review/memory; platform users cannot read tenant endpoints; 390 × 844 has no horizontal overflow.
+另外增加浏览器检查：4 条样本不能确认；缺少 `review.confirm` 的 Reviewer 不能确认；有效/重复/错误/候选混合行仍继续复盘；刷新后批次/复盘/记忆保持；平台用户不能读取租户端点；390 × 844 无横向溢出。
 
-- [ ] **Step 2: Run the new E2E test and verify RED**
+- [ ] **步骤 2：运行新 E2E 测试并验证 RED**
 
-Run: `npm run build && npm run test:e2e -- real-growth-loop.spec.ts`
+运行：`npm run build && npm run test:e2e -- real-growth-loop.spec.ts`
 
-Expected: FAIL at the first missing integrated behavior, while the build itself succeeds or identifies any type mismatch to fix before proceeding.
+预期：在第一个缺失的集成行为处 FAIL；构建本身应成功，或明确指出必须先修复的类型不一致。
 
-- [ ] **Step 3: Make test fixtures real-path-only and clearable**
+- [ ] **步骤 3：让测试 Fixture 仅走真实链路且可清理**
 
-The E2E server may seed formal-looking fixture publications/metrics only when both `PROTOTYPE_TEST_MODE=true` and `PLAYWRIGHT_TEST_MODE=true`. Production startup never seeds them. Extend `clear-demo.ts` to delete version-7 rows only when their linked tenant/user/batch is `data_origin=demo`; formal publication, snapshot, review, and memory rows must remain.
+只有 `PROTOTYPE_TEST_MODE=true` 和 `PLAYWRIGHT_TEST_MODE=true` 同时成立时，E2E Server 才能初始化形式上真实的发布/指标 Fixture；生产启动永远不能初始化这些数据。扩展 `clear-demo.ts`：只有关联租户/用户/批次的 `data_origin=demo` 时才删除版本 7 数据；正式发布、快照、复盘和记忆必须保留。
 
-- [ ] **Step 4: Document exact first-version operations**
+- [ ] **步骤 4：记录精确的首版运维要求**
 
-`README.md`, `.env.example`, and `docs/operations/real-growth-loop.md` must state:
+`README.md`、`.env.example` 和 `docs/operations/real-growth-loop.md` 必须说明：
 
-- one Node process, one persistent SQLite path, 4 CPU / 8 GB RAM baseline;
-- `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_TIMEOUT_SECONDS`, `PROTOTYPE_DB_PATH`;
-- reverse-proxy request limit above 10 MB but below 12 MB so the app can return its own 10-MB error;
-- SQLite WAL, foreign keys, busy timeout, daily file backup, restore test, and disk-space monitoring;
-- no multi-instance startup against the same SQLite file;
-- production cannot enable `PROTOTYPE_TEST_MODE`, `PLAYWRIGHT_TEST_MODE`, or demo controls;
-- platform API, queue, PostgreSQL, and load balancing remain phase-two seams, not first-version dependencies.
+- 一个 Node 进程、一个持久化 SQLite 路径、4 CPU / 8 GB RAM 基线；
+- `LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_TIMEOUT_SECONDS`、`PROTOTYPE_DB_PATH`；
+- 反向代理请求上限高于 10 MB 但低于 12 MB，使应用能够返回自己的 10 MB 错误；
+- SQLite WAL、外键、Busy Timeout、每日文件备份、恢复测试和磁盘空间监控；
+- 禁止多个实例同时使用同一个 SQLite 文件启动；
+- 生产环境不得启用 `PROTOTYPE_TEST_MODE`、`PLAYWRIGHT_TEST_MODE` 或演示控制项；
+- 平台 API、队列、PostgreSQL 和负载均衡属于二期扩展接口，不是首版依赖。
 
-- [ ] **Step 5: Run the complete verification matrix**
+- [ ] **步骤 5：运行完整验证矩阵**
 
-Run: `npm test`
+运行：`npm test`
 
-Expected: all unit/component tests PASS.
+预期：全部单元/组件测试 PASS。
 
-Run: `npm run typecheck`
+运行：`npm run typecheck`
 
-Expected: PASS with no TypeScript errors.
+预期：PASS，且无 TypeScript 错误。
 
-Run: `npm run build`
+运行：`npm run build`
 
-Expected: production build PASS and all three new Route Handlers compile under the Node runtime.
+预期：生产构建 PASS，三个新 Route Handler 均在 Node Runtime 下编译成功。
 
-Run: `npm run test:e2e`
+运行：`npm run test:e2e`
 
-Expected: existing creation/team/platform tests and the new real-growth-loop test PASS with no browser console errors.
+预期：现有创作/团队/平台测试和新的真实增长闭环测试均 PASS，浏览器 Console 无错误。
 
-- [ ] **Step 6: Manually verify the approved visual states and commit**
+- [ ] **步骤 6：人工验证已确认视觉状态并提交**
 
-At desktop 1487 × 1058 and mobile 390 × 844, compare the running states to the approved A prototypes: locked-script receipt, mixed import outcome, review with memory preview, and next creation with memory influence. Check hierarchy, clipping, padding, focus, error recovery, and overflow. Fix only visible mismatches within the approved design; do not invent a new visual direction.
+在桌面端 1487 × 1058 和移动端 390 × 844 下，把运行状态与已确认 A 版原型对比：锁稿回执、混合导入结果、带记忆预览的复盘，以及带记忆影响的下一次创作。检查层级、裁切、Padding、焦点、错误恢复和溢出。只修复已确认设计范围内的可见偏差，不创造新视觉方向。
 
 ```bash
 git add tests/e2e/fixtures/real-metrics.csv tests/e2e/real-growth-loop.spec.ts tests/e2e/content-loop.spec.ts src/scripts/e2e-server.ts src/scripts/demo-data.ts src/scripts/clear-demo.ts README.md .env.example docs/operations/real-growth-loop.md
 git commit -m "test: verify real publication review memory loop"
 ```
 
-## Completion Gate
+## 完成门槛
 
-Implementation is complete only when all of the following are simultaneously true:
+只有以下条件同时成立，实施才算完成：
 
-1. A publication can be traced to an exact locked-script version or an explicit external record.
-2. Every formal metric row is an immutable real snapshot or a persisted redacted error; uploaded bytes are gone.
-3. Every automatic match is explainable by ID, normalized URL, or one exact title candidate inside ±7 days.
-4. Every review is bound to an exact evidence-set hash and exact snapshot links.
-5. Only a current 5+ sample review can create a scoped immutable memory version.
-6. A later creation Run stores and displays the exact memory version it actually used.
-7. Tenant, IP, account, capability, and platform-audience isolation pass service, route, and browser tests.
-8. Unit tests, typecheck, production build, full E2E, desktop visual QA, and mobile overflow QA all pass.
+1. 发布记录能够追溯到精确锁稿版本或明确外部记录。
+2. 每条正式指标行要么成为不可变真实快照，要么成为已持久化的脱敏错误；上传字节已经清除。
+3. 每条自动匹配都能由 ID、规范化 URL 或 ±7 天内唯一精确标题候选解释。
+4. 每个复盘都绑定精确证据集合哈希和精确快照链接。
+5. 只有当前、5 条及以上样本的复盘能够创建有作用域的不可变记忆版本。
+6. 后续创作 Run 保存并展示其实际使用的精确记忆版本。
+7. 租户、IP、账号、能力和平台 Audience 隔离通过服务、路由和浏览器测试。
+8. 单元测试、Typecheck、生产构建、完整 E2E、桌面视觉 QA 和移动端溢出 QA 全部通过。
