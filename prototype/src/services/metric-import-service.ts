@@ -72,6 +72,19 @@ export class MetricImportService {
     persist()
     return this.matcher.matchBatch(context, batchId)
   }
+
+  getResult(context: TenantAccessContext, batchId: string) {
+    const { scope } = this.repository.requireBatchScope(batchId, context.tenantId)
+    requireTenantCapability(context, "metrics.import", {
+      ipId: scope.ipId,
+      contentAccountId: scope.contentAccountId,
+    })
+    return {
+      ...this.repository.requireBatch(batchId),
+      errors: this.repository.listErrors(batchId),
+      matches: this.repository.listCurrentMatches(batchId),
+    }
+  }
 }
 
 function buildContentIdentity(scope: GrowthScope, row: MetricImportRow) {
