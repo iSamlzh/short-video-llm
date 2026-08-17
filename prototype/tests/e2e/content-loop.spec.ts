@@ -24,6 +24,14 @@ test("tenant default path produces one usable draft and keeps internal brain pri
   await expect(page.getByRole("button", { name: "复制并去拍" })).toBeVisible()
   await expect(page.getByText("已检查：事实可信 · 符合你的表达 · 无收益承诺")).toBeVisible()
   await expect(page.getByText("创作依据（摘要）")).toBeVisible()
+  const currentResult = await page.evaluate(async () => {
+    const response = await fetch("/api/app/creation/current")
+    return { ok: response.ok, payload: await response.json() }
+  })
+  const currentPayload = currentResult.payload
+  expect(currentResult.ok, JSON.stringify(currentPayload)).toBe(true)
+  expect(currentPayload.structureVersionIds.length).toBeGreaterThan(0)
+  expect(JSON.stringify(currentPayload)).not.toMatch(/sourceText|evidenceRefs|rightsNote|operatorNote|nodes|qualityRules|riskRules/)
   const editSecondParagraph = page.getByRole("button", { name: "编辑第 2 段" })
   await expect(editSecondParagraph).toBeEnabled()
   await editSecondParagraph.click()
@@ -67,8 +75,9 @@ test("delegation and platform content brain are usable in their own scopes", asy
   await page.getByRole("button", { name: "确认并邀请小周" }).click()
   await expect(page.getByText(/小周现在只能操作林姐/)).toBeVisible()
 
-  await page.request.post("/api/auth/logout")
+  await page.evaluate(() => fetch("/api/auth/logout", { method: "POST" }))
   await login(page, "platform@example.test")
-  await expect(page.getByText("已启用的内容结构")).toBeVisible()
-  await expect(page.getByText(/客户永远看不到原文/)).toBeVisible()
+  await page.getByRole("button", { name: "结构库" }).click()
+  await expect(page.getByRole("heading", { name: "已启用结构" })).toBeVisible()
+  await expect(page.getByText(/只有当前可参与团长创作检索的正式版本/)).toBeVisible()
 })

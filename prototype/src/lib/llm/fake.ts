@@ -54,7 +54,11 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
         { kind: "principle", instruction: "落到责任原则", required: true, evidenceRefs: ["e2"] },
       ],
       reusablePatterns: ["冲突—处理—原则"], nonReusableFacts: ["具体人物姓名"],
-      applicability: { ipTags: ["团长"], audiences: ["本地经营者"], goals: ["建立信任"] },
+      applicability: {
+        ipTags: ["社区团购选品、社群维护与团长培训"],
+        audiences: ["想做本地生意的宝妈和小店主"],
+        goals: ["团长招商获客"],
+      },
       riskNotes: ["不得承诺收益"],
       evidenceRefs: [
         { id: "e1", quote: "真实经历", start: 0, end: 4 },
