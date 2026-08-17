@@ -8,12 +8,13 @@ type ContextInput = {
   accountId: string | null
   businessDate: string
   tenantMemoryVersion?: number | null
+  structureVersionIds?: string[]
 }
 
 type Scope = { tenantId: string; ipIds: string[]; contentAccountIds: string[] }
 type Row = {
   run_id: string; tenant_id: string; ip_profile_id: string; content_account_id: string | null;
-  business_date: string; tenant_memory_version: number | null
+  business_date: string; tenant_memory_version: number | null; structure_version_ids_json: string
 }
 
 export class CreationLineageRepository {
@@ -21,8 +22,8 @@ export class CreationLineageRepository {
 
   attach(input: ContextInput) {
     this.database.prepare(`INSERT INTO creation_run_context
-      (run_id,tenant_id,actor_user_id,ip_profile_id,content_account_id,business_date,tenant_memory_version,created_at)
-      VALUES (?,?,?,?,?,?,?,?)`).run(
+      (run_id,tenant_id,actor_user_id,ip_profile_id,content_account_id,business_date,tenant_memory_version,structure_version_ids_json,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?)`).run(
       input.runId,
       input.tenantId,
       input.actorUserId,
@@ -30,6 +31,7 @@ export class CreationLineageRepository {
       input.accountId,
       input.businessDate,
       input.tenantMemoryVersion ?? null,
+      JSON.stringify(input.structureVersionIds ?? []),
       new Date().toISOString(),
     )
   }
@@ -62,6 +64,16 @@ export class CreationLineageRepository {
       accountId: row.content_account_id,
       businessDate: row.business_date,
       tenantMemoryVersion: row.tenant_memory_version,
+      structureVersionIds: parseStringArray(row.structure_version_ids_json),
     }
+  }
+}
+
+function parseStringArray(value: string) {
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []
+  } catch {
+    return []
   }
 }

@@ -27,9 +27,10 @@ export class CreationAppService {
     const current = this.currentContext(context)
     const lineage = this.lineage.current(context.tenantId, current.ipId, current.accountId, businessDate)
     if (!lineage) return null
-    return presentCreationDraft(
+    return this.presentWithLineage(
       this.runs.getRunView(lineage.runId),
       this.memoryFor(current, lineage.tenantMemoryVersion),
+      lineage.structureVersionIds,
     )
   }
 
@@ -62,8 +63,9 @@ export class CreationAppService {
       accountId: current.accountId,
       businessDate,
       tenantMemoryVersion: tenantMemory?.version ?? null,
+      structureVersionIds: result.structureVersionIds,
     })
-    return presentCreationDraft(result, tenantMemory)
+    return this.presentWithLineage(result, tenantMemory, result.structureVersionIds)
   }
 
   getRun(context: TenantAccessContext, runId: string) {
@@ -80,7 +82,7 @@ export class CreationAppService {
     requireTenantCapability(context, "content.edit")
     if (!this.lineage.canAccess(runId, context)) throw new Error("RUN_NOT_FOUND")
     const result = this.runs.saveScriptRevision(runId, input.expectedRevision, input.paragraphs)
-    return { ...presentCreationDraft(result.runView, this.memoryForRun(runId)), saved: result.saved }
+    return { ...this.presentRun(runId, result.runView), saved: result.saved }
   }
 
   async finalize(
@@ -100,7 +102,7 @@ export class CreationAppService {
       throw new Error("DRAFT_NOT_READY_TO_FINALIZE")
     }
     this.runs.lockScript(runId)
-    return presentCreationDraft(this.runs.getRunView(runId), this.memoryForRun(runId))
+    return this.presentRun(runId)
   }
 
   private currentContext(context: TenantAccessContext) {
@@ -158,8 +160,22 @@ export class CreationAppService {
     }, lineage.tenantMemoryVersion)
   }
 
-  private presentRun(runId: string) {
-    return presentCreationDraft(this.runs.getRunView(runId), this.memoryForRun(runId))
+  private presentRun(runId: string, runView = this.runs.getRunView(runId)) {
+    const lineage = this.lineage.get(runId)
+    if (!lineage) throw new Error("RUN_NOT_FOUND")
+    return this.presentWithLineage(runView, this.memoryForRun(runId), lineage.structureVersionIds)
+  }
+
+  private presentWithLineage(
+    runView: Parameters<typeof presentCreationDraft>[0],
+    memory: Parameters<typeof presentCreationDraft>[1],
+    structureVersionIds: string[],
+  ) {
+    return {
+      ...presentCreationDraft(runView, memory),
+      structureVersionIds,
+      structureInfluence: "已结合平台审核通过的内容结构",
+    }
   }
 
 }

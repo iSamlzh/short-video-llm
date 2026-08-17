@@ -11,6 +11,7 @@ import { RunService } from "@/services/run-service"
 import { AutoCreationOrchestrator } from "@/services/auto-creation-orchestrator"
 import { CreationAppService } from "@/services/creation-app-service"
 import { ContentBrainRepository } from "@/lib/db/content-brain-repository"
+import { PlatformTemplateRetriever } from "@/services/platform-template-retriever"
 import { z } from "zod"
 import { scriptRevisionParagraphsSchema } from "@/domain/schemas"
 
@@ -30,12 +31,8 @@ function service() {
   const repository = new PrototypeRepository(path)
   const fixtureAllowed = process.env.PROTOTYPE_TEST_MODE === "true" && process.env.PLAYWRIGHT_TEST_MODE === "true"
   const llm = new StructuredLlmClient(fixtureAllowed ? new PrototypeFixtureLlmAdapter() : new OpenAiCompatibleAdapter())
-  const contentBrain = new ContentBrainRepository(getAppDatabase())
-  const runs = new RunService(repository, llm, () => {
-    const structures = contentBrain.retrieveStructures()
-    if (!structures.length) throw Object.assign(new Error("平台尚未启用可用的内容结构"), { code: "NO_ACTIVE_TEMPLATE" })
-    return structures
-  })
+  const retriever = new PlatformTemplateRetriever(new ContentBrainRepository(getAppDatabase()))
+  const runs = new RunService(repository, llm, (query) => retriever.retrieve(query))
   singleton = new CreationAppService(getAppDatabase(), runs, new AutoCreationOrchestrator(runs))
   return singleton
 }

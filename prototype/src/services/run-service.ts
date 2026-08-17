@@ -7,12 +7,26 @@ import { PrototypeRepository } from "../lib/db/repository"
 import { StructuredLlmClient } from "../lib/llm/structured"
 import { prototypePreset } from "../presets"
 import { simulateMetrics, type SimulationScenario } from "../lib/simulation/metric-simulator"
+import type { TemplatePackage } from "../domain/content-brain"
+
+export type TemplateRetrievalQuery = { ipTags: string[]; audience: string; goal: string }
+type StructureProvider = (query: TemplateRetrievalQuery) => TemplatePackage[]
+
+const prototypeTemplatePackage: TemplatePackage = {
+  templateVersionId: "prototype-default-v1",
+  templateId: "prototype-default",
+  name: "原型默认结构",
+  applicability: { ipTags: [], audiences: [], goals: [] },
+  nodes: prototypePreset.structures.map((instruction, index) => ({ kind: `step-${index + 1}`, instruction, required: true })),
+  qualityRules: ["符合当前 IP 的真实经历与表达边界"],
+  riskRules: ["不得虚构案例或承诺收益"],
+}
 
 export class RunService {
   constructor(
     private readonly repository: PrototypeRepository,
     private readonly llm: StructuredLlmClient,
-    private readonly structureProvider: () => string[] = () => [...prototypePreset.structures],
+    private readonly structureProvider: StructureProvider = () => [prototypeTemplatePackage],
   ) {}
 
   createRun(input: IpProfile) { return this.repository.createRun(input) }
@@ -34,6 +48,7 @@ export class RunService {
 
   async generateTopics(runId: string, inputVersion: number) {
     const run = this.repository.requireVersion(runId, inputVersion)
+    const structureContext = this.resolveStructureContext(run.ipProfile)
     const existing = this.repository.getTopicBatch(runId)
     if (existing?.inputVersion === inputVersion && run.state === "WAITING_TOPIC_SELECTION") return existing
     this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
@@ -41,7 +56,7 @@ export class RunService {
       const items = await this.llm.generateStructured("topics", {
         ipProfile: run.ipProfile,
         goal: prototypePreset.goal,
-        structures: this.structureProvider(),
+        structures: structureContext.modelStructures,
         presetVersion: prototypePreset.version,
       }, topicBatchSchema, "array")
       const batch = this.repository.saveTopicBatch(runId, inputVersion, items, `${runId}:topics:${inputVersion}`)
@@ -56,12 +71,13 @@ export class RunService {
 
   async generateAutoDraft(runId: string, inputVersion: number, tenantMemory?: ConfirmedCreationMemory) {
     const run = this.repository.requireVersion(runId, inputVersion)
+    const structureContext = this.resolveStructureContext(run.ipProfile)
     this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
     try {
       const result = await this.llm.generateStructured("auto_draft", {
         ipProfile: run.ipProfile,
         goal: prototypePreset.goal,
-        structures: this.structureProvider(),
+        structures: structureContext.modelStructures,
         presetVersion: prototypePreset.version,
         ...(tenantMemory ? { tenantMemory } : {}),
       }, autoDraftSchema)
@@ -82,7 +98,7 @@ export class RunService {
       this.repository.saveQualityReport(runId, result.qualityReport, selection.version)
       this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
       if (!result.qualityReport.hardGatePassed) throw Object.assign(new Error("DRAFT_NEEDS_ATTENTION"), { code: "DRAFT_NEEDS_ATTENTION", retryable: true })
-      return this.getRunView(runId)
+      return { ...this.getRunView(runId), structureVersionIds: structureContext.structureVersionIds }
     } catch (error) {
       const current = this.repository.requireRun(runId)
       if (current.state === "GENERATING_TOPICS") this.repository.setState(runId, "READY_FOR_TOPICS")
@@ -100,6 +116,7 @@ export class RunService {
     tenantMemory?: ConfirmedCreationMemory,
   ) {
     const run = this.repository.requireVersion(runId, inputVersion)
+    const structureContext = this.resolveStructureContext(run.ipProfile)
     const topics = topicBatchSchema.parse(topicsInput)
     const selectedTopic = topics.find((item) => item.id === selectedTopicId)
     if (!selectedTopic) throw new Error("TOPIC_SELECTION_INVALID")
@@ -110,6 +127,7 @@ export class RunService {
         goal: prototypePreset.goal,
         selectedTopic,
         adjustment,
+        structures: structureContext.modelStructures,
         ...(tenantMemory ? { tenantMemory } : {}),
       }, topicDraftSchema)
       if (result.scripts.some((item) => item.topicDirectionId !== selectedTopic.id)) throw new Error("SCRIPT_DIRECTION_MISMATCH")
@@ -127,7 +145,7 @@ export class RunService {
       this.repository.saveQualityReport(runId, result.qualityReport, selection.version)
       this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
       if (!result.qualityReport.hardGatePassed) throw Object.assign(new Error("DRAFT_NEEDS_ATTENTION"), { code: "DRAFT_NEEDS_ATTENTION", retryable: true })
-      return this.getRunView(runId)
+      return { ...this.getRunView(runId), structureVersionIds: structureContext.structureVersionIds }
     } catch (error) {
       if (this.repository.requireRun(runId).state === "GENERATING_TOPICS") this.repository.setState(runId, "READY_FOR_TOPICS")
       this.recordFailure(runId, error, this.repository.requireRun(runId).state)
@@ -302,5 +320,24 @@ export class RunService {
       message: value.message ?? "操作失败",
       retryFromState,
     })
+  }
+
+  private resolveStructureContext(profile: IpProfile) {
+    const packages = this.structureProvider({
+      ipTags: [profile.expertise],
+      audience: profile.audience,
+      goal: prototypePreset.goal.name,
+    })
+    if (!packages.length) {
+      throw Object.assign(new Error("平台尚未启用可用的内容结构"), { code: "NO_ACTIVE_TEMPLATE" })
+    }
+    return {
+      structureVersionIds: packages.map((item) => item.templateVersionId),
+      modelStructures: packages.map((item) => ({
+        nodes: item.nodes,
+        qualityRules: item.qualityRules,
+        riskRules: item.riskRules,
+      })),
+    }
   }
 }

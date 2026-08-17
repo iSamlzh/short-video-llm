@@ -12,6 +12,17 @@ import { AccessService } from "../../src/services/access-service"
 import { AutoCreationOrchestrator } from "../../src/services/auto-creation-orchestrator"
 import { CreationAppService } from "../../src/services/creation-app-service"
 import { RunService } from "../../src/services/run-service"
+import type { TemplatePackage } from "../../src/domain/content-brain"
+
+const packageFor = (templateVersionId: string): TemplatePackage => ({
+  templateVersionId,
+  templateId: "template-trust",
+  name: "真实场景到责任原则",
+  applicability: { ipTags: ["社区团购选品与团长运营"], audiences: [], goals: [] },
+  nodes: [{ kind: "hook", instruction: "以真实冲突开场", required: true }],
+  qualityRules: ["必须包含具体处理动作"],
+  riskRules: ["不得承诺收益"],
+})
 
 describe("CreationAppService draft lifecycle", () => {
   let appDatabase: ReturnType<typeof openDatabase>
@@ -19,6 +30,7 @@ describe("CreationAppService draft lifecycle", () => {
   let adapter: PrototypeFixtureLlmAdapter
   let service: CreationAppService
   let access: AccessService
+  let packages: TemplatePackage[]
 
   beforeEach(async () => {
     const directory = mkdtempSync(join(tmpdir(), "creation-app-service-"))
@@ -26,7 +38,8 @@ describe("CreationAppService draft lifecycle", () => {
     await seedDemoData(appDatabase, "demo-password")
     repository = new PrototypeRepository(join(directory, "runs.sqlite"))
     adapter = new PrototypeFixtureLlmAdapter()
-    const runs = new RunService(repository, new StructuredLlmClient(adapter), () => ["真实场景—认知转折—行动方法"])
+    packages = [packageFor("template-v1")]
+    const runs = new RunService(repository, new StructuredLlmClient(adapter), () => packages)
     service = new CreationAppService(appDatabase, runs, new AutoCreationOrchestrator(runs))
     access = new AccessService(new AccessRepository(appDatabase))
   })
@@ -81,5 +94,18 @@ describe("CreationAppService draft lifecycle", () => {
 
     expect(() => service.saveDraft(reviewer, created.runId!, input)).toThrow("CAPABILITY_FORBIDDEN")
     expect(() => service.saveDraft({ ...owner, ipIds: [] }, created.runId!, input)).toThrow("RUN_NOT_FOUND")
+  })
+
+  it("locks the exact structure versions used by a run instead of retrieving them again", async () => {
+    const owner = access.resolve("user-owner", "tenant")
+    if (owner.audience !== "tenant") throw new Error("TENANT_CONTEXT_REQUIRED")
+    const created = await service.create(owner)
+
+    packages = [packageFor("template-v2")]
+    const loaded = service.getRun(owner, created.runId!)
+
+    expect(created.structureVersionIds).toEqual(["template-v1"])
+    expect(loaded.structureVersionIds).toEqual(["template-v1"])
+    expect(loaded.structureInfluence).toBe("已结合平台审核通过的内容结构")
   })
 })

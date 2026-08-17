@@ -15,6 +15,7 @@ export class AutoCreationOrchestrator {
 
   async createUsableDraft(profile: IpProfile, adjustment?: CreationAdjustment, tenantMemory?: ConfirmedCreationMemory) {
     const run = this.runs.createRun(profile)
+    let generated
     if (adjustment) {
       const currentIndex = adjustment.topics.findIndex((item) => item.id === adjustment.selectedTopicId)
       if (currentIndex < 0) throw new Error("PREVIOUS_TOPIC_NOT_FOUND")
@@ -22,13 +23,13 @@ export class AutoCreationOrchestrator {
       const selectedTopic = adjustment.intent === "change_topic"
         ? adjustment.topics[(currentIndex + 1) % adjustment.topics.length]
         : adjustment.topics[currentIndex]
-      await this.runs.generateTopicDraft(run.id, run.inputVersion, adjustment.topics, selectedTopic.id, {
+      generated = await this.runs.generateTopicDraft(run.id, run.inputVersion, adjustment.topics, selectedTopic.id, {
         intent: adjustment.intent,
         previousScript: adjustment.previousScript,
       }, tenantMemory)
     } else {
-      await this.runs.generateAutoDraft(run.id, run.inputVersion, tenantMemory)
+      generated = await this.runs.generateAutoDraft(run.id, run.inputVersion, tenantMemory)
     }
-    return { run: this.runs.getRun(run.id), ...this.runs.getRunView(run.id) }
+    return { run: this.runs.getRun(run.id), ...this.runs.getRunView(run.id), structureVersionIds: generated.structureVersionIds }
   }
 }
