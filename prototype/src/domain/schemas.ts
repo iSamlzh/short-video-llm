@@ -45,6 +45,14 @@ export const qualityReportSchema = z.object({
   suggestions: z.array(z.string()),
 })
 
+export const autoDraftSchema = z.object({
+  topics: topicBatchSchema,
+  selectedTopicId: z.string().min(1),
+  scripts: scriptBatchSchema,
+  selectedScriptId: z.string().min(1),
+  qualityReport: qualityReportSchema,
+})
+
 export const metricSnapshotSchema = z.object({
   isSimulated: z.literal(true),
   scenario: z.enum(["underperform", "normal", "breakout"]),

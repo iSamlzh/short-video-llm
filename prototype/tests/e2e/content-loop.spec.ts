@@ -1,31 +1,50 @@
 import { expect, test } from "@playwright/test"
 
-test("runs from minimum IP to reviewed and restores after refresh", async ({ page }) => {
-  await page.goto("/")
-  await page.getByLabel("称呼").fill("示例团长")
-  await page.getByLabel("真实经历").fill("三年社区团购运营经历，服务过多个社区")
-  await page.getByLabel("擅长领域").fill("社区团购运营")
-  await page.getByLabel("目标人群").fill("希望拓展本地业务的人")
-  await page.getByLabel("表达特点").fill("直接、实在、有案例")
-  await page.getByLabel("不能说的内容").fill("不承诺确定收益")
-  await page.getByRole("button", { name: "完成初始化并生成选题" }).click()
-  await expect(page.getByText("今天，先确定真正值得拍的一条")).toBeVisible()
-  await expect(page.getByRole("button", { name: "当前 IP 示例团长" })).toBeVisible()
-  await page.getByRole("button", { name: "选择这个方向" }).first().click()
-  await expect(page.getByRole("button", { name: "生成 3 篇文案" })).toHaveCount(0)
-  await expect(page.getByText("选择今天的口播稿")).toBeVisible()
-  await page.getByRole("button", { name: "选择这版并进入质检" }).click()
-  await expect(page.getByText("独立质量检查已完成")).toBeVisible()
-  await page.getByRole("button", { name: "确认锁稿" }).click()
-  await page.getByRole("button", { name: "生成模拟发布数据" }).click()
-  await page.getByRole("button", { name: "生成复盘" }).click()
-  await expect(page.getByText("本次内容复盘")).toBeVisible()
-  await expect(page.getByText("模拟数据，不代表真实平台表现")).toBeVisible()
-  await expect(page.getByRole("navigation")).toHaveCount(0)
+const consoleErrors = new WeakMap<import("@playwright/test").Page, string[]>()
+test.beforeEach(async ({ page }) => {
+  const errors: string[] = []
+  consoleErrors.set(page, errors)
+  page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()) })
+  page.on("pageerror", (error) => errors.push(error.message))
+})
+test.afterEach(async ({ page }) => { expect(consoleErrors.get(page) ?? []).toEqual([]) })
 
-  await page.evaluate(() => window.localStorage.removeItem("content-prototype-run"))
-  await page.reload()
-  await expect(page.getByLabel("称呼")).toHaveCount(0)
-  await expect(page.getByText("今天，先确定真正值得拍的一条")).toBeVisible()
-  await expect(page.getByRole("button", { name: "当前 IP 示例团长" })).toBeVisible()
+async function login(page: import("@playwright/test").Page, email: string) {
+  await page.goto("/login")
+  await page.getByLabel("邮箱").fill(email)
+  await page.getByLabel("密码").fill("demo-password")
+  await page.getByRole("button", { name: "进入内容工作台" }).click()
+  await page.waitForURL(email.startsWith("platform") ? "**/platform/content-brain" : "**/app/today")
+}
+
+test("tenant default path produces one usable draft and keeps internal brain private", async ({ page }) => {
+  await page.setViewportSize({ width: 1487, height: 1058 })
+  await login(page, "owner@example.test")
+  await expect(page.getByText("林姐，今天这篇可以直接拍")).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByRole("button", { name: "复制并去拍" })).toBeVisible()
+  await expect(page.getByText("已检查：事实可信 · 符合你的表达 · 无收益承诺")).toBeVisible()
+  await expect(page.getByText("创作依据（摘要）")).toBeVisible()
+  await page.screenshot({ path: "test-results/design-qa/daily-implementation.png", fullPage: true })
+  await page.setViewportSize({ width: 390, height: 844 })
+  await expect(page.getByRole("button", { name: "复制并去拍" })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: "test-results/design-qa/daily-implementation-mobile.png", fullPage: true })
+
+  await page.goto("/platform/content-brain")
+  await expect(page.getByText("无权访问平台运营空间")).toBeVisible()
+})
+
+test("review, delegation and platform content brain are usable in their own scopes", async ({ page }) => {
+  await login(page, "owner@example.test")
+  await page.goto("/app/review")
+  await expect(page.getByText(/当前账号最值得保留的是/)).toBeVisible()
+  await expect(page.getByText("开发演示数据")).toBeVisible()
+  await page.goto("/app/team")
+  await page.getByRole("button", { name: "确认并邀请小周" }).click()
+  await expect(page.getByText(/小周现在只能操作林姐/)).toBeVisible()
+
+  await page.request.post("/api/auth/logout")
+  await login(page, "platform@example.test")
+  await expect(page.getByText("已启用的内容结构")).toBeVisible()
+  await expect(page.getByText(/客户永远看不到原文/)).toBeVisible()
 })

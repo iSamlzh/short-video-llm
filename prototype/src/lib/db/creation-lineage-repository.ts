@@ -1,0 +1,61 @@
+import type Database from "better-sqlite3"
+
+type ContextInput = {
+  runId: string
+  tenantId: string
+  actorUserId: string
+  ipId: string
+  accountId: string | null
+  businessDate: string
+}
+
+type Scope = { tenantId: string; ipIds: string[]; contentAccountIds: string[] }
+type Row = { run_id: string; tenant_id: string; ip_profile_id: string; content_account_id: string | null; business_date: string }
+
+export class CreationLineageRepository {
+  constructor(private readonly database: Database.Database) {}
+
+  attach(input: ContextInput) {
+    this.database.prepare(`INSERT INTO creation_run_context
+      (run_id,tenant_id,actor_user_id,ip_profile_id,content_account_id,business_date,created_at)
+      VALUES (?,?,?,?,?,?,?)`).run(
+      input.runId,
+      input.tenantId,
+      input.actorUserId,
+      input.ipId,
+      input.accountId,
+      input.businessDate,
+      new Date().toISOString(),
+    )
+  }
+
+  current(tenantId: string, ipId: string, accountId: string | null, businessDate: string) {
+    const row = this.database.prepare(`SELECT * FROM creation_run_context
+      WHERE tenant_id = ? AND ip_profile_id = ?
+        AND ((content_account_id = ?) OR (content_account_id IS NULL AND ? IS NULL))
+        AND business_date = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`)
+      .get(tenantId, ipId, accountId, accountId, businessDate) as Row | undefined
+    return row ? this.map(row) : null
+  }
+
+  get(runId: string) {
+    const row = this.database.prepare("SELECT * FROM creation_run_context WHERE run_id = ?").get(runId) as Row | undefined
+    return row ? this.map(row) : null
+  }
+
+  canAccess(runId: string, scope: Scope) {
+    const row = this.get(runId)
+    if (!row || row.tenantId !== scope.tenantId || !scope.ipIds.includes(row.ipId)) return false
+    return !row.accountId || scope.contentAccountIds.includes(row.accountId)
+  }
+
+  private map(row: Row) {
+    return {
+      runId: row.run_id,
+      tenantId: row.tenant_id,
+      ipId: row.ip_profile_id,
+      accountId: row.content_account_id,
+      businessDate: row.business_date,
+    }
+  }
+}

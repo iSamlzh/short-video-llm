@@ -6,6 +6,7 @@ import { OpenAiCompatibleAdapter } from "@/lib/llm/adapter"
 import { PrototypeFixtureLlmAdapter } from "@/lib/llm/fake"
 import { StructuredLlmClient } from "@/lib/llm/structured"
 import { RunService } from "@/services/run-service"
+import { resolveRuntimeFeatures } from "@/lib/runtime-features"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -58,6 +59,9 @@ async function dispatch(request: NextRequest, segments: string[]) {
     }
     if (request.method === "POST" && segments.slice(2).join("/") === "lock") return Response.json(service.lockScript(runId))
     if (request.method === "POST" && segments.slice(2).join("/") === "publication/simulate") {
+      if (!resolveRuntimeFeatures(process.env).simulationEnabled) {
+        return Response.json({ errorCode: "NOT_FOUND" }, { status: 404 })
+      }
       return Response.json(service.simulatePublication(runId, body.scenario as never))
     }
     if (request.method === "POST" && segments.slice(2).join("/") === "review/generate") {

@@ -1,63 +1,91 @@
-# 内容增长 Agent 快速原型
+# 内容增长 Agent 首版
 
-这是一个本地运行的纵向原型，用来验证“首次 IP 初始化或载入当前 IP → 选题方向 → 自动生成同方向 3 篇口播稿 → 独立 QA → 锁稿 → 模拟表现 → 模型复盘”的内容闭环。它不是正式首版系统，也不包含登录、租户、角色权限、平台 API、数字人视频或生产级队列。
+首版围绕一个清晰闭环：首次确认 IP → 后续默认载入当前 IP/账号 → Agent 一次完成选题、推荐文案与发布前检查 → 用户直接拍摄或回退调整 → 导入真实账号数据 → 复盘并确认本 IP 私有创作记忆。
+
+团长端支持多人独立登录和精确到 IP/内容账号的权限；平台运营端维护内部爆款内容结构。租户用户不会看到平台样本原文、完整模板或运营备注。数字人视频生成、平台数据 API、负载均衡和灾备属于后续版本。
 
 ## 本地启动
 
-前置条件：Node.js 20+、npm 10+，以及一个兼容 OpenAI `/chat/completions` 的模型服务。原型当前使用已通过审计的 Next.js 16.3.1。
+前置条件：Node.js 20+、npm 10+，以及兼容 OpenAI `/chat/completions` 的模型服务。
 
 ```powershell
 Copy-Item .env.example .env.local
-# 在 .env.local 填写 LLM_BASE_URL、LLM_API_KEY、LLM_MODEL
+# 填写 LLM_BASE_URL、LLM_API_KEY、LLM_MODEL
 npm install
+npm run seed:demo
 npm run dev
 ```
 
-从仓库根目录也可以使用：
+打开 `http://127.0.0.1:3000/login`。开发账号密码默认为 `demo-password`：
 
-```powershell
-npm --prefix prototype install
-npm --prefix prototype run dev
+- `owner@example.test`：团长/所有者
+- `operator@example.test`：内容运营
+- `reviewer@example.test`：数据复盘
+- `platform@example.test`：平台内容运营
+
+演示种子只写入 `data_origin=demo` 数据，可用 `npm run seed:demo:clear` 一次性移除；正式数据不会被删除。生产环境不会展示共享默认账号，也不会开放模拟发布入口。
+
+## 模型调用
+
+默认创作路径使用一次结构化模型调用同时返回 3–5 个选题、推荐方向、同方向 3 篇候选、推荐口播稿与质量报告；系统仍分别保存选题、文案、QA 和锁稿谱系。这样避免三次串行模型请求。若上游单次响应仍慢，页面显示可解释的 Agent 进度并复用当天已完成结果。
+
+必要环境变量：
+
+```text
+LLM_BASE_URL=https://example.com/v1
+LLM_API_KEY=...
+LLM_MODEL=...
+LLM_TIMEOUT_SECONDS=120
+PROTOTYPE_DB_PATH=.data/prototype.sqlite
 ```
 
-打开 `http://localhost:3000`。模型未配置或调用失败时，界面会明确阻断并保留当前检查点，不会用静态数据冒充真实结果。
+## 首版功能
+
+- 本地身份与会话、租户隔离、成员能力和 IP/账号数据范围。
+- IP 首次确认和当前 IP/账号持久化；日常不重复选择。
+- 结果优先的每日创作，可复制、编辑、换选题/讲法、确认定稿和查看其他选题。
+- 平台私有内容库只检索已启用的不可变结构版本；无启用结构时阻断生成。
+- CSV 真实数据导入、格式校验、行级容错、租户内去重和证据边界复盘。
+- 用户确认后形成租户/IP/账号私有记忆，不回写平台爆款模板。
+- 自然语言分工确认后，按当前 IP/账号写入最小权限并记录审计日志。
+
+CSV 表头：
+
+```text
+title,plays,completion_rate,likes,comments,shares,negative_feedback
+```
+
+平台 API 自动回流是二期能力，首版以导入为主。
 
 ## 验证
 
 ```powershell
 npm run typecheck
 npm test
-npm run test:e2e
 npm run build
-npm run test:live
+npm run test:e2e
 ```
 
-- 单元测试使用显式 Fake Adapter。
-- E2E 只有 Playwright 同时设置 `PROTOTYPE_TEST_MODE` 与 `PLAYWRIGHT_TEST_MODE` 时才启用固定模型；普通 `npm run dev` 不会启用。
-- `test:live` 使用真实模型执行四个业务 operation；缺少环境变量时以退出码 `2` 明确跳过，不输出正文或密钥。
+当前验收：67 项单元/组件测试、2 条浏览器端到端路径、生产构建和桌面/移动视觉 QA。E2E 固定模型仅在 `PROTOTYPE_TEST_MODE=true` 且 `PLAYWRIGHT_TEST_MODE=true` 时启用，普通运行始终调用配置的真实模型。
 
-Windows 首次运行 E2E 需安装测试浏览器：
+视觉验收报告见 [design-qa.md](./design-qa.md)。
 
-```powershell
-npx playwright install chromium
-```
+## 首版部署
 
-## 数据与重置
+首版采用单台部署，避免过早引入负载均衡：
 
-默认数据库为 `.data/prototype.sqlite`，刷新页面会从 SQLite 恢复当前 Run。浏览器使用 `content-prototype-current-ip-v1` 记录原型当前 IP；清除当前 Run 后再次进入，会默认使用该 IP 创建当天内容，不重复建档。需要彻底重置时，停止开发服务器后删除原型数据库，并清除浏览器站点数据；其中不存 API Key。
+- 推荐：4 核 CPU、8 GB 内存、80 GB SSD、Linux、Node.js LTS。
+- 进程：一个 Next.js Node 进程；前置 Nginx/Caddy 负责 HTTPS、压缩和请求体限制。
+- 数据：当前 SQLite 适合原型和小规模试运行；正式多人持续写入前迁移 PostgreSQL。迁移由版本化 SQL 自动执行。
+- 持久化：数据库目录必须挂载持久盘，每日快照；`.env.local`/密钥不进入 Git。
+- 观测：记录请求 ID、Run ID、模型耗时、错误码和 token 使用，不记录 API Key 或完整敏感正文。
+- 容量策略：账号登录和页面读取成本低；内容生成受上游模型延迟和额度限制。超过单机验证规模后再引入 PostgreSQL、队列、对象存储与多实例负载均衡。
 
-所有发布指标均由确定性模拟器生成，页面固定显示：**模拟数据，不代表真实平台表现**。复盘 Prompt 和服务端校验都禁止把这些指标表述为真实平台因果。
+部署前至少执行 `npm ci && npm run build && npm test`，并在真实域名下验证登录 Cookie、HTTPS、上传大小和模型超时。
 
-## 演示顺序
+## 文档
 
-1. 首次使用填写六项最小 IP 信息；后续默认载入当前 IP。
-2. Agent 自动生成 3–5 个符合当前 IP 属性的方向。
-3. 用户只选择一个“今天拍什么”的方向，系统立即生成该方向下恰好 3 篇完整口播稿，不再要求点击“生成文案”。
-4. 用户选择一篇口播稿后自动运行独立 QA；硬门禁通过后锁稿。
-5. 生成带完整模拟标识的发布表现，再由真实模型复盘。
-
-## 原型边界
-
-可供正式系统评审复用的候选资产：Zod Schema、四类 Prompt、六个抽象结构、决策卡交互、模型兼容经验和 E2E 路径。
-
-必须丢弃或重新实现的原型资产：Next Route Handler、SQLite schema/repository、简化状态机、测试 Fixture LLM、模拟指标以及基于模拟指标产生的复盘内容。正式系统不得直接 import 原型模块。
+- 产品与系统详细设计：`../docs/superpowers/specs/2026-08-16-ai-native-team-content-agent-prototype-design.md`
+- 首版实施路线：`../docs/superpowers/plans/2026-08-17-ai-native-team-content-agent-roadmap.md`
+- UI 视觉规范：`../docs/ui/2026-08-17-ai-native-ui-visual-spec.md`
+- 身份权限、内容库、创作、复盘的分模块实施计划均位于 `../docs/superpowers/plans/`。

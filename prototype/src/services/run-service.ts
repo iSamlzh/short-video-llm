@@ -1,4 +1,4 @@
-import { contentReviewSchema, qualityReportSchema, scriptBatchSchema, topicBatchSchema } from "../domain/schemas"
+import { autoDraftSchema, contentReviewSchema, qualityReportSchema, scriptBatchSchema, topicBatchSchema } from "../domain/schemas"
 import { transition } from "../domain/state-machine"
 import type { IpProfile } from "../domain/models"
 import { PrototypeRepository } from "../lib/db/repository"
@@ -7,7 +7,11 @@ import { prototypePreset } from "../presets"
 import { simulateMetrics, type SimulationScenario } from "../lib/simulation/metric-simulator"
 
 export class RunService {
-  constructor(private readonly repository: PrototypeRepository, private readonly llm: StructuredLlmClient) {}
+  constructor(
+    private readonly repository: PrototypeRepository,
+    private readonly llm: StructuredLlmClient,
+    private readonly structureProvider: () => string[] = () => [...prototypePreset.structures],
+  ) {}
 
   createRun(input: IpProfile) { return this.repository.createRun(input) }
   getRun(runId: string) { return this.repository.requireRun(runId) }
@@ -35,7 +39,7 @@ export class RunService {
       const items = await this.llm.generateStructured("topics", {
         ipProfile: run.ipProfile,
         goal: prototypePreset.goal,
-        structures: prototypePreset.structures,
+        structures: this.structureProvider(),
         presetVersion: prototypePreset.version,
       }, topicBatchSchema, "array")
       const batch = this.repository.saveTopicBatch(runId, inputVersion, items, `${runId}:topics:${inputVersion}`)
@@ -44,6 +48,43 @@ export class RunService {
     } catch (error) {
       this.repository.setState(runId, "READY_FOR_TOPICS")
       this.recordFailure(runId, error, "READY_FOR_TOPICS")
+      throw error
+    }
+  }
+
+  async generateAutoDraft(runId: string, inputVersion: number) {
+    const run = this.repository.requireVersion(runId, inputVersion)
+    this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
+    try {
+      const result = await this.llm.generateStructured("auto_draft", {
+        ipProfile: run.ipProfile,
+        goal: prototypePreset.goal,
+        structures: this.structureProvider(),
+        presetVersion: prototypePreset.version,
+      }, autoDraftSchema)
+      const topic = result.topics.find((item) => item.id === result.selectedTopicId)
+      if (!topic) throw new Error("AUTO_TOPIC_SELECTION_INVALID")
+      if (result.scripts.some((item) => item.topicDirectionId !== topic.id)) throw new Error("SCRIPT_DIRECTION_MISMATCH")
+      const script = result.scripts.find((item) => item.id === result.selectedScriptId)
+      if (!script) throw new Error("AUTO_SCRIPT_SELECTION_INVALID")
+
+      const topics = this.repository.saveTopicBatch(runId, inputVersion, result.topics, `${runId}:auto:topics:${inputVersion}`)
+      this.repository.setState(runId, transition("GENERATING_TOPICS", "TOPICS_GENERATED"))
+      this.selectTopic(runId, topics.version, topic.id)
+      this.repository.setState(runId, transition("READY_FOR_SCRIPTS", "GENERATE_SCRIPTS"))
+      const scripts = this.repository.saveScriptBatch(runId, inputVersion, result.scripts, `${runId}:auto:scripts:${inputVersion}`)
+      this.repository.setState(runId, transition("GENERATING_SCRIPTS", "SCRIPTS_GENERATED"))
+      this.selectScript(runId, scripts.version, script.id)
+      this.repository.setState(runId, transition("READY_FOR_QA", "RUN_QA"))
+      this.repository.saveQualityReport(runId, result.qualityReport)
+      this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
+      if (!result.qualityReport.hardGatePassed) throw Object.assign(new Error("DRAFT_NEEDS_ATTENTION"), { code: "DRAFT_NEEDS_ATTENTION", retryable: true })
+      this.lockScript(runId)
+      return this.getRunView(runId)
+    } catch (error) {
+      const current = this.repository.requireRun(runId)
+      if (current.state === "GENERATING_TOPICS") this.repository.setState(runId, "READY_FOR_TOPICS")
+      this.recordFailure(runId, error, this.repository.requireRun(runId).state)
       throw error
     }
   }

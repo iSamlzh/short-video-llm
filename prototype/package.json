@@ -11,9 +11,12 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:live": "tsx tests/live/live-model-smoke.ts"
+    "test:live": "tsx tests/live/live-model-smoke.ts",
+    "seed:demo": "tsx src/scripts/seed-demo.ts",
+    "seed:demo:clear": "tsx src/scripts/clear-demo.ts"
   },
   "dependencies": {
+    "@phosphor-icons/react": "^2.1.10",
     "better-sqlite3": "^13.0.3",
     "next": "^16.3.1",
     "react": "^19.2.8",

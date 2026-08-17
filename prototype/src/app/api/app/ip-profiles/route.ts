@@ -1,0 +1,15 @@
+import { resolveCurrentAccess } from "@/lib/auth/request-access"
+import { getAppDatabase } from "@/lib/db/app-database"
+import { IpProfileService } from "@/services/ip-profile-service"
+
+export async function POST(request: Request) {
+  const access = await resolveCurrentAccess()
+  if (!access) return Response.json({ errorCode: "UNAUTHENTICATED" }, { status: 401 })
+  if (access.audience !== "tenant") return Response.json({ errorCode: "TENANT_AUDIENCE_REQUIRED" }, { status: 403 })
+  try {
+    return Response.json(new IpProfileService(getAppDatabase()).createAndSelect(access, await request.json()), { status: 201 })
+  } catch (error) {
+    const value = error as { message?: string; status?: number }
+    return Response.json({ errorCode: value.message ?? "INVALID_INPUT", message: value.message ?? "保存失败" }, { status: value.status ?? 400 })
+  }
+}
