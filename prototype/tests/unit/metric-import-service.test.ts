@@ -4,6 +4,7 @@ import type { TenantAccessContext } from "../../src/domain/access"
 import { openDatabase } from "../../src/lib/db/database"
 import { MetricsRepository } from "../../src/lib/db/metrics-repository"
 import { MetricImportService } from "../../src/services/metric-import-service"
+import { PublicationMatcher } from "../../src/services/publication-matcher"
 import { seedDemoData } from "../../src/scripts/demo-data"
 
 describe("MetricImportService", () => {
@@ -85,6 +86,20 @@ describe("MetricImportService", () => {
     expect(batch).toEqual({ status: "failed", filename: "错误.txt" })
     expect(database.prepare("PRAGMA table_info(metric_import_batches)").all())
       .not.toContainEqual(expect.objectContaining({ name: "bytes" }))
+  })
+
+  it("人工关联后读取结果时按当前匹配版本刷新汇总", async () => {
+    const imported = await service.import(owner, mixedFile())
+    const current = repository.listCurrentMatches(imported.batchId)[0]
+
+    new PublicationMatcher(database, repository)
+      .rejectCandidateAndCreateExternal(owner, current.id, current.version)
+
+    expect(service.getResult(owner, imported.batchId)).toMatchObject({
+      matched: 1,
+      candidates: 0,
+      unmatched: 0,
+    })
   })
 })
 

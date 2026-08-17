@@ -107,6 +107,8 @@ export class MetricImportService {
     return {
       ...batch,
       matched: matches.filter((item) => item.status === "matched").length,
+      candidates: matches.filter((item) => item.status === "candidate").length,
+      unmatched: matches.filter((item) => item.status === "unmatched").length,
       errorCount: batch.errors,
       errors: this.repository.listErrors(batchId),
       matches,
