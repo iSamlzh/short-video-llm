@@ -236,6 +236,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .empty-review details { margin-top: 30px; color: var(--muted); }
 .empty-review code { display: block; margin-top: 12px; padding: 14px; background: var(--sheet); border: 1px solid var(--line); overflow-x: auto; }
 .workspace-notice { position: sticky; top: 58px; z-index: 15; width: min(760px, calc(100% - 40px)); margin: 10px auto -44px; padding: 11px 16px; border: 1px solid #b9c8ba; background: #edf3e9; color: var(--success); text-align: center; font: 13px/1.5 var(--serif); }
+.review-workspace-notice { margin-bottom: 8px; }
 .workspace-notice-error { border-color: #d9aaa2; background: #f7e8e3; color: var(--danger); }
 .visually-hidden { position: absolute !important; width: 1px !important; height: 1px !important; padding: 0 !important; margin: -1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important; }
 .data-origin-label { display: inline-block; margin-left: 12px; padding: 1px 7px; border: 1px solid var(--line); color: var(--muted); font-size: 11px; }

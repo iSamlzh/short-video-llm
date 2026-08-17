@@ -122,10 +122,53 @@ export async function seedDemoData(database: Database.Database, password: string
   })()
 }
 
+export function seedE2ERealPublications(database: Database.Database, allowed: boolean) {
+  if (!allowed) throw new Error("E2E_FIXTURE_NOT_ALLOWED")
+  const createdAt = now()
+  const insert = database.prepare(`INSERT OR IGNORE INTO publications
+    (id,tenant_id,ip_profile_id,content_account_id,platform,source,run_id,locked_script_version,
+     locked_script_selection_version,title,platform_video_id,video_url,normalized_video_url,
+     published_at,status,created_by_user_id,created_at)
+    VALUES (?,'tenant-linjie','ip-linjie','account-linjie-wechat','wechat_channels','external',NULL,NULL,
+      NULL,?,?,NULL,NULL,?,'active','user-owner',?)`)
+  const publications = [
+    ["e2e-publication-2", "邻居愿意长期信任的三个细节", "wx-real-002", "2026-08-11T02:00:00.000Z"],
+    ["e2e-publication-3", "一次售后让我重新理解团长", "wx-real-003", "2026-08-12T02:00:00.000Z"],
+    ["e2e-publication-4", "不熟悉的货为什么不能急着推", "wx-real-004", "2026-08-13T02:00:00.000Z"],
+    ["e2e-publication-5", "先把小事做好再谈长期生意", "wx-real-005", "2026-08-14T02:00:00.000Z"],
+  ] as const
+  for (const publication of publications) insert.run(...publication, createdAt)
+}
+
 export function clearDemoData(database: Database.Database, allowed: boolean) {
   if (!allowed) throw new Error("DEMO_CLEAR_NOT_ALLOWED")
   database.transaction(() => {
     database.exec(`
+      DELETE FROM review_evidence_links
+        WHERE review_id IN (SELECT id FROM content_review_versions WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM review_generation_checkpoints WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo');
+      DELETE FROM tenant_memory_versions WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo');
+      DELETE FROM content_review_versions WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo');
+      DELETE FROM publication_match_versions WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo');
+      DELETE FROM real_metric_snapshots WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo');
+      DELETE FROM metric_import_row_errors
+        WHERE batch_id IN (SELECT id FROM metric_import_batches WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM metric_import_batches WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo');
+      DELETE FROM publications WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo');
+
+      DELETE FROM commands WHERE run_id IN (SELECT run_id FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM step_errors WHERE run_id IN (SELECT run_id FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM reviews WHERE run_id IN (SELECT run_id FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM metric_snapshots WHERE run_id IN (SELECT run_id FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM locked_scripts WHERE run_id IN (SELECT run_id FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM quality_reports WHERE run_id IN (SELECT run_id FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM script_selections WHERE run_id IN (SELECT run_id FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM script_batches WHERE run_id IN (SELECT run_id FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM topic_selections WHERE run_id IN (SELECT run_id FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM topic_batches WHERE run_id IN (SELECT run_id FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM runs WHERE id IN (SELECT run_id FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo'));
+      DELETE FROM creation_run_context WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo');
+
       DELETE FROM platform_template_versions WHERE data_origin = 'demo';
       DELETE FROM platform_content_samples WHERE data_origin = 'demo';
       DELETE FROM imported_content_metrics WHERE data_origin = 'demo';

@@ -1,59 +1,64 @@
-# Design QA
+# 视觉验收报告
 
-## Comparison Target
+## 验收范围
 
-- Source visual truth: `C:\Users\Admin\Documents\ChatGPT\个人ip内容服务\.worktrees\prototype-mvp\docs\ui\assets\02-daily-creation.png`
-- Browser-rendered implementation: `C:\Users\Admin\Documents\ChatGPT\个人ip内容服务\.worktrees\prototype-mvp\prototype\test-results\design-qa\daily-implementation.png`
-- Mobile implementation: `C:\Users\Admin\Documents\ChatGPT\个人ip内容服务\.worktrees\prototype-mvp\prototype\test-results\design-qa\daily-implementation-mobile.png`
-- Combined comparison evidence: `C:\Users\Admin\Documents\ChatGPT\个人ip内容服务\.worktrees\prototype-mvp\prototype\test-results\design-qa\daily-side-by-side-final.png`
-- Desktop viewport and pixels: source and implementation both `1487 x 1058` CSS px and physical px at `deviceScaleFactor=1`.
-- Mobile viewport: `390 x 844` CSS px at `deviceScaleFactor=1`; full-page screenshot preserved at native density.
-- State: tenant owner logged in; current team 林姐内容团队; current IP 林姐; current account 视频号; one QA-passed and locked daily draft visible.
-- Primary interactions tested: login, automatic result-first creation, tenant denial of platform content brain, review data loading, exact-scope team delegation, platform login, private content-brain loading.
-- Console and page errors: checked in both end-to-end tests; none.
+本轮按照已确认的 A 版原型校对以下四个关键状态：
 
-## Full-view Comparison Evidence
+1. 锁稿后的轻量发布回执；
+2. 真实数据导入后的结果摘要与异常匹配；
+3. 事实、假设、证据边界与私有记忆预览；
+4. 已确认记忆自动影响下一次创作。
 
-The final combined image compares the source and implementation in one image at the same desktop viewport and density. The implementation preserves the approved editorial structure: compact masthead, warm paper surface, vermilion result sentence, result-first actions, single-column script with ruled paragraph editing affordances, and a narrow evidence rail. Major region proportions, divider position, title density, primary actions, document rhythm, and above-the-fold content now align with the source.
+同时保留原“今日创作”页面的编辑型视觉系统：暖纸背景、近黑正文、朱红单一强调色、中文衬线内容排版、低圆角控件、文档主栏 + 证据侧栏，以及无 SaaS 仪表盘卡片网格的整体方向。
 
-The lightweight task navigation in the implementation is an intentional product requirement for moving between creation, review, and team work. It remains visually subordinate to the current team/IP/account context and does not introduce a SaaS sidebar or dashboard-card pattern.
+## 对比证据
 
-## Focused Region Evidence
+所有桌面状态均使用 `1487 × 1058` viewport、`deviceScaleFactor=1`。移动端使用 `390 × 844`，并执行 `document.documentElement.scrollWidth <= window.innerWidth` 断言。
 
-A separate crop was not needed after normalization because the full-size `1487 x 1058` combined image keeps the masthead, lead actions, title/meta line, paragraph rules, QA labels, evidence list, and version record legible. Mobile was captured separately to verify title wrapping, stacked actions, content/evidence order, touch access, and horizontal overflow.
+- 发布回执同屏对比：`test-results/design-qa/publication-comparison.png`
+- 导入与异常匹配同屏对比：`test-results/design-qa/import-match-comparison.png`
+- 复盘与记忆预览同屏对比：`test-results/design-qa/review-memory-comparison.png`
+- 记忆进入下一次创作同屏对比：`test-results/design-qa/memory-in-creation-comparison.png`
+- 复盘移动端实现：`test-results/design-qa/review-memory-implementation-mobile.png`
+- 原今日创作桌面实现：`test-results/design-qa/daily-implementation.png`
+- 原今日创作移动端实现：`test-results/design-qa/daily-implementation-mobile.png`
 
-## Required Fidelity Surfaces
+同屏图左侧为已确认 A 版原型，右侧为真实浏览器实现。原型源文件位于：
 
-- Fonts and typography: Chinese serif display and document copy match the approved editorial character; sans-serif operational text stays secondary. Final title is one line at desktop, with appropriate mobile wrapping and no truncation.
-- Spacing and layout rhythm: lead/action spacing, document-to-evidence split, ruled paragraphs, and right-rail section rhythm match. The mobile layout collapses to one column without hidden primary controls or horizontal overflow.
-- Colors and visual tokens: warm paper, near-black ink, restrained gray, vermilion primary action, and muted green pass state are consistent with the source; no gradients, glass effects, rounded SaaS cards, or heavy shadows were introduced.
-- Image quality and asset fidelity: this screen contains no photo, illustration, avatar, logo image, or non-standard visual asset. Phosphor icons are used consistently; no emoji, handcrafted SVG, placeholder image, or CSS illustration substitutes are present.
-- Copy and content: the result sentence, one usable script, “事实可信 / 符合你的表达 / 无收益承诺”, evidence summary, editable paragraphs, confirmation, regeneration, and version history match the approved product meaning.
-- Accessibility and behavior: semantic buttons and headings, visible focus, reduced-motion handling, mobile overflow check, loading/error states, and console/page-error checks passed.
+- `.superpowers/brainstorm/112-1786960535/content/publication-entry-layout.html`
+- `.superpowers/brainstorm/112-1786960535/content/import-match-layout.html`
+- `.superpowers/brainstorm/112-1786960535/content/review-memory-layout.html`
+- `.superpowers/brainstorm/112-1786960535/content/memory-in-creation-layout.html`
 
-## Findings
+## 校对结论
 
-No actionable P0, P1, or P2 findings remain.
+### 发布回执
 
-## Comparison History
+发布入口位于锁稿文稿末尾，不抢“复制并去拍”主操作；默认展示当前内容账号，成功后折叠为发布状态，并允许追加其他账号发布。实现保留了正式页面的证据侧栏，因此信息量高于方案草图，但主次关系、位置和操作语义一致。
 
-### Iteration 1 — blocked
+### 导入与异常匹配
 
-- [P2] Desktop title wrapped to two lines, increasing above-the-fold density and shifting the script downward.
-  - Fix: reduced the script title optical size from the generic document scale to a dedicated `42px` maximum.
-- [P2] Right-rail QA labels drifted from the approved user language.
-  - Fix: restored “事实可信 / 符合你的表达 / 无收益承诺” while retaining measured QA evidence in the notes.
-- [P2] Fixture content was too short, leaving the lower document region sparse compared with the selected design.
-  - Fix: replaced the test-only fixture with a realistic five-paragraph locked script and preserved the formal environment’s real model output.
+页面先说明处理数量、已关联数量、候选、未匹配、重复和错误，再只展开需要人工判断的行。候选解释、确认已有发布和创建外部发布记录均可操作；没有加入批次后台、筛选栏、图表或指标卡片。首次对比发现成功通知遮挡结果标题，已将复盘通知恢复到正常文档流，复验后无重叠。
 
-### Iteration 2 — passed
+### 复盘与私有记忆
 
-- Post-fix combined evidence: `daily-side-by-side-final.png` shows a single-line desktop title, equivalent content density, aligned evidence semantics, stable document/evidence proportions, and no broken controls.
-- Mobile evidence: `daily-implementation-mobile.png` confirms the primary action remains visible and `document.documentElement.scrollWidth <= window.innerWidth`.
-- End-to-end evidence: 2 browser tests passed, including tenant/platform isolation and console/page-error checks.
+主栏严格按“能确定什么 → 比较可能但不能确定 → 不能推断什么 → 下一轮建议”排列，右栏只允许编辑 `keep`、`avoid` 和 `nextContentSignals`，证据边界保持只读。只有五条及以上独立发布且具备确认权限时出现确认操作。
 
-## Follow-up Polish
+### 记忆回流
 
-- P3: validate long real-model titles on 360px Android webviews after the first pilot dataset; current layout wraps safely but could later use editorial line-balancing.
+下一次创作自动显示实际使用的记忆版本和摘要，不增加记忆选择器、权重面板或生成前步骤。页面继续以可直接拍摄的口播稿为核心。
 
-final result: passed
+## 行为与可访问性
+
+- 主要交互均使用语义化按钮、标题、表单标签和状态区域。
+- 锁稿前不会出现发布回执；保存失败保留输入；发布成功可追加其他账号。
+- 导入支持刷新恢复；候选未处理完时，可用数据仍继续生成复盘。
+- Reviewer 可以复盘但不能确认记忆；平台账号访问租户复盘 API 返回 403。
+- 浏览器 Console 和页面运行错误均为空。
+- `390 × 844` 下主操作可见，页面无横向溢出。
+
+## 验收结果
+
+没有遗留 P0、P1 或 P2 视觉问题。
+
+最终结果：通过。

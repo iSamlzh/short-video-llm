@@ -23,7 +23,7 @@ npm run dev
 - `reviewer@example.test`：数据复盘
 - `platform@example.test`：平台内容运营
 
-演示种子只写入 `data_origin=demo` 数据，可用 `npm run seed:demo:clear` 一次性移除；正式数据不会被删除。生产环境不会展示共享默认账号，也不会开放模拟发布入口。
+演示种子只写入 `data_origin=demo` 数据。需要一次性移除时，临时设置 `PROTOTYPE_ALLOW_DEMO_CLEAR=true` 后执行 `npm run seed:demo:clear`；脚本会同时清理演示租户关联的创作、发布、指标、复盘与记忆数据，其他正式用户和正式租户不受影响。生产环境不得启用演示清理开关、共享默认账号或任何测试 Fixture。
 
 ## 模型调用
 
@@ -47,15 +47,17 @@ PROTOTYPE_DB_PATH=.data/prototype.sqlite
 - IP 首次确认和当前 IP/账号持久化；日常不重复选择。
 - 结果优先的每日创作，可持久化分段/整篇编辑、换选题/讲法、按版本确认定稿、复制当前锁稿和查看其他选题。
 - 平台私有内容库只检索已启用的不可变结构版本；无启用结构时阻断生成。
-- CSV 真实数据导入、格式校验、行级容错、租户内去重和证据边界复盘。
+- CSV/XLSX 真实数据导入、格式校验、行级容错、确定性发布匹配、租户内去重和证据边界复盘。
 - 用户确认后形成租户/IP/账号私有记忆，不回写平台爆款模板。
 - 自然语言分工确认后，按当前 IP/账号写入最小权限并记录审计日志。
 
-CSV 表头：
+推荐导入表头（中英文别名均可，至少提供标题，并通过作品 ID、视频链接或标题 + 发布时间建立身份）：
 
 ```text
-title,plays,completion_rate,likes,comments,shares,negative_feedback
+platform_video_id,video_url,title,published_at,captured_at,impressions,plays,completions,completion_rate,likes,comments,saves,shares,inquiries,negative_feedback
 ```
+
+单文件仅接受 `.csv` 或 `.xlsx`，最大 10 MB、10,000 条数据。原始上传字节只在请求内使用，系统持久化不可变指标快照、批次摘要和脱敏行错误，不保存原文件。
 
 平台 API 自动回流是二期能力，首版以导入为主。
 
@@ -68,7 +70,7 @@ npm run build
 npm run test:e2e
 ```
 
-当前验收：88 项单元/组件测试、2 条浏览器端到端路径、生产构建和桌面/移动视觉 QA。端到端路径覆盖修改后刷新持久化、当前版本 QA、两次不可变锁稿和再次编辑。E2E 固定模型仅在 `PROTOTYPE_TEST_MODE=true` 且 `PLAYWRIGHT_TEST_MODE=true` 时启用，普通运行始终调用配置的真实模型。
+验收矩阵覆盖单元/组件测试、生产构建、创作闭环和真实发布—复盘—记忆浏览器路径。端到端路径验证修改后刷新持久化、不可变锁稿、真实发布回执、五条真实指标匹配、权限隔离、复盘确认、下一次创作引用精确记忆版本，以及 390 px 移动端无横向溢出。固定模型和 E2E 真实形态 Fixture 只有在 `PROTOTYPE_TEST_MODE=true` 且 `PLAYWRIGHT_TEST_MODE=true` 同时成立时启用，普通运行始终调用配置的真实模型。
 
 视觉验收报告见 [design-qa.md](./design-qa.md)。
 
@@ -78,12 +80,14 @@ npm run test:e2e
 
 - 推荐：4 核 CPU、8 GB 内存、80 GB SSD、Linux、Node.js LTS。
 - 进程：一个 Next.js Node 进程；前置 Nginx/Caddy 负责 HTTPS、压缩和请求体限制。
-- 数据：当前 SQLite 适合原型和小规模试运行；正式多人持续写入前迁移 PostgreSQL。迁移由版本化 SQL 自动执行。
-- 持久化：数据库目录必须挂载持久盘，每日快照；`.env.local`/密钥不进入 Git。
+- 数据：首版固定使用单个 SQLite 文件，必须位于本机持久盘；不得让多个应用实例同时连接同一个 SQLite 文件。迁移由版本化 SQL 自动执行。
+- 持久化：数据库目录必须挂载持久盘；使用 SQLite 在线备份能力执行每日备份，并定期做隔离恢复验证；`.env.local`/密钥不进入 Git。
 - 观测：记录请求 ID、Run ID、模型耗时、错误码和 token 使用，不记录 API Key 或完整敏感正文。
 - 容量策略：账号登录和页面读取成本低；内容生成受上游模型延迟和额度限制。超过单机验证规模后再引入 PostgreSQL、队列、对象存储与多实例负载均衡。
 
 部署前至少执行 `npm ci && npm run build && npm test`，并在真实域名下验证登录 Cookie、HTTPS、上传大小和模型超时。
+
+完整单机部署、反向代理、备份恢复与扩容边界见 [真实内容闭环单机运维说明](./docs/operations/real-growth-loop.md)。
 
 ## 文档
 

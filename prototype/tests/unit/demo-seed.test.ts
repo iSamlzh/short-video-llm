@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest"
 import type Database from "better-sqlite3"
 import { openDatabase } from "../../src/lib/db/database"
-import { clearDemoData, seedDemoData } from "../../src/scripts/demo-data"
+import { clearDemoData, seedDemoData, seedE2ERealPublications } from "../../src/scripts/demo-data"
 
 let database: Database.Database | undefined
 
@@ -50,5 +50,34 @@ describe("demo data lifecycle", () => {
     database = openDatabase(":memory:")
     await seedDemoData(database, "demo-password")
     expect(() => clearDemoData(database!, false)).toThrowError("DEMO_CLEAR_NOT_ALLOWED")
+  })
+
+  it("only seeds formally shaped E2E publications behind the double test guard", async () => {
+    database = openDatabase(":memory:")
+    await seedDemoData(database, "demo-password")
+
+    expect(() => seedE2ERealPublications(database!, false)).toThrowError("E2E_FIXTURE_NOT_ALLOWED")
+    seedE2ERealPublications(database, true)
+    seedE2ERealPublications(database, true)
+
+    expect(database.prepare("SELECT COUNT(*) count FROM publications WHERE id LIKE 'e2e-publication-%'").get())
+      .toEqual({ count: 4 })
+    expect(database.prepare("SELECT COUNT(*) count FROM publications WHERE id LIKE 'e2e-publication-%' AND source='external' AND status='active'").get())
+      .toEqual({ count: 4 })
+  })
+
+  it("clears version 7 demo-scope rows without touching unrelated formal users", async () => {
+    database = openDatabase(":memory:")
+    await seedDemoData(database, "demo-password")
+    seedE2ERealPublications(database, true)
+    const now = "2026-08-17T10:00:00.000Z"
+    database.prepare("INSERT INTO users (id,email_normalized,display_name,password_hash,audience,status,data_origin,created_at) VALUES (?,?,?,?,?,?,?,?)")
+      .run("user-formal-v7", "formal-v7@example.test", "正式用户", "hash", "tenant", "active", "formal", now)
+
+    clearDemoData(database, true)
+
+    expect(database.prepare("SELECT COUNT(*) count FROM publications WHERE id LIKE 'e2e-publication-%'").get())
+      .toEqual({ count: 0 })
+    expect(database.prepare("SELECT COUNT(*) count FROM users WHERE id='user-formal-v7'").get()).toEqual({ count: 1 })
   })
 })

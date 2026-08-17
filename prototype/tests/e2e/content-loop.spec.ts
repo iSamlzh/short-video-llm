@@ -61,11 +61,8 @@ test("tenant default path produces one usable draft and keeps internal brain pri
   await expect(page.getByText("无权访问平台运营空间")).toBeVisible()
 })
 
-test("review, delegation and platform content brain are usable in their own scopes", async ({ page }) => {
+test("delegation and platform content brain are usable in their own scopes", async ({ page }) => {
   await login(page, "owner@example.test")
-  await page.goto("/app/review")
-  await expect(page.getByText(/当前账号最值得保留的是/)).toBeVisible()
-  await expect(page.getByText("开发演示数据")).toBeVisible()
   await page.goto("/app/team")
   await page.getByRole("button", { name: "确认并邀请小周" }).click()
   await expect(page.getByText(/小周现在只能操作林姐/)).toBeVisible()
