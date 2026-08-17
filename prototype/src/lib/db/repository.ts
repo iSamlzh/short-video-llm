@@ -179,34 +179,55 @@ export class PrototypeRepository {
     return selection && batch ? batch.items.find(item => item.id === selection.scriptId) ?? null : null
   }
 
-  saveQualityReport(runId: string, report: QualityReport) {
+  saveQualityReport(runId: string, report: QualityReport, scriptSelectionVersion: number) {
     const checked = qualityReportSchema.parse(report)
     const version = this.nextVersion("quality_reports", runId)
     const createdAt = new Date().toISOString()
-    this.database.prepare("INSERT INTO quality_reports (run_id,version,schema_version,payload_json,created_at) VALUES (?,?,?,?,?)")
-      .run(runId, version, SCHEMA_VERSION, JSON.stringify(checked), createdAt)
-    return { version, ...checked, createdAt }
+    this.database.prepare("INSERT INTO quality_reports (run_id,version,schema_version,payload_json,created_at,script_selection_version) VALUES (?,?,?,?,?,?)")
+      .run(runId, version, SCHEMA_VERSION, JSON.stringify(checked), createdAt, scriptSelectionVersion)
+    return { version, ...checked, scriptSelectionVersion, createdAt }
   }
 
   getLatestQualityReport(runId: string) {
     const row = this.database.prepare("SELECT * FROM quality_reports WHERE run_id = ? ORDER BY version DESC LIMIT 1").get(runId) as Row | undefined
-    return row ? { version: Number(row.version), ...qualityReportSchema.parse(JSON.parse(String(row.payload_json))) } : null
+    return row ? {
+      version: Number(row.version),
+      ...qualityReportSchema.parse(JSON.parse(String(row.payload_json))),
+      scriptSelectionVersion: row.script_selection_version == null ? null : Number(row.script_selection_version),
+    } : null
   }
 
-  lockSelectedScript(runId: string) {
+  lockSelectedScript(runId: string, scriptSelectionVersion: number) {
     const script = this.getSelectedScript(runId)
     if (!script) throw new Error("SCRIPT_SELECTION_REQUIRED")
     const version = this.nextVersion("locked_scripts", runId)
     const sha256 = createHash("sha256").update(JSON.stringify(script)).digest("hex")
     const createdAt = new Date().toISOString()
-    this.database.prepare("INSERT INTO locked_scripts (run_id,version,schema_version,sha256,payload_json,created_at) VALUES (?,?,?,?,?,?)")
-      .run(runId, version, SCHEMA_VERSION, sha256, JSON.stringify(script), createdAt)
-    return { version, sha256, script: structuredClone(script), createdAt }
+    this.database.prepare("INSERT INTO locked_scripts (run_id,version,schema_version,sha256,payload_json,created_at,script_selection_version) VALUES (?,?,?,?,?,?,?)")
+      .run(runId, version, SCHEMA_VERSION, sha256, JSON.stringify(script), createdAt, scriptSelectionVersion)
+    return { version, sha256, script: structuredClone(script), scriptSelectionVersion, createdAt }
   }
 
   getLatestLockedScript(runId: string) {
     const row = this.database.prepare("SELECT * FROM locked_scripts WHERE run_id = ? ORDER BY version DESC LIMIT 1").get(runId) as Row | undefined
-    return row ? { version: Number(row.version), sha256: String(row.sha256), script: JSON.parse(String(row.payload_json)) as ScriptCandidate } : null
+    return row ? {
+      version: Number(row.version),
+      sha256: String(row.sha256),
+      script: JSON.parse(String(row.payload_json)) as ScriptCandidate,
+      scriptSelectionVersion: row.script_selection_version == null ? null : Number(row.script_selection_version),
+    } : null
+  }
+
+  getLockedScriptForSelection(runId: string, scriptSelectionVersion: number) {
+    const row = this.database.prepare(`SELECT * FROM locked_scripts
+      WHERE run_id = ? AND script_selection_version = ? ORDER BY version DESC LIMIT 1`)
+      .get(runId, scriptSelectionVersion) as Row | undefined
+    return row ? {
+      version: Number(row.version),
+      sha256: String(row.sha256),
+      script: JSON.parse(String(row.payload_json)) as ScriptCandidate,
+      scriptSelectionVersion: Number(row.script_selection_version),
+    } : null
   }
 
   saveMetricSnapshot(runId: string, snapshot: MetricSnapshot) {

@@ -22,7 +22,7 @@
 - 页面不增加新工作台、弹窗、保存工具栏或逐字自动保存。
 - 现有 provider-neutral LLM adapter、SQLite checkpoint、内部内容结构隔离与首版单机边界保持不变。
 - 每项生产代码修改使用 TDD：先运行会因缺失行为而失败的测试，再写最小实现。
-- 实现前阅读 `prototype/AGENTS.md` 以及 `prototype/node_modules/next/dist/docs/01-app/03-building-your-application/01-routing/13-route-handlers.mdx`。
+- 实现前阅读 `prototype/AGENTS.md` 以及 `prototype/node_modules/next/dist/docs/01-app/01-getting-started/15-route-handlers.md`。
 
 ---
 
@@ -71,6 +71,7 @@ prototype/README.md
 - Create: `prototype/src/lib/db/migrations/006_script_revision_lineage.sql`
 - Modify: `prototype/src/lib/db/migrations.ts`
 - Modify: `prototype/src/lib/db/repository.ts`
+- Modify: `prototype/src/services/run-service.ts`
 - Modify: `prototype/tests/unit/migrations.test.ts`
 - Modify: `prototype/tests/unit/run-service.test.ts`
 
@@ -148,7 +149,7 @@ lockSelectedScript(runId: string, scriptSelectionVersion: number)
 getLockedScriptForSelection(runId: string, scriptSelectionVersion: number)
 ```
 
-New rows always write the revision. Existing rows with `NULL` remain readable but cannot satisfy current-revision lock idempotency.
+New rows always write the revision. Existing rows with `NULL` remain readable but cannot satisfy current-revision lock idempotency. In the same slice, update `RunService.runQa()` to pass the current Script Selection version and `RunService.lockScript()` to pass the same version to the repository; Task 2 adds stale-QA and idempotency policy after these signatures compile.
 
 - [ ] **Step 5: Re-run the focused tests**
 
@@ -163,7 +164,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit the lineage slice**
 
 ```powershell
-git add prototype/src/lib/db/migrations prototype/src/lib/db/migrations.ts prototype/src/lib/db/repository.ts prototype/tests/unit/migrations.test.ts prototype/tests/unit/run-service.test.ts
+git add prototype/src/lib/db/migrations prototype/src/lib/db/migrations.ts prototype/src/lib/db/repository.ts prototype/src/services/run-service.ts prototype/tests/unit/migrations.test.ts prototype/tests/unit/run-service.test.ts
 git commit -m "feat: bind quality checks to script revisions"
 ```
 

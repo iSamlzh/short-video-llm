@@ -31,4 +31,16 @@ describe("database migrations", () => {
     expect(() => database!.prepare("INSERT INTO user_current_context (user_id,tenant_id,ip_profile_id,content_account_id,updated_at) VALUES (?,?,?,?,?)")
       .run("user-1", "tenant-1", null, null, now)).toThrow()
   })
+
+  it("adds script-selection lineage to quality reports and locked scripts", () => {
+    database = openDatabase(":memory:")
+    const qualityColumns = database.prepare("PRAGMA table_info(quality_reports)").all() as Array<{ name: string }>
+    const lockColumns = database.prepare("PRAGMA table_info(locked_scripts)").all() as Array<{ name: string }>
+
+    expect(qualityColumns.map((column) => column.name)).toContain("script_selection_version")
+    expect(lockColumns.map((column) => column.name)).toContain("script_selection_version")
+    expect(database.prepare(
+      "SELECT COUNT(*) count FROM schema_migrations WHERE version = 6",
+    ).get()).toEqual({ count: 1 })
+  })
 })

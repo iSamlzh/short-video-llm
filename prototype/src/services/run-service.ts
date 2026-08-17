@@ -74,9 +74,9 @@ export class RunService {
       this.repository.setState(runId, transition("READY_FOR_SCRIPTS", "GENERATE_SCRIPTS"))
       const scripts = this.repository.saveScriptBatch(runId, inputVersion, result.scripts, `${runId}:auto:scripts:${inputVersion}`)
       this.repository.setState(runId, transition("GENERATING_SCRIPTS", "SCRIPTS_GENERATED"))
-      this.selectScript(runId, scripts.version, script.id)
+      const selection = this.selectScript(runId, scripts.version, script.id)
       this.repository.setState(runId, transition("READY_FOR_QA", "RUN_QA"))
-      this.repository.saveQualityReport(runId, result.qualityReport)
+      this.repository.saveQualityReport(runId, result.qualityReport, selection.version)
       this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
       if (!result.qualityReport.hardGatePassed) throw Object.assign(new Error("DRAFT_NEEDS_ATTENTION"), { code: "DRAFT_NEEDS_ATTENTION", retryable: true })
       this.lockScript(runId)
@@ -118,9 +118,9 @@ export class RunService {
       this.repository.setState(runId, transition("READY_FOR_SCRIPTS", "GENERATE_SCRIPTS"))
       const scripts = this.repository.saveScriptBatch(runId, inputVersion, result.scripts, `${runId}:adjust:scripts:${inputVersion}`)
       this.repository.setState(runId, transition("GENERATING_SCRIPTS", "SCRIPTS_GENERATED"))
-      this.selectScript(runId, scripts.version, selectedScript.id)
+      const selection = this.selectScript(runId, scripts.version, selectedScript.id)
       this.repository.setState(runId, transition("READY_FOR_QA", "RUN_QA"))
-      this.repository.saveQualityReport(runId, result.qualityReport)
+      this.repository.saveQualityReport(runId, result.qualityReport, selection.version)
       this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
       if (!result.qualityReport.hardGatePassed) throw Object.assign(new Error("DRAFT_NEEDS_ATTENTION"), { code: "DRAFT_NEEDS_ATTENTION", retryable: true })
       this.lockScript(runId)
@@ -182,13 +182,15 @@ export class RunService {
     const run = this.repository.requireVersion(runId, inputVersion)
     const script = this.repository.getSelectedScript(runId)
     if (!script) throw new Error("SCRIPT_SELECTION_REQUIRED")
+    const selection = this.repository.getCurrentScriptSelection(runId)
+    if (!selection) throw new Error("SCRIPT_SELECTION_REQUIRED")
     this.repository.setState(runId, transition(run.state, "RUN_QA"))
     try {
       const report = await this.llm.generateStructured("qa", {
         ipProfile: run.ipProfile, goal: prototypePreset.goal, selectedScript: script,
         instruction: "只检查，不改写",
       }, qualityReportSchema)
-      const saved = this.repository.saveQualityReport(runId, report)
+      const saved = this.repository.saveQualityReport(runId, report, selection.version)
       this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
       return saved
     } catch (error) {
@@ -202,7 +204,9 @@ export class RunService {
     const run = this.repository.requireRun(runId)
     const report = this.repository.getLatestQualityReport(runId)
     if (!report?.hardGatePassed) throw new Error("QA_HARD_GATE_BLOCKED")
-    const locked = this.repository.lockSelectedScript(runId)
+    const selection = this.repository.getCurrentScriptSelection(runId)
+    if (!selection) throw new Error("SCRIPT_SELECTION_REQUIRED")
+    const locked = this.repository.lockSelectedScript(runId, selection.version)
     this.repository.setState(runId, transition(run.state, "LOCK"))
     return locked
   }

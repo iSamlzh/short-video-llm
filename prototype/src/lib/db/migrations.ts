@@ -19,6 +19,10 @@ const migrations = [
     version: 5,
     filename: "005_real_metrics_review.sql",
   },
+  {
+    version: 6,
+    filename: "006_script_revision_lineage.sql",
+  },
 ] as const
 
 export function applyMigrations(database: Database.Database) {

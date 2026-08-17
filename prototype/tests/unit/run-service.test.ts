@@ -150,6 +150,19 @@ describe("RunService QA and locking", () => {
     await service.runQa(run.id, run.inputVersion)
     expect(() => service.lockScript(run.id)).toThrow("QA_HARD_GATE_BLOCKED")
   })
+
+  it("binds QA and locked output to the selected script revision", async () => {
+    const { repository, service, adapter, run } = await selectedScriptFixture()
+    const selection = repository.getCurrentScriptSelection(run.id)!
+    adapter.enqueue({ json: qualityReport(true) })
+
+    await service.runQa(run.id, run.inputVersion)
+    const report = repository.getLatestQualityReport(run.id)
+    expect(report?.scriptSelectionVersion).toBe(selection.version)
+
+    service.lockScript(run.id)
+    expect(repository.getLatestLockedScript(run.id)?.scriptSelectionVersion).toBe(selection.version)
+  })
 })
 
 describe("RunService review", () => {
