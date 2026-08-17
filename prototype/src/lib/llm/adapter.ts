@@ -1,4 +1,4 @@
-export type LlmOperation = "topics" | "scripts" | "qa" | "review" | "real_review" | "auto_draft" | "topic_draft" | "repair"
+export type LlmOperation = "topics" | "scripts" | "qa" | "review" | "real_review" | "auto_draft" | "topic_draft" | "content_analysis" | "structure_candidate" | "structure_preview" | "repair"
 export interface TokenUsage { promptTokens?: number; completionTokens?: number; totalTokens?: number }
 export interface LlmRequest {
   operation: LlmOperation
@@ -33,7 +33,7 @@ export class OpenAiCompatibleAdapter implements LlmAdapter {
           headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({
             model,
-            temperature: request.operation === "qa" || request.operation === "real_review" || request.operation === "auto_draft" || request.operation === "topic_draft" ? 0.35 : 0.6,
+            temperature: request.operation === "qa" || request.operation === "real_review" || request.operation === "auto_draft" || request.operation === "topic_draft" || request.operation === "content_analysis" || request.operation === "structure_candidate" || request.operation === "structure_preview" ? 0.35 : 0.6,
             messages: [
               { role: "system", content: request.systemPrompt },
               { role: "user", content: JSON.stringify(request.input) },

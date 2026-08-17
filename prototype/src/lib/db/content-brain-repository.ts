@@ -1,6 +1,8 @@
 import { createHash, randomUUID } from "node:crypto"
 import type Database from "better-sqlite3"
-import type { ContentAnalysis } from "../../domain/content-brain"
+import type { ContentAnalysis, SampleStatus } from "../../domain/content-brain"
+import type { StructureCandidateInput } from "../../domain/content-brain-schemas"
+import type { TokenUsage } from "../llm/adapter"
 
 type VersionInput = {
   id: string
@@ -102,6 +104,29 @@ export class ContentBrainRepository {
     return row ? { sampleId: row.sample_id, revisionId: row.revision_id, version: row.version } : null
   }
 
+  requireSample(sampleId: string) {
+    const row = this.database.prepare(`SELECT s.*,r.id revision_id,r.transcript,r.content_hash
+      FROM platform_content_samples s
+      JOIN platform_content_sample_revisions r ON r.sample_id=s.id AND r.version=s.current_revision_version
+      WHERE s.id=?`).get(sampleId) as {
+        id: string; title: string; source_platform: string; rights_note: string; data_origin: "demo" | "formal";
+        workflow_status: SampleStatus; current_revision_version: number; revision_id: string;
+        transcript: string; content_hash: string
+      } | undefined
+    if (!row) throw new Error("CONTENT_SAMPLE_NOT_FOUND")
+    return {
+      id: row.id, title: row.title, sourcePlatform: row.source_platform, rightsNote: row.rights_note,
+      dataOrigin: row.data_origin, status: row.workflow_status, revisionId: row.revision_id,
+      revisionVersion: row.current_revision_version, transcript: row.transcript, contentHash: row.content_hash,
+    }
+  }
+
+  updateSampleStatus(sampleId: string, status: SampleStatus, updatedAt: string) {
+    const result = this.database.prepare(`UPDATE platform_content_samples SET workflow_status=?,updated_at=? WHERE id=?`)
+      .run(status, updatedAt, sampleId)
+    if (result.changes !== 1) throw new Error("CONTENT_SAMPLE_NOT_FOUND")
+  }
+
   appendSampleRevision(sampleId: string, input: {
     transcript: string; contentHash?: string; expectedVersion: number;
     actorUserId: string; createdAt: string;
@@ -138,7 +163,7 @@ export class ContentBrainRepository {
   appendAnalysis(input: {
     id: string; sampleId: string; revisionId: string; payload: ContentAnalysis;
     model: string; promptVersion: number; actorUserId: string; createdAt: string;
-    tokenUsage?: Record<string, number>;
+    tokenUsage?: TokenUsage;
   }) {
     const row = this.database.prepare(`SELECT COALESCE(MAX(version),0)+1 version
       FROM platform_content_analysis_versions WHERE sample_id=?`).get(input.sampleId) as { version: number }
@@ -149,6 +174,65 @@ export class ContentBrainRepository {
       input.promptVersion, input.tokenUsage ? JSON.stringify(input.tokenUsage) : null, input.actorUserId, input.createdAt,
     )
     return { ...input, version: row.version, status: "generated" as const }
+  }
+
+  requireAnalysis(analysisId: string) {
+    const row = this.database.prepare("SELECT * FROM platform_content_analysis_versions WHERE id=?").get(analysisId) as {
+      id: string; sample_id: string; revision_id: string; version: number; payload_json: string;
+      model: string; prompt_version: number; status: "generated" | "reviewed" | "rejected"; created_at: string
+    } | undefined
+    if (!row) throw new Error("CONTENT_ANALYSIS_NOT_FOUND")
+    return {
+      id: row.id, sampleId: row.sample_id, revisionId: row.revision_id, version: row.version,
+      payload: JSON.parse(row.payload_json) as ContentAnalysis, model: row.model,
+      promptVersion: row.prompt_version, status: row.status, createdAt: row.created_at,
+    }
+  }
+
+  appendReviewedAnalysis(input: {
+    id: string; sourceAnalysisId: string; expectedVersion: number; payload: ContentAnalysis;
+    actorUserId: string; createdAt: string;
+  }) {
+    const source = this.requireAnalysis(input.sourceAnalysisId)
+    if (source.version !== input.expectedVersion) throw new Error("ANALYSIS_VERSION_CONFLICT")
+    if (source.status !== "generated") throw new Error("ANALYSIS_NOT_REVIEWABLE")
+    const version = source.version + 1
+    this.database.prepare(`INSERT INTO platform_content_analysis_versions
+      (id,sample_id,revision_id,version,payload_json,model,prompt_version,status,created_by_user_id,
+       reviewed_by_user_id,reviewed_at,created_at)
+      VALUES (?,?,?,?,?,?,?,'reviewed',?,?,?,?)`).run(
+      input.id, source.sampleId, source.revisionId, version, JSON.stringify(input.payload), source.model,
+      source.promptVersion, input.actorUserId, input.actorUserId, input.createdAt, input.createdAt,
+    )
+    return this.requireAnalysis(input.id)
+  }
+
+  appendCandidate(input: {
+    id: string; analysisId: string; sampleId: string; payload: StructureCandidateInput;
+    dataOrigin: "demo" | "formal"; actorUserId: string; createdAt: string;
+  }) {
+    const candidateKey = `${input.sampleId}:${input.payload.decision}:${input.payload.targetTemplateId ?? input.payload.name}`
+    const next = this.database.prepare(`SELECT COALESCE(MAX(version),0)+1 version
+      FROM platform_structure_candidates WHERE candidate_key=?`).get(candidateKey) as { version: number }
+    this.database.transaction(() => {
+      this.database.prepare(`INSERT INTO platform_structure_candidates
+        (id,candidate_key,sample_id,version,decision,target_template_id,payload_json,status,data_origin,
+         created_by_user_id,created_at,updated_at)
+        VALUES (?,?,?,?,?,?,?,'draft',?,?,?,?)`).run(
+        input.id, candidateKey, input.sampleId, next.version, input.payload.decision,
+        input.payload.targetTemplateId, JSON.stringify(input.payload), input.dataOrigin,
+        input.actorUserId, input.createdAt, input.createdAt,
+      )
+      this.database.prepare(`INSERT INTO platform_candidate_source_links
+        (candidate_id,analysis_id,created_at) VALUES (?,?,?)`).run(input.id, input.analysisId, input.createdAt)
+    })()
+    return { id: input.id, ...input.payload, version: next.version, status: "draft" as const }
+  }
+
+  listCandidateSourceAnalysisIds(candidateId: string) {
+    return (this.database.prepare(`SELECT analysis_id FROM platform_candidate_source_links
+      WHERE candidate_id=? ORDER BY analysis_id`).all(candidateId) as Array<{ analysis_id: string }>)
+      .map((row) => row.analysis_id)
   }
 
   activateCandidate(candidateId: string, input: {

@@ -47,6 +47,35 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
       scores: { hook: 84, ipFit: 92, credibility: 90, structure: 82, callToAction: 78 },
       suggestions: ["拍摄时在中段补充一个可核实的具体动作"],
     }
+    const contentAnalysis = {
+      summary: "真实冲突进入，处理过程建立可信度，最后落到责任原则。",
+      nodes: [
+        { kind: "hook", instruction: "以真实冲突开场", required: true, evidenceRefs: ["e1"] },
+        { kind: "principle", instruction: "落到责任原则", required: true, evidenceRefs: ["e2"] },
+      ],
+      reusablePatterns: ["冲突—处理—原则"], nonReusableFacts: ["具体人物姓名"],
+      applicability: { ipTags: ["团长"], audiences: ["本地经营者"], goals: ["建立信任"] },
+      riskNotes: ["不得承诺收益"],
+      evidenceRefs: [
+        { id: "e1", quote: "真实经历", start: 0, end: 4 },
+        { id: "e2", quote: "责任原则", start: 5, end: 9 },
+      ],
+      suggestedDecision: "create_new",
+    }
+    const structureCandidate = {
+      decision: "create_new", targetTemplateId: null, name: "真实冲突—责任原则",
+      applicability: contentAnalysis.applicability,
+      nodes: contentAnalysis.nodes.map(({ evidenceRefs: _evidenceRefs, ...node }) => node),
+      qualityRules: ["必须包含具体处理动作"], riskRules: ["不得承诺收益"],
+      similarities: [], differences: ["新增责任原则节点"], confidence: "medium",
+    }
+    const structurePreview = {
+      topic: "一次售后如何建立长期信任",
+      script: "从一次真实售后冲突讲起，说明核验、承担和处理动作，最后落到长期责任原则。",
+      nodeMappings: [{ node: "真实冲突", excerpt: "一次真实售后冲突" }],
+      qualityChecks: [{ rule: "包含具体处理动作", passed: true }],
+      riskChecks: [{ rule: "不得承诺收益", passed: true }],
+    }
     const payload = request.operation === "topics" ? topics : request.operation === "scripts" ? scripts : request.operation === "qa" ? qualityReport : request.operation === "auto_draft" ? {
       topics, selectedTopicId: topics[0].id, scripts, selectedScriptId: scripts[0].id, qualityReport,
     } : request.operation === "topic_draft" ? {
@@ -66,7 +95,10 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
       hypotheses: [], keep: ["真实人物与具体场景"], avoid: ["无证据的因果结论"],
       nextContentSignals: ["继续验证同类真实场景"],
       evidenceLimits: "当前数据只表达账号内相关性，不能证明平台分发或选题因果。",
-    } : (() => { throw new Error(`UNEXPECTED_FIXTURE_OPERATION:${request.operation}`) })()
+    } : request.operation === "content_analysis" ? contentAnalysis
+      : request.operation === "structure_candidate" ? structureCandidate
+        : request.operation === "structure_preview" ? structurePreview
+          : (() => { throw new Error(`UNEXPECTED_FIXTURE_OPERATION:${request.operation}`) })()
     return { text: JSON.stringify(payload), model: "prototype-e2e-fixture" }
   }
 }

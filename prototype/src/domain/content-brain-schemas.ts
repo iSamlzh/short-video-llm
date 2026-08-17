@@ -30,6 +30,34 @@ export const contentAnalysisSchema = z.object({
   suggestedDecision: candidateDecisionSchema,
 }).strict()
 
+export const structureCandidateSchema = z.object({
+  decision: candidateDecisionSchema,
+  targetTemplateId: z.string().trim().min(1).max(200).nullable(),
+  name: z.string().trim().min(2).max(200),
+  applicability: z.object({
+    ipTags: list(shortText, 12),
+    audiences: list(shortText, 12),
+    goals: list(shortText, 12),
+  }).strict(),
+  nodes: z.array(z.object({
+    kind: shortText,
+    instruction: z.string().trim().min(2).max(1_000),
+    required: z.boolean(),
+  }).strict()).min(1).max(12),
+  qualityRules: list(z.string().trim().min(2).max(500)),
+  riskRules: list(z.string().trim().min(2).max(500)),
+  similarities: list(z.string().trim().min(2).max(500)),
+  differences: list(z.string().trim().min(2).max(500)),
+  confidence: z.enum(["low", "medium", "high"]),
+}).strict().superRefine((value, context) => {
+  if (value.decision === "create_new" && value.targetTemplateId !== null) {
+    context.addIssue({ code: "custom", path: ["targetTemplateId"], message: "NEW_STRUCTURE_TARGET_MUST_BE_NULL" })
+  }
+  if (value.decision !== "create_new" && value.targetTemplateId === null) {
+    context.addIssue({ code: "custom", path: ["targetTemplateId"], message: "EXISTING_STRUCTURE_TARGET_REQUIRED" })
+  }
+})
+
 export const createContentSampleSchema = z.object({
   title: shortText,
   sourcePlatform: z.string().trim().min(1).max(100),
@@ -43,3 +71,4 @@ export const createContentSampleSchema = z.object({
 }).strict()
 
 export type CreateContentSampleInput = z.infer<typeof createContentSampleSchema>
+export type StructureCandidateInput = z.infer<typeof structureCandidateSchema>

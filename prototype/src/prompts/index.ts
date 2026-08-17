@@ -18,5 +18,9 @@ export const prompts = {
   real_review: realReviewPrompt,
   auto_draft: autoDraftPrompt,
   topic_draft: topicDraftPrompt,
+  content_analysis: contentAnalysisPrompt,
+  structure_candidate: structureCandidatePrompt,
+  structure_preview: structurePreviewPrompt,
 } as const
+import { contentAnalysisPrompt, structureCandidatePrompt, structurePreviewPrompt } from "./content-brain"
 import { realReviewPrompt } from "./real-review"
