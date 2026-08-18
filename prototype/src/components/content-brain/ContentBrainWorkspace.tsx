@@ -33,6 +33,13 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, canAc
     setSamples(await api.listSamples())
     setStructures(await api.listStructures())
   }
+  async function acceptReviewUpdate(next?: SampleWorkspace) {
+    if (!next) return refresh()
+    setWorkspace(next)
+    const [nextSamples, nextStructures] = await Promise.all([api.listSamples(), api.listStructures()])
+    setSamples(nextSamples)
+    setStructures(nextStructures)
+  }
   const candidate = workspace?.candidates.at(-1)
 
   return <div className="brain-workspace">
@@ -51,7 +58,7 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, canAc
     {!loading && !intake && view === "structures" && <StructureLedger structures={structures} />}
     {!loading && !intake && view === "review" && workspace && (candidate
       ? <StructureDecisionDocument candidate={candidate} api={api} canActivate={canActivate} onUpdated={() => refresh()} />
-      : <AnalysisReviewDocument workspace={workspace} api={api} onUpdated={(next) => next ? setWorkspace(next) : refresh()} />)}
+      : <AnalysisReviewDocument workspace={workspace} api={api} onUpdated={acceptReviewUpdate} />)}
     {!loading && !intake && view === "review" && !workspace && <section className="brain-empty-state"><h2>选择一条待复核样本</h2><p>从爆款样本列表打开 Agent 已完成的拆解任务。</p><button className="brain-button-secondary" onClick={() => setView("samples")}>查看样本</button></section>}
     {!loading && !intake && view === "samples" && <section className="brain-sample-index">
       <header><h1>从真实内容开始</h1><p>先提供一条真实内容，Agent 再提炼可复用结构。</p></header>

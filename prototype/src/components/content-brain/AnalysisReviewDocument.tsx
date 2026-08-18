@@ -7,7 +7,7 @@ import type { AnalysisPayload, ContentBrainApi, SampleWorkspace } from "./types"
 export function AnalysisReviewDocument({ workspace, api, onUpdated }: {
   workspace: SampleWorkspace
   api: ContentBrainApi
-  onUpdated: (workspace?: SampleWorkspace) => void
+  onUpdated: (workspace?: SampleWorkspace) => void | Promise<void>
 }) {
   const current = workspace.analyses.at(-1)
   const [payload, setPayload] = useState<AnalysisPayload | null>(current?.payload ?? null)
@@ -20,7 +20,7 @@ export function AnalysisReviewDocument({ workspace, api, onUpdated }: {
   if (!current || !payload) return <div className="brain-empty-state"><h2>等待 Agent 拆解</h2><p>拆解完成后，这里会显示结构节点和来源证据。</p></div>
 
   async function refresh() {
-    onUpdated(await api.getSample(workspace.sample.id))
+    await onUpdated(await api.getSample(workspace.sample.id))
   }
   async function run(kind: "save" | "approve" | "reject") {
     setPending(kind); setError("")

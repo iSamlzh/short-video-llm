@@ -45,6 +45,32 @@ describe("AI 原生爆款拆解工作区", () => {
     }))
   })
 
+  it("复核完成后同步更新爆款样本首页状态", async () => {
+    const api = fixtureApi()
+    const candidateWorkspace = {
+      ...workspaceFixture,
+      sample: { ...workspaceFixture.sample, status: "candidate_ready" },
+      candidates: [candidateFixture],
+    }
+    api.getSample.mockResolvedValueOnce(workspaceFixture).mockResolvedValueOnce(candidateWorkspace)
+    api.listSamples.mockResolvedValueOnce([
+      { ...workspaceFixture.sample, status: "candidate_ready" },
+    ])
+    render(<ContentBrainWorkspace
+      initialSamples={[workspaceFixture.sample]}
+      initialStructures={[]}
+      canActivate
+      api={api as any}
+    />)
+
+    await userEvent.click(screen.getByRole("button", { name: /一次售后让我重新理解团长.*待复核/ }))
+    await userEvent.click(await screen.findByRole("button", { name: "通过拆解并判断结构" }))
+    await screen.findByText("拟议结构")
+    await userEvent.click(screen.getByRole("button", { name: "爆款样本" }))
+
+    expect(screen.getByRole("button", { name: /一次售后让我重新理解团长.*待决策/ })).toBeVisible()
+  })
+
   it("试生成成功后仍要求人工确认启用", async () => {
     const api = fixtureApi()
     render(<StructureDecisionDocument candidate={candidateFixture} canActivate api={api as any} onUpdated={vi.fn()} />)
