@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import type { AccessContext, TenantAccessContext } from "../../src/domain/access"
 import { handleAnswer } from "../../src/app/api/app/ip-onboarding/sessions/[sessionId]/answers/[questionId]/route"
 import { handlePortraitPreview } from "../../src/app/api/app/ip-onboarding/sessions/[sessionId]/portrait-preview/route"
+import { handleConfirm } from "../../src/app/api/app/ip-onboarding/sessions/[sessionId]/confirm/route"
 import { handleSession } from "../../src/app/api/app/ip-onboarding/sessions/[sessionId]/route"
 import { handleSessions } from "../../src/app/api/app/ip-onboarding/sessions/route"
 import { openDatabase } from "../../src/lib/db/database"
@@ -104,6 +105,25 @@ describe("IP建档路由", () => {
     expect(await response.json()).toMatchObject({
       session: { id: "session-1", version: 19, portraitDraftVersion: 1 },
     })
+  })
+
+  it("确认接口只接收画像草稿版本并返回创建结果", async () => {
+    const response = await handleConfirm(
+      jsonRequest("POST", { portraitDraftVersion: 3 }),
+      "session-1",
+      owner,
+      {
+        profiles: {
+          confirmOnboarding: (_context: TenantAccessContext, input: { sessionId: string; portraitDraftVersion: number }) => ({
+            ipId: `ip-for-${input.sessionId}`,
+            accountId: `account-v${input.portraitDraftVersion}`,
+          }),
+        } as any,
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ipId: "ip-for-session-1", accountId: "account-v3" })
   })
 })
 

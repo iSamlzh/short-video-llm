@@ -108,4 +108,48 @@ describe("CreationAppService draft lifecycle", () => {
     expect(loaded.structureVersionIds).toEqual(["template-v1"])
     expect(loaded.structureInfluence).toBe("已结合平台审核通过的内容结构")
   })
+
+  it("新IP把内容画像字段传入创作模型且旧六字段流程保持可用", async () => {
+    const owner = access.resolve("user-owner", "tenant")
+    if (owner.audience !== "tenant") throw new Error("TENANT_CONTEXT_REQUIRED")
+    const current = appDatabase.prepare(`SELECT i.id, i.profile_json
+      FROM user_current_context c JOIN ip_profiles i ON i.id=c.ip_profile_id
+      WHERE c.user_id=? AND c.tenant_id=?`).get(owner.userId, owner.tenantId) as { id: string; profile_json: string }
+    const profile = JSON.parse(current.profile_json)
+    profile.industryCategory = "health_wellness"
+    profile.contentPortrait = {
+      schemaVersion: 1,
+      questionSetVersion: "ip-question-bank-v1",
+      industryCategory: "health_wellness",
+      identityPositioning: "真实经营经验分享者",
+      credibilitySources: ["七年社区团购经验"],
+      targetAudience: "想做本地生意的宝妈和小店主",
+      audienceQuestions: ["如何判断选品是否适合邻居"],
+      coreBeliefs: ["长期信任比短期销量重要"],
+      contentAssets: ["选品记录和售后案例"],
+      presentationStyles: ["真实故事"],
+      commercialConnections: ["用选品方法自然连接产品"],
+      desiredActions: ["关注并留言具体问题"],
+      boundaries: ["不承诺收益"],
+      topicPillars: [{ title: "真实选品判断", rationale: "受众高频问题", sourceQuestionIds: ["q01"] }],
+      confirmedFacts: [{ statement: "七年社区团购经验", sourceQuestionIds: ["q02"] }],
+      uncertainties: [],
+      sourceMap: { targetAudience: ["q01"] },
+    }
+    appDatabase.prepare("UPDATE ip_profiles SET profile_json=? WHERE id=?")
+      .run(JSON.stringify(profile), current.id)
+
+    await service.create(owner)
+
+    expect(adapter.calls[0].input).toMatchObject({
+      ipProfile: {
+        contentPortrait: {
+          audienceQuestions: ["如何判断选品是否适合邻居"],
+          coreBeliefs: ["长期信任比短期销量重要"],
+          contentAssets: ["选品记录和售后案例"],
+          topicPillars: [{ title: "真实选品判断" }],
+        },
+      },
+    })
+  })
 })
