@@ -3,7 +3,7 @@
 import { FormEvent, useState } from "react"
 import { useRouter } from "next/navigation"
 
-export function LoginForm() {
+export function LoginForm({ defaultEmail = "owner@example.test" }: { defaultEmail?: string }) {
   const router = useRouter()
   const [error, setError] = useState("")
   const [pending, setPending] = useState(false)
@@ -29,7 +29,7 @@ export function LoginForm() {
   }
 
   return <form className="login-form" onSubmit={submit}>
-    <label>邮箱<input name="email" type="email" required defaultValue="owner@example.test" autoComplete="username" /></label>
+    <label>邮箱<input name="email" type="email" required defaultValue={defaultEmail} autoComplete="username" /></label>
     <label>密码<input name="password" type="password" required defaultValue="demo-password" autoComplete="current-password" /></label>
     {error && <p className="form-error" role="alert">{error}</p>}
     <button className="primary-button" disabled={pending}>{pending ? "正在进入…" : "进入内容工作台"}</button>

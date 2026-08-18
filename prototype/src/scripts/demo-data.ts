@@ -20,6 +20,7 @@ export async function seedDemoData(database: Database.Database, password: string
   const provider = new LocalIdentityProvider(identities)
   const users = [
     { id: "user-owner", email: "owner@example.test", displayName: "林姐", audience: "tenant" as const },
+    { id: "user-firsttime", email: "firsttime@example.test", displayName: "首次体验团长", audience: "tenant" as const },
     { id: "user-operator", email: "operator@example.test", displayName: "小周", audience: "tenant" as const },
     { id: "user-reviewer", email: "reviewer@example.test", displayName: "阿雅", audience: "tenant" as const },
     { id: "user-platform", email: "platform@example.test", displayName: "陈默", audience: "platform" as const, platformRole: "platform_admin" as const },
@@ -35,6 +36,8 @@ export async function seedDemoData(database: Database.Database, password: string
     database.prepare("UPDATE users SET platform_role='platform_admin' WHERE id='user-platform' AND data_origin='demo'").run()
     database.prepare("INSERT OR IGNORE INTO tenants (id,name,status,data_origin,created_at) VALUES (?,?,?,?,?)")
       .run("tenant-linjie", "林姐内容团队", "active", "demo", createdAt)
+    database.prepare("INSERT OR IGNORE INTO tenants (id,name,status,data_origin,created_at) VALUES (?,?,?,?,?)")
+      .run("tenant-firsttime", "首次使用验证团队", "active", "demo", createdAt)
     const profiles = [
       {
         id: "ip-linjie",
@@ -94,6 +97,10 @@ export async function seedDemoData(database: Database.Database, password: string
       for (const accountId of membership.accounts) accountScopeInsert.run(membership.id, accountId)
       currentInsert.run(membership.userId, createdAt)
     }
+    database.prepare(`INSERT OR IGNORE INTO memberships
+      (id,tenant_id,user_id,role_key,status,data_origin,created_at)
+      VALUES ('membership-firsttime','tenant-firsttime','user-firsttime','owner','active','demo',?)`).run(createdAt)
+    for (const capability of roleCapabilities.owner) capabilityInsert.run("membership-firsttime", capability)
 
     const sampleInsert = database.prepare(`INSERT OR IGNORE INTO platform_content_samples
       (id,title,source_platform,source_text,rights_note,status,data_origin,created_by_user_id,created_at)

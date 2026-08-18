@@ -69,6 +69,27 @@ PROTOTYPE_DB_PATH=.data/prototype.sqlite
 - 用户确认后形成租户/IP/账号私有记忆，不回写平台爆款模板。
 - 自然语言分工确认后，按当前 IP/账号写入最小权限并记录审计日志。
 
+## 新 IP 首次建档
+
+租户用户没有当前 IP 或内容账号时，登录后会进入 `/app/setup/ip`，而不是直接生成固定示例内容。用户先填写 IP 名称和主要发布平台，主动选择行业，再逐题回答 8—10 个与内容产出有关的问题；系统保存每一题，页面刷新或重新登录后会从未完成的问题继续。答案复核后只调用一次画像生成，画像有误时必须回到它所依据的原回答修改，确认后才建立当前 IP、内容账号并进入今日首稿。
+
+问题库源文件位于 `src/ip-question-bank/sets/`，选择和覆盖逻辑位于 `src/services/ip-question-selector.ts`。客户端接口只返回当前问题和已答摘要，不返回完整内部问题库。
+
+运行问题库及建档静态测试：
+
+```powershell
+npm test -- tests/unit/ip-question-bank-schema.test.ts tests/unit/ip-question-bank-content.test.ts tests/unit/ip-question-selector.test.ts tests/unit/ip-onboarding-session-service.test.ts
+```
+
+运行首次建档、刷新恢复、画像失败重试和首稿闭环浏览器验收：
+
+```powershell
+npm run build
+npm run test:e2e -- tests/e2e/content-loop.spec.ts tests/e2e/ip-onboarding-recovery.spec.ts
+```
+
+新增问题库版本时，新建版本化题集并在 `src/ip-question-bank/index.ts` 显式注册；保持问题 ID 全局唯一、每个行业至少 30 道启用问题，并先通过静态校验和选择器测试。已有会话继续绑定创建时的 `questionSetVersion`，不得直接修改旧版本使进行中的建档失去可恢复性。
+
 推荐导入表头（中英文别名均可，至少提供标题，并通过作品 ID、视频链接或标题 + 发布时间建立身份）：
 
 ```text

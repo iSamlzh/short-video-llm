@@ -17,6 +17,32 @@ async function login(page: import("@playwright/test").Page, email: string) {
   await page.waitForURL(email.startsWith("platform") ? "**/platform/content-brain" : "**/app/today")
 }
 
+async function answerUntilReview(page: import("@playwright/test").Page) {
+  for (let index = 0; index < 10; index += 1) {
+    if (await page.getByRole("heading", { name: "先核对这些内容依据" }).isVisible()) return
+    const question = page.locator(".question-step")
+    await expect(question).toBeVisible()
+    const prompt = await question.getByRole("heading", { level: 1 }).innerText()
+    const textarea = question.getByRole("textbox", { name: "你的回答" })
+    if (await textarea.isVisible()) {
+      await textarea.fill(`第 ${index + 1} 项真实内容依据：来自日常服务、用户提问和长期实践。`)
+    } else {
+      await question.locator(".answer-option input").first().check()
+    }
+    await question.getByRole("button", { name: "保存并继续" }).click()
+    await expect.poll(async () => {
+      if (await page.getByRole("heading", { name: "先核对这些内容依据" }).isVisible()) return true
+      return await question.getByRole("heading", { level: 1 }).innerText().catch(() => "") !== prompt
+    }).toBe(true)
+  }
+  await expect(page.getByRole("heading", { name: "先核对这些内容依据" })).toBeVisible()
+}
+
+async function captureOnboarding(page: import("@playwright/test").Page, name: string) {
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
+  await page.screenshot({ path: `test-results/design-qa/ip-onboarding-desktop-${name}.png`, fullPage: true })
+}
+
 test("tenant default path produces one usable draft and keeps internal brain private", async ({ page }) => {
   await page.setViewportSize({ width: 1487, height: 1058 })
   await login(page, "owner@example.test")
@@ -80,4 +106,37 @@ test("delegation and platform content brain are usable in their own scopes", asy
   await page.getByRole("button", { name: "结构库" }).click()
   await expect(page.getByRole("heading", { name: "已启用结构" })).toBeVisible()
   await expect(page.getByText(/只有当前可参与团长创作检索的正式版本/)).toBeVisible()
+})
+
+test("首次登录从 IP 初始化开始并在确认后进入今日创作", async ({ page }) => {
+  test.setTimeout(90_000)
+  await page.setViewportSize({ width: 1440, height: 1024 })
+  await page.goto("/login")
+  await page.getByLabel("邮箱").fill("firsttime@example.test")
+  await page.getByLabel("密码").fill("demo-password")
+  await page.getByRole("button", { name: "进入内容工作台" }).click()
+
+  await expect(page).toHaveURL(/\/app\/setup\/ip$/)
+  await expect(page.getByRole("heading", { name: "先确定这个IP要讲什么" })).toBeVisible()
+  await expect(page.getByText(/林姐/)).toHaveCount(0)
+  await captureOnboarding(page, "01-basic")
+  await page.getByLabel("IP名称").fill("周姐")
+  await page.getByLabel("主要发布平台").selectOption("wechat_channels")
+  await page.getByRole("button", { name: "继续选择行业" }).click()
+  await captureOnboarding(page, "02-industry")
+  await page.getByLabel("健康养生").check()
+  await page.getByRole("button", { name: "开始建立内容画像" }).click()
+  await captureOnboarding(page, "03-question")
+
+  await answerUntilReview(page)
+  await captureOnboarding(page, "04-review")
+  await page.getByRole("button", { name: "生成内容画像" }).click()
+  await expect(page.getByRole("heading", { name: /我理解的周姐/ })).toBeVisible()
+  await captureOnboarding(page, "05-portrait")
+  await page.getByRole("button", { name: "这个理解准确，开始创作" }).click()
+
+  await expect(page).toHaveURL(/\/app\/today$/)
+  await expect(page.getByText("周姐，今天这篇可以直接拍")).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText(/林姐/)).toHaveCount(0)
+  await captureOnboarding(page, "06-today")
 })

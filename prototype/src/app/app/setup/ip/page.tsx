@@ -1,4 +1,7 @@
-import { demoProductData } from "@/presets/product-demo"
 import { OnboardingRouteView } from "@/components/onboarding/OnboardingRouteView"
+import { requireTenantAccess } from "@/lib/auth/request-access"
 
-export default function IpSetupPage() { return <main><OnboardingRouteView portrait={demoProductData.portrait} /></main> }
+export default async function IpSetupPage() {
+  await requireTenantAccess()
+  return <main><OnboardingRouteView /></main>
+}

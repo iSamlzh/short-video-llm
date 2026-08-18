@@ -13,9 +13,12 @@ describe("demo data lifecycle", () => {
     await seedDemoData(database, "demo-password")
     await seedDemoData(database, "demo-password")
 
-    expect(database.prepare("SELECT COUNT(*) count FROM users WHERE data_origin = 'demo'").get()).toEqual({ count: 4 })
-    expect(database.prepare("SELECT COUNT(*) count FROM tenants WHERE data_origin = 'demo'").get()).toEqual({ count: 1 })
+    expect(database.prepare("SELECT COUNT(*) count FROM users WHERE data_origin = 'demo'").get()).toEqual({ count: 5 })
+    expect(database.prepare("SELECT COUNT(*) count FROM tenants WHERE data_origin = 'demo'").get()).toEqual({ count: 2 })
     expect(database.prepare("SELECT COUNT(*) count FROM ip_profiles WHERE data_origin = 'demo'").get()).toEqual({ count: 2 })
+    expect(database.prepare("SELECT COUNT(*) count FROM user_current_context WHERE user_id = 'user-firsttime'").get()).toEqual({ count: 0 })
+    expect(database.prepare("SELECT tenant_id,role_key FROM memberships WHERE user_id = 'user-firsttime'").get())
+      .toEqual({ tenant_id: "tenant-firsttime", role_key: "owner" })
     const ownerCapabilities = database.prepare(
       "SELECT capability FROM membership_capabilities WHERE membership_id = 'membership-owner' ORDER BY capability",
     ).all() as Array<{ capability: string }>

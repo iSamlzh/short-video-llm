@@ -1,11 +1,13 @@
 import { DailyCreationWorkspace } from "@/components/creation/DailyCreationWorkspace"
 import { requireTenantAccess } from "@/lib/auth/request-access"
 import { getAppDatabase } from "@/lib/db/app-database"
+import { redirect } from "next/navigation"
 
 export default async function TodayPage() {
   const access = await requireTenantAccess()
   const current = getAppDatabase().prepare(`SELECT ip_profile_id,content_account_id FROM user_current_context
     WHERE user_id=? AND tenant_id=?`).get(access.userId, access.tenantId) as { ip_profile_id: string; content_account_id: string | null } | undefined
+  if (!current?.content_account_id) redirect("/app/setup/ip")
   const allowed = new Set(access.contentAccountIds)
   const accounts = current ? (getAppDatabase().prepare(`SELECT id,platform,account_name FROM content_accounts
     WHERE tenant_id=? AND ip_profile_id=? AND status='active'
