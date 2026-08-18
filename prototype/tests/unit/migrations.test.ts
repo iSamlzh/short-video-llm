@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest"
-import type Database from "better-sqlite3"
+import Database from "better-sqlite3"
 import { openDatabase } from "../../src/lib/db/database"
 import { applyMigrations } from "../../src/lib/db/migrations"
 
@@ -89,5 +89,30 @@ describe("database migrations", () => {
     }
     const columns = database.prepare("PRAGMA table_info(creation_run_context)").all() as Array<{ name: string }>
     expect(columns.map((column) => column.name)).toContain("structure_version_ids_json")
+  })
+
+  it("将已执行旧版 008 的存量库补齐审核备注字段", () => {
+    database = new Database(":memory:")
+    database.exec(`
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY,
+        filename TEXT NOT NULL,
+        applied_at TEXT NOT NULL
+      );
+      CREATE TABLE platform_content_analysis_versions (id TEXT PRIMARY KEY);
+      CREATE TABLE platform_structure_candidates (id TEXT PRIMARY KEY);
+    `)
+    const markApplied = database.prepare(
+      "INSERT INTO schema_migrations (version,filename,applied_at) VALUES (?,?,'2026-08-17T12:00:00.000Z')",
+    )
+    for (let version = 2; version <= 8; version += 1) markApplied.run(version, `00${version}_legacy.sql`)
+
+    applyMigrations(database)
+
+    const analysisColumns = database.prepare("PRAGMA table_info(platform_content_analysis_versions)").all() as Array<{ name: string }>
+    const candidateColumns = database.prepare("PRAGMA table_info(platform_structure_candidates)").all() as Array<{ name: string }>
+    expect(analysisColumns.map((column) => column.name)).toContain("review_note")
+    expect(candidateColumns.map((column) => column.name)).toContain("review_note")
+    expect(database.prepare("SELECT COUNT(*) count FROM schema_migrations WHERE version=9").get()).toEqual({ count: 1 })
   })
 })
