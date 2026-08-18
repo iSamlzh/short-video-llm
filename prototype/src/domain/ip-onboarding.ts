@@ -213,4 +213,10 @@ export type OnboardingSessionView = {
   currentQuestion: PortraitQuestion | null
   coveredDimensions: PortraitDimension[]
   canReview: boolean
+  answeredSummary: Array<{
+    questionId: string
+    question: string
+    dimension: PortraitDimension
+    value: string | string[]
+  }>
 }

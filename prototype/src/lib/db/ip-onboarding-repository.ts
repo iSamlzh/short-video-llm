@@ -162,7 +162,8 @@ export class IpOnboardingRepository {
       const updatedAt = input.answeredAt ?? new Date().toISOString()
 
       const result = this.database.prepare(`UPDATE ip_onboarding_sessions
-        SET answers_json = ?, version = version + 1, updated_at = ?
+        SET answers_json = ?, portrait_draft_json = NULL,
+          version = version + 1, updated_at = ?
         WHERE id = ? AND tenant_id = ? AND creator_user_id = ? AND version = ?`)
         .run(
           JSON.stringify(answers),
