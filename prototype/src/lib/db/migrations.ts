@@ -35,6 +35,10 @@ const migrations = [
     version: 9,
     filename: "009_content_brain_review_notes.sql",
   },
+  {
+    version: 10,
+    filename: "010_ip_onboarding_sessions.sql",
+  },
 ] as const
 
 export function applyMigrations(database: Database.Database) {
