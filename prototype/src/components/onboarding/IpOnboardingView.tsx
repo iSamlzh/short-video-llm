@@ -1,33 +1,62 @@
 "use client"
 
 import { useState } from "react"
+import type { ReactNode } from "react"
 import { CheckCircle, FileText, PencilSimple, Question } from "@phosphor-icons/react"
 
-export function IpOnboardingView({ portrait, onConfirm }: { portrait: any; onConfirm?: () => Promise<void> | void }) {
-  const [correction, setCorrection] = useState("")
+type Portrait = {
+  headline: string; name: string; title: string; identity: string; authority: string; audience: string
+  boundaries: readonly string[]; directions: readonly string[]; source: string; verifiedFacts: readonly string[]; uncertainFact: string; account: string
+}
+
+export function IpOnboardingView({ portrait, sourceMap = {}, onConfirm, onRequestCorrection }: {
+  portrait: Portrait
+  sourceMap?: Record<string, string[]>
+  onConfirm?: () => Promise<void> | void
+  onRequestCorrection?: (fieldPath: string) => void
+}) {
   const [status, setStatus] = useState("")
+  const [confirming, setConfirming] = useState(false)
+  async function confirm() {
+    setStatus("正在建立当前IP…")
+    setConfirming(true)
+    try { await onConfirm?.() } catch (error) {
+      setStatus(error instanceof Error ? error.message : "保存失败")
+      setConfirming(false)
+    }
+  }
+
   return <div className="document-page onboarding-view">
     <section className="result-lead">
-      <div><h1 className="eyebrow">{portrait.headline}</h1><p>这是根据你的介绍形成的 IP 草稿，不是公开介绍；确认后才用于内容创作。</p></div>
-      <div className="lead-actions"><button className="primary-button" onClick={async () => { setStatus("正在建立当前 IP…"); try { await onConfirm?.() } catch (error) { setStatus(error instanceof Error ? error.message : "保存失败") } }}>这个理解准确，开始创作</button><button className="secondary-button" onClick={() => document.querySelector<HTMLTextAreaElement>('[aria-label="告诉 Agent 哪里不对"]')?.focus()}>告诉 Agent 哪里不对</button>{status && <p className="inline-status" role="status">{status}</p>}</div>
+      <div><p className="onboarding-kicker">内容画像预览</p><h1 className="eyebrow">{portrait.headline}</h1><p>这不是公开简介，而是 Agent 后续选题与口播稿的工作依据。确认后才会建立当前IP。</p></div>
+      <div className="lead-actions"><button className="primary-button" disabled={confirming} onClick={confirm}>{confirming ? "正在建立当前IP…" : "这个理解准确，开始创作"}</button>{status && <p className="inline-status" role="status">{status}</p>}</div>
     </section>
     <div className="document-grid">
       <article className="primary-document">
         <h2 className="document-title">{portrait.name}<span className="title-divider" />{portrait.title}</h2>
-        <section className="portrait-section"><FileText size={28} weight="light" /><div><h2>你是谁</h2><p>{portrait.identity}</p></div></section>
-        <section className="portrait-section"><CheckCircle size={28} weight="light" /><div><h2>你为什么值得被听见</h2><p>{portrait.authority}</p></div></section>
-        <section className="portrait-section"><FileText size={28} weight="light" /><div><h2>你的内容应该服务谁</h2><p>{portrait.audience}</p></div></section>
-        <section className="portrait-section"><CheckCircle size={28} weight="light" /><div><h2>你的表达边界</h2><p>{portrait.boundaries.join("　|　")}</p></div></section>
-        <section className="portrait-section"><PencilSimple size={28} weight="light" /><div className="direction-row"><h2>第一阶段内容方向</h2>{portrait.directions.map((item: string, index: number) => <span key={item} className={index === 0 ? "recommended-text" : ""}>{item}{index === 0 && <small>Agent 推荐</small>}</span>)}</div></section>
+        <PortraitSection icon={<FileText size={26} weight="light" />} title="你是谁" text={portrait.identity} field="identityPositioning" sourceMap={sourceMap} onCorrect={onRequestCorrection} />
+        <PortraitSection icon={<CheckCircle size={26} weight="light" />} title="你为什么值得被听见" text={portrait.authority} field="identityPositioning" sourceMap={sourceMap} onCorrect={onRequestCorrection} />
+        <PortraitSection icon={<FileText size={26} weight="light" />} title="内容应该服务谁" text={portrait.audience} field="targetAudience" sourceMap={sourceMap} onCorrect={onRequestCorrection} />
+        <PortraitSection icon={<CheckCircle size={26} weight="light" />} title="表达边界" text={portrait.boundaries.join("；")} field="boundaries" sourceMap={sourceMap} onCorrect={onRequestCorrection} />
+        <section className="portrait-section"><PencilSimple size={26} weight="light" /><div className="direction-row"><div className="portrait-section-heading"><h2>第一阶段内容方向</h2><CorrectionButton field="topicPillars" title="第一阶段内容方向" sourceMap={sourceMap} onCorrect={onRequestCorrection} /></div>{portrait.directions.map(item => <span key={item}>{item}</span>)}</div></section>
       </article>
       <aside className="evidence-rail">
         <h2>这份判断来自哪里</h2>
-        <section><h3><FileText size={20} />你的原始介绍（节选）</h3><blockquote>“{portrait.source}”</blockquote></section>
-        <section><h3 className="success-text"><CheckCircle size={20} weight="fill" />已验证的事实</h3><ul>{portrait.verifiedFacts.map((item: string) => <li key={item}>{item}</li>)}</ul></section>
-        <section><h3 className="warning-text"><Question size={20} weight="fill" />可能需要你确认的一项</h3><p>{portrait.uncertainFact}</p></section>
-        <label className="correction-field">有哪一句不像你？<small>告诉我需要调整的地方，我会重新理解。</small><textarea value={correction} onChange={(event) => setCorrection(event.target.value)} aria-label="告诉 Agent 哪里不对" /><PencilSimple size={20} /></label>
+        <section><h3><FileText size={20} />已确认回答摘要</h3><blockquote>“{portrait.source}”</blockquote></section>
+        <section><h3 className="success-text"><CheckCircle size={20} weight="fill" />已确认事实</h3><ul>{portrait.verifiedFacts.map(item => <li key={item}>{item}</li>)}</ul></section>
+        <section><h3 className="warning-text"><Question size={20} weight="fill" />仍需留意</h3><p>{portrait.uncertainFact}</p></section>
         <section><h3>首个创作账号</h3><p>{portrait.account}</p></section>
+        <p className="evidence-note">若画像有误，请修改它所依据的原回答，不新增脱离问题库的自由备注。</p>
       </aside>
     </div>
   </div>
+}
+
+function PortraitSection({ icon, title, text, field, sourceMap, onCorrect }: { icon: ReactNode; title: string; text: string; field: string; sourceMap: Record<string, string[]>; onCorrect?: (field: string) => void }) {
+  return <section className="portrait-section">{icon}<div><div className="portrait-section-heading"><h2>{title}</h2><CorrectionButton field={field} title={title} sourceMap={sourceMap} onCorrect={onCorrect} /></div><p>{text}</p></div></section>
+}
+
+function CorrectionButton({ field, title, sourceMap, onCorrect }: { field: string; title: string; sourceMap: Record<string, string[]>; onCorrect?: (field: string) => void }) {
+  if (!onCorrect || !sourceMap[field]?.length) return null
+  return <button type="button" className="correction-link" onClick={() => onCorrect(field)}>修改「{title}」</button>
 }

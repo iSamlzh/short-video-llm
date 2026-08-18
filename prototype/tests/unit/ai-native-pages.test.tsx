@@ -14,7 +14,8 @@ describe("approved AI-native page hierarchy", () => {
     render(<IpOnboardingView portrait={demoProductData.portrait} onConfirm={confirm} />)
 
     expect(screen.getByRole("heading", { name: /我理解的林姐/ })).toBeVisible()
-    expect(screen.queryAllByRole("textbox")).toHaveLength(1)
+    expect(screen.queryAllByRole("textbox")).toHaveLength(0)
+    expect(screen.getByText(/修改它所依据的原回答/)).toBeVisible()
     await userEvent.click(screen.getByRole("button", { name: "这个理解准确，开始创作" }))
     expect(confirm).toHaveBeenCalledOnce()
   })
