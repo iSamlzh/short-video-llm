@@ -17,6 +17,8 @@ export interface IpProfile {
   audience: string
   voiceStyle: string
   boundaries: string
+  industryCategory?: IndustryCategory
+  contentPortrait?: ContentPortrait
 }
 
 export interface PrototypeRun {
@@ -35,3 +37,4 @@ export interface VersionedBatch<T> {
   items: T[]
   superseded: boolean
 }
+import type { ContentPortrait, IndustryCategory } from "./ip-onboarding"

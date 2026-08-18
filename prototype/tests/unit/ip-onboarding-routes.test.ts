@@ -2,6 +2,7 @@ import Database from "better-sqlite3"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import type { AccessContext, TenantAccessContext } from "../../src/domain/access"
 import { handleAnswer } from "../../src/app/api/app/ip-onboarding/sessions/[sessionId]/answers/[questionId]/route"
+import { handlePortraitPreview } from "../../src/app/api/app/ip-onboarding/sessions/[sessionId]/portrait-preview/route"
 import { handleSession } from "../../src/app/api/app/ip-onboarding/sessions/[sessionId]/route"
 import { handleSessions } from "../../src/app/api/app/ip-onboarding/sessions/route"
 import { openDatabase } from "../../src/lib/db/database"
@@ -83,6 +84,26 @@ describe("IP建档路由", () => {
     expect(first.status).toBe(200)
     expect(conflict.status).toBe(409)
     expect(missing.status).toBe(404)
+  })
+
+  it("画像预览接口校验版本并返回持久化后的会话", async () => {
+    const response = await handlePortraitPreview(
+      jsonRequest("POST", { expectedVersion: 17 }),
+      "session-1",
+      owner,
+      {
+        sessions: {
+          generatePortraitPreview: async (_context: TenantAccessContext, input: { sessionId: string; expectedVersion: number }) => ({
+            session: { id: input.sessionId, version: input.expectedVersion + 2, portraitDraftVersion: 1 },
+          }),
+        } as any,
+      },
+    )
+
+    expect(response.status).toBe(200)
+    expect(await response.json()).toMatchObject({
+      session: { id: "session-1", version: 19, portraitDraftVersion: 1 },
+    })
   })
 })
 

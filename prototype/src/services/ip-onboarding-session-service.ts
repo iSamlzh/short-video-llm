@@ -3,13 +3,19 @@ import type { TenantAccessContext } from "../domain/access"
 import {
   industryCategorySchema,
   type IndustryQuestionSet,
+  type IpPortraitDraft,
   type OnboardingSessionView,
+  type PortraitGenerationInput,
   type PortraitQuestion,
   type QuestionAnswer,
 } from "../domain/ip-onboarding"
 import { getQuestionSet } from "../ip-question-bank"
 import type { IpOnboardingRepository } from "../lib/db/ip-onboarding-repository"
 import { buildSelectionTrace, selectNextQuestion } from "./ip-question-selector"
+
+type PortraitGenerator = {
+  generatePreview(input: PortraitGenerationInput): Promise<IpPortraitDraft>
+}
 
 export const startOnboardingSessionInputSchema = z.object({
   displayName: z.string().trim().min(1).max(60),
@@ -56,7 +62,10 @@ function answerSignals(question: PortraitQuestion, value: QuestionAnswer["value"
 }
 
 export class IpOnboardingSessionService {
-  constructor(private readonly repository: IpOnboardingRepository) {}
+  constructor(
+    private readonly repository: IpOnboardingRepository,
+    private readonly portraitGenerator?: PortraitGenerator,
+  ) {}
 
   startSession(context: TenantAccessContext, rawInput: StartInput): OnboardingSessionView {
     const input = startOnboardingSessionInputSchema.parse(rawInput)
@@ -129,6 +138,56 @@ export class IpOnboardingSessionService {
       expectedVersion: session.version,
     })
     return this.buildView(updated)
+  }
+
+  async generatePortraitPreview(
+    context: TenantAccessContext,
+    input: { sessionId: string; expectedVersion: number },
+  ): Promise<OnboardingSessionView> {
+    if (!this.portraitGenerator) throw codedError("PORTRAIT_SERVICE_UNAVAILABLE")
+    const session = this.repository.requireScoped(input.sessionId, context.tenantId, context.userId)
+    if (session.version !== input.expectedVersion) throw codedError("VERSION_CONFLICT")
+    if (session.state !== "REVIEWING_ANSWERS" && session.state !== "GENERATION_FAILED") {
+      throw codedError("ONBOARDING_STATE_INVALID")
+    }
+    const currentView = this.buildView(session)
+    const generating = this.repository.updateProgress({
+      sessionId: session.id,
+      tenantId: context.tenantId,
+      userId: context.userId,
+      state: "GENERATING_PORTRAIT",
+      currentQuestionId: null,
+      selectionTrace: session.selectionTrace,
+      expectedVersion: session.version,
+    })
+
+    try {
+      const draft = await this.portraitGenerator.generatePreview({
+        displayName: session.displayName,
+        primaryPlatform: session.primaryPlatform,
+        industryCategory: session.industryCategory,
+        questionSetVersion: session.questionSetVersion,
+        answers: currentView.answeredSummary,
+      })
+      return this.buildView(this.repository.savePortraitDraft({
+        sessionId: session.id,
+        tenantId: context.tenantId,
+        userId: context.userId,
+        portraitDraft: draft,
+        expectedVersion: generating.version,
+      }))
+    } catch (error) {
+      this.repository.updateProgress({
+        sessionId: session.id,
+        tenantId: context.tenantId,
+        userId: context.userId,
+        state: "GENERATION_FAILED",
+        currentQuestionId: null,
+        selectionTrace: generating.selectionTrace,
+        expectedVersion: generating.version,
+      })
+      throw error
+    }
   }
 
   private persistAnswer(

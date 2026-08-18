@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { contentPortraitSchema, industryCategorySchema } from "./ip-onboarding"
 export { realContentReviewSchema } from "./growth-loop-schemas"
 
 export const ipProfileSchema = z.object({
@@ -8,7 +9,34 @@ export const ipProfileSchema = z.object({
   audience: z.string().trim().min(2),
   voiceStyle: z.string().trim().min(2),
   boundaries: z.string().trim().min(2),
+  industryCategory: industryCategorySchema.optional(),
+  contentPortrait: contentPortraitSchema.optional(),
 })
+
+export const ipPortraitDraftSchema = z.object({
+  contentPortrait: contentPortraitSchema,
+  portrait: z.object({
+    headline: z.string().trim().min(5),
+    name: z.string().trim().min(1),
+    title: z.string().trim().min(2),
+    identity: z.string().trim().min(10),
+    authority: z.string().trim().min(5),
+    audience: z.string().trim().min(2),
+    boundaries: z.array(z.string().trim().min(2)).min(1).max(6),
+    directions: z.array(z.string().trim().min(2)).min(1).max(5),
+    source: z.string().trim().min(10),
+    verifiedFacts: z.array(z.string().trim().min(2)).min(1).max(8),
+    uncertainFact: z.string().trim().min(2),
+    account: z.string().trim().min(3),
+  }),
+  profile: ipProfileSchema,
+  account: z.object({
+    platform: z.enum(["wechat_channels", "douyin", "xiaohongshu", "kuaishou", "other"]),
+    name: z.string().trim().min(1),
+  }),
+})
+
+export type IpPortraitDraft = z.infer<typeof ipPortraitDraftSchema>
 
 export const topicDirectionCandidateSchema = z.object({
   id: z.string().min(1),

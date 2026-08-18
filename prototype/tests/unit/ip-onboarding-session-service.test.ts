@@ -114,6 +114,39 @@ describe("IpOnboardingSessionService", () => {
     expect(revised.currentQuestion).not.toBeNull()
   })
 
+  it("从复核状态生成画像并保存可恢复的草稿版本", async () => {
+    let view = start()
+    for (let index = 0; index < 8; index += 1) {
+      const question = view.currentQuestion!
+      view = service.answerQuestion(owner, {
+        sessionId: view.session.id,
+        questionId: question.id,
+        value: question.options?.[0]?.value ?? `第${index + 1}个真实内容依据`,
+        expectedVersion: view.session.version,
+      })
+    }
+    const generatingService = new IpOnboardingSessionService(repository, {
+      generatePreview: async input => ({
+        contentPortrait: { targetAudience: input.answers[0].value },
+        profile: { displayName: input.displayName },
+        portrait: { name: input.displayName },
+        account: { platform: input.primaryPlatform, name: `${input.displayName}内容号` },
+      } as any),
+    })
+
+    const preview = await generatingService.generatePortraitPreview(owner, {
+      sessionId: view.session.id,
+      expectedVersion: view.session.version,
+    })
+
+    expect(preview.session).toMatchObject({
+      state: "PORTRAIT_PREVIEW",
+      portraitDraftVersion: 1,
+      portraitDraft: { profile: { displayName: "周姐" } },
+    })
+    expect(generatingService.getSession(owner, view.session.id).session.portraitDraftVersion).toBe(1)
+  })
+
   it("拒绝非当前题、跨租户会话和旧版本写入", () => {
     const started = start()
     expect(() => service.answerQuestion(owner, {

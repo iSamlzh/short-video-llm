@@ -27,6 +27,73 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
   async generate(request: LlmRequest): Promise<LlmResponse> {
     this.calls.push(request)
     const input = request.input as Record<string, any>
+    const displayName = String(input.displayName ?? "").trim() || input.ipProfile?.displayName || "当前 IP"
+    const portraitAnswers = Array.isArray(input.answers) ? input.answers as Array<Record<string, any>> : []
+    const firstAnswer = (dimension: string) => portraitAnswers.find(answer => answer.dimension === dimension)
+    const answerText = (dimension: string, fallback: string) => {
+      const value = firstAnswer(dimension)?.value
+      return Array.isArray(value) ? value.join("、") : String(value ?? fallback)
+    }
+    const answerId = (dimension: string) => String(
+      firstAnswer(dimension)?.questionId ?? portraitAnswers[0]?.questionId ?? "fixture-q01",
+    )
+    const ipPortrait = {
+      contentPortrait: {
+        schemaVersion: 1,
+        questionSetVersion: String(input.questionSetVersion ?? "ip-question-bank-v1"),
+        industryCategory: String(input.industryCategory ?? "other"),
+        identityPositioning: `${displayName}基于真实经历分享可执行的内容判断`,
+        credibilitySources: [answerText("identity_credibility", "已确认的一线经历")],
+        targetAudience: answerText("target_audience", "需要这类经验的人"),
+        audienceQuestions: [answerText("audience_questions", "受众正在面对的具体问题")],
+        coreBeliefs: [answerText("core_beliefs", "只讲有事实依据的判断")],
+        contentAssets: [answerText("content_assets", "已确认的真实素材")],
+        presentationStyles: [answerText("presentation_style", "真实问答")],
+        commercialConnections: [answerText("commercial_connection", "用知识自然连接产品或服务")],
+        desiredActions: [answerText("desired_action", "关注并继续了解")],
+        boundaries: [answerText("boundaries", "不作无法证实的承诺")],
+        topicPillars: [{
+          title: "从受众真实问题出发的长期内容",
+          rationale: "同时匹配目标受众和高频问题",
+          sourceQuestionIds: [answerId("target_audience"), answerId("audience_questions")],
+        }],
+        confirmedFacts: [{
+          statement: answerText("identity_credibility", "已有真实一线经历"),
+          sourceQuestionIds: [answerId("identity_credibility")],
+        }],
+        uncertainties: [],
+        sourceMap: {
+          identityPositioning: [answerId("identity_credibility")],
+          targetAudience: [answerId("target_audience")],
+          audienceQuestions: [answerId("audience_questions")],
+          contentAssets: [answerId("content_assets")],
+          boundaries: [answerId("boundaries")],
+        },
+      },
+      portrait: {
+        headline: `我理解的${displayName}：把真实经营经验讲给需要的人`,
+        name: displayName,
+        title: "本地生意与社区经营",
+        identity: `${answerText("identity_credibility", "长期参与一线业务")}，这是用户确认的真实经历。`,
+        authority: "以真实经历、具体场景和可执行方法建立信任。",
+        audience: answerText("target_audience", "需要这类经验的人"),
+        boundaries: [answerText("boundaries", "不作无法证实的承诺")],
+        directions: ["真实经营现场", "选品判断", "长期信任"],
+        source: `来源于${portraitAnswers.length}条已确认建档回答`,
+        verifiedFacts: [answerText("identity_credibility", "已有真实一线经历")],
+        uncertainFact: "暂无需要额外确认的信息",
+        account: `视频号｜${displayName}聊经营`,
+      },
+      profile: {
+        displayName,
+        experience: `${answerText("identity_credibility", "长期参与一线业务")}，并积累了可用于内容创作的真实经验。`,
+        expertise: "本地生意与社区经营",
+        audience: answerText("target_audience", "需要这类经验的人"),
+        voiceStyle: answerText("presentation_style", "直接、真诚、讲具体动作"),
+        boundaries: answerText("boundaries", "不作无法证实的承诺"),
+      },
+      account: { platform: input.primaryPlatform ?? "wechat_channels", name: `${displayName}聊经营` },
+    }
     const topics = Array.from({ length: 3 }, (_, index) => ({
       id: `topic-${index + 1}`, title: ["把踩过的坑变成信任", "新团长最容易误判的三件事", "我为什么不承诺确定收益"][index],
       angle: "从三年社区团购的真实经历切入，给目标受众一个今天能采用的方法",
@@ -80,7 +147,7 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
       qualityChecks: [{ rule: "包含具体处理动作", passed: true }],
       riskChecks: [{ rule: "不得承诺收益", passed: true }],
     }
-    const payload = request.operation === "topics" ? topics : request.operation === "scripts" ? scripts : request.operation === "qa" ? qualityReport : request.operation === "auto_draft" ? {
+    const payload = request.operation === "ip_portrait" ? ipPortrait : request.operation === "topics" ? topics : request.operation === "scripts" ? scripts : request.operation === "qa" ? qualityReport : request.operation === "auto_draft" ? {
       topics, selectedTopicId: topics[0].id, scripts, selectedScriptId: scripts[0].id, qualityReport,
     } : request.operation === "topic_draft" ? {
       scripts, selectedScriptId: scripts[0].id, qualityReport,
