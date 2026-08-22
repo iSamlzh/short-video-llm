@@ -1,5 +1,6 @@
 import { z } from "zod"
 import { contentPortraitSchema, industryCategorySchema } from "./ip-onboarding"
+import { creationDecisionBriefSchema, scriptSegmentsSchema } from "./creation-contracts"
 export { realContentReviewSchema } from "./growth-loop-schemas"
 
 export const ipProfileSchema = z.object({
@@ -46,6 +47,7 @@ export const topicDirectionCandidateSchema = z.object({
   ipFitEvidence: z.array(z.string().min(1)).min(1),
   structureId: z.string().min(1),
   riskNotes: z.array(z.string()),
+  decisionBrief: creationDecisionBriefSchema,
 })
 export const topicBatchSchema = z.array(topicDirectionCandidateSchema).min(3).max(5)
 
@@ -57,6 +59,7 @@ export const scriptCandidateSchema = z.object({
   body: z.string().min(30),
   callToAction: z.string().min(4),
   estimatedSeconds: z.number().int().min(15).max(300),
+  segments: scriptSegmentsSchema.optional(),
 })
 export const scriptBatchSchema = z.array(scriptCandidateSchema).length(3)
 export const scriptRevisionParagraphsSchema = z.array(z.string().trim().min(1)).min(2).max(30)

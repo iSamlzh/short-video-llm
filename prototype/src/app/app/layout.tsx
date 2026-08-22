@@ -1,10 +1,13 @@
 import type { ReactNode } from "react"
 import { requireTenantAccess } from "@/lib/auth/request-access"
-import { getTenantShellContext } from "@/lib/db/shell-context"
 import { TenantMasthead } from "@/components/shell/TenantMasthead"
+import { getAppDatabase } from "@/lib/db/app-database"
+import { WorkspaceContextService } from "@/services/workspace-context-service"
 
 export default async function TenantLayout({ children }: { children: ReactNode }) {
   const access = await requireTenantAccess()
-  const context = getTenantShellContext(access)
-  return <div className="app-shell"><TenantMasthead context={context} />{children}</div>
+  const database = getAppDatabase()
+  const context = new WorkspaceContextService(database).get(access.userId)
+  const user = database.prepare("SELECT display_name displayName FROM users WHERE id=?").get(access.userId) as { displayName: string } | undefined
+  return <div className="app-shell"><TenantMasthead context={context} userName={user?.displayName ?? "用户"} />{children}</div>
 }

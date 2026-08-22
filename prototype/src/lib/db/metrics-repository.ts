@@ -31,12 +31,18 @@ type SnapshotRow = {
   plays: number | null
   completions: number | null
   completion_rate: number | null
+  three_second_retention: number | null
+  five_second_retention: number | null
+  average_watch_seconds: number | null
   likes: number | null
   comments: number | null
   saves: number | null
   shares: number | null
+  profile_visits: number | null
+  followers_gained: number | null
   inquiries: number | null
   negative_feedback: number | null
+  raw_columns_json: string
   is_simulated: number
   source_batch_id: string
   source_row_number: number
@@ -52,6 +58,24 @@ export type MetricSnapshot = GrowthScope & {
   title: string
   publishedAt: string | null
   capturedAt: string
+  metrics?: {
+    impressions: number | null
+    plays: number | null
+    completions: number | null
+    completionRate: number | null
+    threeSecondRetention: number | null
+    fiveSecondRetention: number | null
+    averageWatchSeconds: number | null
+    likes: number | null
+    comments: number | null
+    saves: number | null
+    shares: number | null
+    profileVisits: number | null
+    followersGained: number | null
+    inquiries: number | null
+    negativeFeedback: number | null
+  }
+  rawColumns?: Record<string, string | number | boolean | null>
   sourceBatchId: string
   sourceRowNumber: number
 }
@@ -110,14 +134,18 @@ export class MetricsRepository {
     const row = input.row
     const result = this.database.prepare(`INSERT OR IGNORE INTO real_metric_snapshots
       (id,tenant_id,ip_profile_id,content_account_id,platform,platform_content_key,platform_video_id,video_url,
-       normalized_video_url,title,published_at,captured_at,impressions,plays,completions,completion_rate,likes,
-       comments,saves,shares,inquiries,negative_feedback,is_simulated,source_batch_id,source_row_number,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?)`).run(
+       normalized_video_url,title,published_at,captured_at,impressions,plays,completions,completion_rate,
+       three_second_retention,five_second_retention,average_watch_seconds,likes,comments,saves,shares,
+       profile_visits,followers_gained,inquiries,negative_feedback,raw_columns_json,is_simulated,
+       source_batch_id,source_row_number,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?,?,?)`).run(
       input.id, input.scope.tenantId, input.scope.ipId, input.scope.contentAccountId, input.scope.platform,
       input.platformContentKey, row.platformVideoId ?? null, row.videoUrl ?? null, input.normalizedVideoUrl,
       row.title, row.publishedAt ?? null, row.capturedAt, row.impressions ?? null, row.plays ?? null,
-      row.completions ?? null, row.completionRate ?? null, row.likes ?? null, row.comments ?? null,
-      row.saves ?? null, row.shares ?? null, row.inquiries ?? null, row.negativeFeedback ?? null,
+      row.completions ?? null, row.completionRate ?? null, row.threeSecondRetention ?? null,
+      row.fiveSecondRetention ?? null, row.averageWatchSeconds ?? null, row.likes ?? null, row.comments ?? null,
+      row.saves ?? null, row.shares ?? null, row.profileVisits ?? null, row.followersGained ?? null,
+      row.inquiries ?? null, row.negativeFeedback ?? null, JSON.stringify(row.rawColumns),
       input.batchId, row.rowNumber, input.now,
     )
     return result.changes === 1
@@ -265,6 +293,15 @@ export class MetricsRepository {
       platformContentKey: row.platform_content_key, platformVideoId: row.platform_video_id,
       videoUrl: row.video_url, normalizedVideoUrl: row.normalized_video_url, title: row.title,
       publishedAt: row.published_at, capturedAt: row.captured_at,
+      metrics: {
+        impressions: row.impressions, plays: row.plays, completions: row.completions,
+        completionRate: row.completion_rate, threeSecondRetention: row.three_second_retention,
+        fiveSecondRetention: row.five_second_retention, averageWatchSeconds: row.average_watch_seconds,
+        likes: row.likes, comments: row.comments, saves: row.saves, shares: row.shares,
+        profileVisits: row.profile_visits, followersGained: row.followers_gained,
+        inquiries: row.inquiries, negativeFeedback: row.negative_feedback,
+      },
+      rawColumns: JSON.parse(row.raw_columns_json) as Record<string, string | number | boolean | null>,
       sourceBatchId: row.source_batch_id, sourceRowNumber: row.source_row_number,
     }
   }

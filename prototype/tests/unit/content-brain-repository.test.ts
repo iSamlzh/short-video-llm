@@ -79,6 +79,21 @@ describe("ContentBrainRepository", () => {
     expect(repository.listActive()).toEqual([expect.objectContaining({ id: "stable-v1" })])
     database.close()
   })
+
+  it("活动结构包保留供运营台账展示的正式版本号", () => {
+    const database = openDatabase(":memory:")
+    const repository = new ContentBrainRepository(database)
+    repository.saveVersion({
+      id: "trust-v3", templateId: "trust", version: 3, name: "真实冲突到责任原则",
+      nodes: ["真实冲突", "处理动作", "责任原则"], status: "active", actorUserId: "platform-admin",
+      dataOrigin: "formal", isGeneral: false,
+    })
+
+    expect(repository.listActivePackages()).toEqual([
+      expect.objectContaining({ templateVersionId: "trust-v3", templateId: "trust", version: 3 }),
+    ])
+    database.close()
+  })
 })
 
 function analysisPayload(summary: string) {

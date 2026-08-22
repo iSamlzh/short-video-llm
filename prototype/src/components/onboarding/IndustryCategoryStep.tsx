@@ -36,6 +36,7 @@ export function IndustryCategoryStep({ basicInfo, busy, onBack, onStart }: {
         <span><strong>{category.label}</strong><small>{category.note}</small></span>
       </label>)}
     </fieldset>
-    <div className="onboarding-actions"><button type="button" className="text-button" onClick={onBack}>返回修改</button><button className="primary-button" type="submit" disabled={!selected || busy}>{busy ? "正在建立问题路径…" : "开始建立内容画像"}</button></div>
+    {(!selected || busy) && <span className="sr-only" id="industry-submit-hint">{busy ? "正在建立问题路径" : "请先选择一个行业"}</span>}
+    <div className="onboarding-actions"><button type="button" className="text-button" onClick={onBack}>返回修改</button><button className="primary-button" type="submit" disabled={!selected || busy} aria-describedby={!selected || busy ? "industry-submit-hint" : undefined}>{busy ? "正在建立问题路径…" : "开始建立内容画像"}</button></div>
   </form>
 }

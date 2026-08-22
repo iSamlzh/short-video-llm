@@ -1,64 +1,73 @@
-# 视觉验收报告
+# 今日创作页视觉复核
 
-## 验收范围
+## Task 8 实施前审计
 
-本轮按照已确认的 A 版原型校对以下四个关键状态：
+本轮沿用已确认的“单一创作路径、连续稿纸、结果优先”方向，不调整路由、导航命名、表单字段顺序或业务流程。产品视觉从暖白纸张、衬线标题和朱红主按钮，收敛为冷静可信的 AI 原生工作台：无衬线文字、低饱和中性色、单一蓝色强调、清晰状态与可恢复操作。
 
-1. 锁稿后的轻量发布回执；
-2. 真实数据导入后的结果摘要与异常匹配；
-3. 事实、假设、证据边界与私有记忆预览；
-4. 已确认记忆自动影响下一次创作。
+| 文件或区域 | 当前问题 | 本轮处理 |
+| --- | --- | --- |
+| `src/app/globals.css` | 根令牌仍以暖纸色、朱红和衬线字体为主；页面内存在重复颜色、间距、圆角和层级值 | 建立语义化颜色、排版、间距、边框、状态与层级令牌；组件只消费语义令牌 |
+| `TenantMasthead`、`WorkspaceContextSwitcher` | 桌面信息偏散，窄屏导航与团队、IP、账号切换缺少统一空间规则 | 保持任务导航和上下文入口，改为清晰的双层窄屏布局；保证键盘开启、Escape 关闭及焦点归还 |
+| IP 建档组件 | 旧衬线标题和大面积纸张感削弱了“逐问生成内容画像”的任务反馈；禁用提交缺少原因 | 统一为内容依据驱动的对话式表单，选项点击区不小于 44px，补充禁用原因和错误关联 |
+| 今日创作组件 | 已确认信息架构可用，但局部使用独立令牌；判断依据抽屉为手写对话框 | 保留三步路径、连续口播稿和定稿下载主操作；并入全局语义令牌，将抽屉改为原生模态对话框 |
+| 复盘组件 | 暖纸与衬线层级过重；导入结果和结论正文竞争；无动作的证据编号伪装成按钮 | 先结论、后证据、再记忆确认；证据编号改为静态引用，导入异常维持可恢复操作 |
+| 响应式与自动化验收 | 仅今日创作有移动端截图，缺少 1024 与复盘、建档的统一检查 | 增加 1440×1000、1024×768、390×844 的无横向溢出、键盘、焦点与截图验收 |
 
-同时保留原“今日创作”页面的编辑型视觉系统：暖纸背景、近黑正文、朱红单一强调色、中文衬线内容排版、低圆角控件、文档主栏 + 证据侧栏，以及无 SaaS 仪表盘卡片网格的整体方向。
+实施边界：行业质量门禁仍不进入本轮；不把内部爆款结构库暴露给团长端；不增加装饰性动效、渐变或营销页式大标题。
 
-## 对比证据
+## Task 1 已确认范围
 
-所有桌面状态均使用 `1487 × 1058` viewport、`deviceScaleFactor=1`。移动端使用 `390 × 844`，并执行 `document.documentElement.scrollWidth <= window.innerWidth` 断言。
+按 2026-08-18 确认稿落地团长端今日创作页：左侧三步创作路径、中央连续口播稿纸、右侧定稿操作区。定稿后“下载口播稿”为唯一主操作，“复制文本”和“返回编辑”为三级文字操作。
 
-- 发布回执同屏对比：`test-results/design-qa/publication-comparison.png`
-- 导入与异常匹配同屏对比：`test-results/design-qa/import-match-comparison.png`
-- 复盘与记忆预览同屏对比：`test-results/design-qa/review-memory-comparison.png`
-- 记忆进入下一次创作同屏对比：`test-results/design-qa/memory-in-creation-comparison.png`
-- 复盘移动端实现：`test-results/design-qa/review-memory-implementation-mobile.png`
-- 原今日创作桌面实现：`test-results/design-qa/daily-implementation.png`
-- 原今日创作移动端实现：`test-results/design-qa/daily-implementation-mobile.png`
+Task 1 当时不包含登录页、IP 建档页和复盘页整体视觉重做；这些页面已在 Task 8 纳入统一视觉与可访问性整改。行业质量门禁仍不在首版范围。
 
-同屏图左侧为已确认 A 版原型，右侧为真实浏览器实现。原型源文件位于：
+## 同屏对比
 
-- `.superpowers/brainstorm/112-1786960535/content/publication-entry-layout.html`
-- `.superpowers/brainstorm/112-1786960535/content/import-match-layout.html`
-- `.superpowers/brainstorm/112-1786960535/content/review-memory-layout.html`
-- `.superpowers/brainstorm/112-1786960535/content/memory-in-creation-layout.html`
+<table>
+  <tr><th>已确认视觉方向</th><th>真实浏览器实现</th></tr>
+  <tr>
+    <td><img src="outputs/design-reference/today-finalized-approved.png" width="720" alt="已确认视觉方向"></td>
+    <td><img src="outputs/design-reference/today-finalized-implementation.png" width="720" alt="真实浏览器实现"></td>
+  </tr>
+</table>
 
-## 校对结论
+移动端实现：`outputs/design-reference/today-draft-mobile.png`。
 
-### 发布回执
+## 复核结论
 
-发布入口位于锁稿文稿末尾，不抢“复制并去拍”主操作；默认展示当前内容账号，成功后折叠为发布状态，并允许追加其他账号发布。实现保留了正式页面的证据侧栏，因此信息量高于方案草图，但主次关系、位置和操作语义一致。
+- 信息架构一致：今日选题、口播成稿、发布复盘形成单一路径，没有恢复 SaaS 卡片网格。
+- 主次一致：下载使用单一蓝色实心按钮；复制仅为低对比度文字操作，不再与下载竞争。
+- 稿件结构清晰：正文按冲突、经历、方法、收束分段，拍摄提示与配音正文明确隔离。
+- 返回路径完整：锁稿时正文只读；点击“返回编辑”后才恢复分段编辑，保存后可自动检查并重新定稿。
+- 响应式可用：桌面端三栏，窄屏转为横向步骤条与底部行动区；`390 × 844` 无页面横向溢出。
+- 可访问性：关键操作使用语义化按钮，编辑按钮具备逐段可访问名称，动态结果使用 `aria-live`，焦点态可见。
 
-### 导入与异常匹配
+实现与确认稿的非功能性差异仅来自真实业务数据长度、现有租户导航以及发布回执；未改变已确认的视觉层级。
 
-页面先说明处理数量、已关联数量、候选、未匹配、重复和错误，再只展开需要人工判断的行。候选解释、确认已有发布和创建外部发布记录均可操作；没有加入批次后台、筛选栏、图表或指标卡片。首次对比发现成功通知遮挡结果标题，已将复盘通知恢复到正常文档流，复验后无重叠。
+## Task 8 三视口复核
 
-### 复盘与私有记忆
+真实生产构建截图位于 `test-results/design-qa/`：
 
-主栏严格按“能确定什么 → 比较可能但不能确定 → 不能推断什么 → 下一轮建议”排列，右栏只允许编辑 `keep`、`avoid` 和 `nextContentSignals`，证据边界保持只读。只有五条及以上独立发布且具备确认权限时出现确认操作。
+- 今日创作：`task8-today-desktop.png`、`task8-today-compact.png`、`task8-today-mobile.png`；
+- 登录与首次建档：`task8-login-desktop.png`、`task8-onboarding-desktop.png`、`task8-onboarding-compact.png`、`task8-onboarding-mobile.png`；
+- 复盘：`task8-review-mobile.png`、`review-memory-implementation.png`、`review-memory-implementation-mobile.png`；
+- 生成中、发布回执和记忆回注：`generation-progress.png`、`publication-implementation.png`、`memory-in-creation-implementation.png`。
 
-### 记忆回流
+复核结论：
 
-下一次创作自动显示实际使用的记忆版本和摘要，不增加记忆选择器、权重面板或生成前步骤。页面继续以可直接拍摄的口播稿为核心。
+- 1440×1000、1024×768、390×844 均无页面横向溢出；移动端主要按钮与上下文切换目标不小于 44×44；
+- 团队、IP、账号切换保持单一入口；原生模态框支持键盘开启、Escape 关闭、焦点约束与焦点归还；
+- IP 建档禁用按钮有可访问原因，复盘错误使用 `alert`，成功/进度使用 `status`；
+- 证据编号在没有跳转目标时使用静态引用，不再伪装成可点击按钮；
+- 状态均有文字说明，不依赖红绿颜色；页面未引入渐变、装饰动效或 SaaS 卡片墙；
+- 视觉已从暖白纸面、衬线大标题和朱红按钮迁移为冷灰白表面、无衬线信息层级和单一蓝色强调，同时保留已审批的连续稿件结构。
 
-## 行为与可访问性
+`fixing-accessibility` 复核未发现未关闭的 P0/P1：导航、表单、原生对话框、分段编辑、导入与定稿均可使用键盘完成。
 
-- 主要交互均使用语义化按钮、标题、表单标签和状态区域。
-- 锁稿前不会出现发布回执；保存失败保留输入；发布成功可追加其他账号。
-- 导入支持刷新恢复；候选未处理完时，可用数据仍继续生成复盘。
-- Reviewer 可以复盘但不能确认记忆；平台账号访问租户复盘 API 返回 403。
-- 浏览器 Console 和页面运行错误均为空。
-- `390 × 844` 下主操作可见，页面无横向溢出。
+## 最终验证证据
 
-## 验收结果
-
-没有遗留 P0、P1 或 P2 视觉问题。
-
-最终结果：通过。
+- 单元测试：70 个测试文件、333 项测试通过。
+- 类型检查：通过。
+- Next.js 生产构建：通过。
+- Playwright 端到端：15 项通过，覆盖登录、三视口、键盘与焦点、分段编辑、自动检查定稿、DOCX 下载、返回编辑、换选题、首次建档、发布复盘、真实数据记忆回注及权限隔离。
+- 浏览器 Console 与页面运行错误：为空。

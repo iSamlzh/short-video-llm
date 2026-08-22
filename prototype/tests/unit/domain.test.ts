@@ -59,6 +59,15 @@ describe("prototype domain", () => {
       ipFitEvidence: ["三年社区团购经历"],
       structureId: "failure-turn",
       riskNotes: [],
+      decisionBrief: {
+        objective: "建立信任" as const,
+        whyToday: "当前受众正在判断这些经验是否值得长期相信。",
+        audienceProblem: "想找到适合自己的方法，但害怕做出错误判断。",
+        ipEvidenceRefs: [{ label: "三年社区团购经历", sourceAnswerId: "profile:experience" }],
+        recentDataStatus: "none" as const,
+        repetitionRisk: "low" as const,
+        nextSignal: "发布后观察完播率和评论中的真实问题。",
+      },
     }]
     const first = repository.saveTopicBatch(run.id, run.inputVersion, items, "topics:1")
     const second = repository.saveTopicBatch(run.id, run.inputVersion, items, "topics:1")

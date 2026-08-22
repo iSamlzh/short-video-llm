@@ -43,23 +43,32 @@ export type CreateExternalPublicationInput = {
   publishedAt: string
 }
 
-export type MetricImportRow = {
+export type NormalizedVideoMetrics = {
+  impressions?: number
+  plays?: number
+  completions?: number
+  completionRate?: number
+  threeSecondRetention?: number
+  fiveSecondRetention?: number
+  averageWatchSeconds?: number
+  likes?: number
+  comments?: number
+  saves?: number
+  shares?: number
+  profileVisits?: number
+  followersGained?: number
+  inquiries?: number
+  negativeFeedback?: number
+}
+
+export type MetricImportRow = NormalizedVideoMetrics & {
   rowNumber: number
   platformVideoId?: string
   videoUrl?: string
   title: string
   publishedAt?: string
   capturedAt: string
-  impressions?: number
-  plays?: number
-  completions?: number
-  completionRate?: number
-  likes?: number
-  comments?: number
-  saves?: number
-  shares?: number
-  inquiries?: number
-  negativeFeedback?: number
+  rawColumns: Record<string, string | number | boolean | null>
   isSimulated: false
 }
 
@@ -109,6 +118,20 @@ export type RealContentReview = {
   avoid: string[]
   nextContentSignals: string[]
   evidenceLimits: string
+  structureEvidence: Array<{
+    segment: "hook" | "body" | "ending" | "conversion"
+    label: "钩子" | "主体" | "结尾" | "转化"
+    status: "supported" | "partial" | "missing"
+    metrics: Array<{
+      label: string
+      value: number
+      format: "count" | "rate" | "seconds"
+      evidenceSnapshotIds: string[]
+    }>
+    missingFields: string[]
+    interpretation: string
+    nextAction: string
+  }>
 }
 
 export type ContentReviewVersion = GrowthScope & {

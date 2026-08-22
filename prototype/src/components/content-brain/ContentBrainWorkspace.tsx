@@ -47,7 +47,7 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, canAc
       <button aria-current={view === "samples" ? "page" : undefined} onClick={() => { setView("samples"); setWorkspace(null) }}><Files size={19} />爆款样本</button>
       <button aria-current={view === "structures" ? "page" : undefined} onClick={() => setView("structures")}><BookOpen size={19} />结构库</button>
       <button aria-current={view === "review" ? "page" : undefined} onClick={() => setView("review")}><SealCheck size={19} />待复核</button>
-      {!intake && <button className="brain-new-sample" onClick={() => { setIntake(true); setView("samples") }}><FilePlus size={19} />新增爆款样本</button>}
+      {!intake && view === "samples" && <button className="brain-new-sample" onClick={() => { setIntake(true); setView("samples") }}><FilePlus size={19} />新增爆款样本</button>}
     </nav>
     {error && <div className="brain-workspace-error" role="alert"><p>{error}</p><button onClick={() => refresh()}><ArrowClockwise size={18} />重试</button></div>}
     {loading ? <div className="brain-loading-document" aria-label="正在读取样本"><span /><span /><span /></div> : null}

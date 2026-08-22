@@ -66,6 +66,7 @@ export type SampleWorkspace = {
 export type ActiveStructure = {
   templateVersionId: string
   templateId: string
+  version: number
   name: string
   applicability: { ipTags: string[]; audiences: string[]; goals: string[] }
   nodes: Array<{ kind: string; instruction: string; required: boolean }>

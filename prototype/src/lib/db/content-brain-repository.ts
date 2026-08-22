@@ -404,7 +404,7 @@ export class ContentBrainRepository {
     return row ? { id: row.id, payload: JSON.parse(row.payload_json) as StructurePreview, model: row.model, createdAt: row.created_at } : null
   }
 
-  listActivePackages(): Array<TemplatePackage & { isGeneral: boolean; sourceCount: number }> {
+  listActivePackages(): Array<TemplatePackage & { version: number; isGeneral: boolean; sourceCount: number }> {
     const rows = this.database.prepare(`SELECT v.*,
       (SELECT COUNT(*) FROM platform_template_activation_events e WHERE e.template_version_id=v.id) source_count
       FROM platform_template_versions v WHERE v.status='active' ORDER BY v.is_general,v.name,v.id`).all() as Array<Row & { source_count: number }>
@@ -415,6 +415,7 @@ export class ContentBrainRepository {
       return {
         templateVersionId: row.id,
         templateId: row.template_id,
+        version: row.version,
         name: row.name,
         applicability: payload.applicability ?? { ipTags: [], audiences: [], goals: [] },
         nodes: (payload.nodes ?? []).map((node) => typeof node === "string"

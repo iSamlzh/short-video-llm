@@ -13,9 +13,13 @@ export function MatchResolutionList({ matches, onConfirm = async () => undefined
     <div className="review-section-heading"><p className="eyebrow">只处理异常</p><h3 id="match-resolution-title">有 {unresolved.length} 条需要你看一眼</h3></div>
     {unresolved.map((match) => <article className="match-resolution-row" key={match.id}>
       <div className="imported-reference"><span>导入内容</span><strong>{match.snapshot?.title ?? "未命名内容"}</strong><small>{formatTime(match.snapshot?.publishedAt)}</small></div>
-      {match.status === "candidate" ? <div className="candidate-options"><p>{match.explanation}</p>{match.candidates.map((candidate: any) => <div className="candidate-option" key={candidate.id}><LinkSimple size={18} /><span><strong>{candidate.title}</strong><small>{candidate.explanation}</small></span><button type="button" onClick={() => void onConfirm(match.id, candidate.id, match.version)}>确认关联 <ArrowRight size={16} /></button></div>)}<button className="text-link" type="button" onClick={() => void onCreateExternal(match.id, match.version)}>都不是，作为外部发布记录</button></div> : <div className="candidate-options"><p>没有找到可解释的已有发布记录。</p><button className="text-link" type="button" onClick={() => void onCreateExternal(match.id, match.version)}>创建外部发布记录并关联</button></div>}
+      {match.status === "candidate" ? <div className="candidate-options"><p>{match.explanation}</p>{match.candidates.map((candidate: any) => <div className="candidate-option" key={candidate.id}><LinkSimple size={18} /><span><span className="match-confidence" data-confidence={candidate.confidence}>{confidenceLabel(candidate.confidence)}</span><strong>{candidate.title}</strong><small>{(candidate.reasons ?? [candidate.explanation]).join(" · ")}</small></span><button type="button" onClick={() => void onConfirm(match.id, candidate.id, match.version)}>确认关联 <ArrowRight size={16} /></button></div>)}<button className="text-link" type="button" onClick={() => void onCreateExternal(match.id, match.version)}>都不是，作为外部发布记录</button></div> : <div className="candidate-options"><p>没有找到可解释的已有发布记录。</p><button className="text-link" type="button" onClick={() => void onCreateExternal(match.id, match.version)}>创建外部发布记录并关联</button></div>}
     </article>)}
   </section>
+}
+
+function confidenceLabel(value?: string) {
+  return value === "high" ? "高置信度" : value === "medium" ? "中置信度" : "低置信度"
 }
 
 function formatTime(value?: string | null) {

@@ -32,6 +32,7 @@ export function PortraitQuestionStep({ question, initialValue = "", answeredCoun
         </label>
       })}
     </fieldset> : <textarea aria-label="你的回答" value={Array.isArray(value) ? value.join("、") : value} onChange={event => setValue(event.target.value)} placeholder="请写下能帮助 Agent 判断内容方向的真实信息" autoFocus />}
-    <div className="onboarding-actions">{onCancel && <button type="button" className="text-button" onClick={onCancel}>取消修改</button>}<button className="primary-button" type="submit" disabled={!valid || busy}>{busy ? "正在保存…" : isRevision ? "保存修改" : "保存并继续"}</button></div>
+    {(!valid || busy) && <span className="sr-only" id="portrait-submit-hint">{busy ? "正在保存回答" : "请先选择或填写回答"}</span>}
+    <div className="onboarding-actions">{onCancel && <button type="button" className="text-button" onClick={onCancel}>取消修改</button>}<button className="primary-button" type="submit" disabled={!valid || busy} aria-describedby={!valid || busy ? "portrait-submit-hint" : undefined}>{busy ? "正在保存…" : isRevision ? "保存修改" : "保存并继续"}</button></div>
   </form>
 }

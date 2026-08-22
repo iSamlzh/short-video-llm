@@ -20,17 +20,27 @@ export function ReviewWorkspace({ contentAccountId, initialBatchId, accountLabel
   const [outcome, setOutcome] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [notice, setNotice] = useState("")
+  const [noticeKind, setNoticeKind] = useState<"status" | "error">("status")
   const input = useRef<HTMLInputElement>(null)
-  useEffect(() => { let active = true; void Promise.all([client.getCurrentReview(), initialBatchId ? client.getBatch(initialBatchId) : Promise.resolve(null)]).then(([current, batch]) => { if (active) { setBrief(current); setOutcome(batch) } }).catch((error) => { if (active) setNotice(error instanceof Error ? error.message : "读取失败") }).finally(() => { if (active) setLoading(false) }); return () => { active = false } }, [client, initialBatchId])
+  useEffect(() => { let active = true; void Promise.all([client.getCurrentReview(), initialBatchId ? client.getBatch(initialBatchId) : Promise.resolve(null)]).then(([current, batch]) => { if (active) { setBrief(current); setOutcome(batch) } }).catch((error) => { if (active) { setNoticeKind("error"); setNotice(error instanceof Error ? error.message : "读取失败") } }).finally(() => { if (active) setLoading(false) }); return () => { active = false } }, [client, initialBatchId])
   async function importFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]; if (!file) return
-    setLoading(true); setNotice("正在导入并匹配真实数据…")
+    setLoading(true); setNoticeKind("status"); setNotice("正在导入并匹配真实数据…")
     try { const imported = await client.importMetrics(file); setOutcome(await client.getBatch(imported.batchId)); setNotice("可用数据已关联，Agent 正在生成复盘…"); setBrief(await client.generateReview()); setNotice("真实数据复盘已更新") }
-    catch (error) { setNotice(error instanceof Error ? error.message : "导入失败") }
+    catch (error) { setNoticeKind("error"); setNotice(error instanceof Error ? error.message : "导入失败") }
     finally { setLoading(false); event.target.value = "" }
   }
   async function refreshBatch(action: () => Promise<any>) { await action(); if (outcome?.batchId) setOutcome(await client.getBatch(outcome.batchId)); setBrief(await client.generateReview()) }
-  return <main><input ref={input} aria-label="导入真实平台数据" className="visually-hidden" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={importFile} />{notice && <p className="workspace-notice review-workspace-notice" role="status">{notice}</p>}{loading && !brief && !outcome ? <section className="agent-working"><p className="eyebrow">Agent 正在读取 {accountLabel} 的真实数据</p><h1>先找出真正值得你看的内容。</h1></section> : <>{outcome && <ImportOutcome result={outcome} onConfirm={(matchId, publicationId, version) => refreshBatch(() => client.confirmMatch(matchId, publicationId, version))} onCreateExternal={(matchId, version) => refreshBatch(() => client.createExternal(matchId, version))} />}{brief ? <ReviewBriefView brief={brief} onImport={() => input.current?.click()} onConfirm={(memory) => client.confirmMemory(brief.id, memory)} /> : <section className="empty-review"><p className="eyebrow">当前账号还没有可复盘的真实数据</p><h1>导入平台文件，Agent 会先给结论，再说明证据边界。</h1><p>首版支持 CSV 和 XLSX；平台 API 自动回流放在二期。</p><button className="primary-button" onClick={() => input.current?.click()}>导入真实数据</button></section>}</>}</main>
+  async function confirmHighConfidence(items: Array<{ matchId: string; publicationId: string; version: number }>) {
+    setLoading(true); setNoticeKind("status"); setNotice(`正在确认 ${items.length} 条高置信候选…`)
+    try {
+      for (const item of items) await client.confirmMatch(item.matchId, item.publicationId, item.version)
+      if (outcome?.batchId) setOutcome(await client.getBatch(outcome.batchId))
+      setBrief(await client.generateReview()); setNotice("候选已确认，复盘已更新")
+    } catch (error) { setNoticeKind("error"); setNotice(error instanceof Error ? error.message : "批量确认失败") }
+    finally { setLoading(false) }
+  }
+  return <main><input ref={input} aria-label="导入真实平台数据" className="visually-hidden" type="file" accept=".csv,.xlsx,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={importFile} />{notice && <p className={`workspace-notice review-workspace-notice ${noticeKind === "error" ? "workspace-notice-error" : ""}`} role={noticeKind === "error" ? "alert" : "status"}>{notice}</p>}{loading && !brief && !outcome ? <section className="agent-working"><p className="eyebrow">Agent 正在读取 {accountLabel} 的真实数据</p><h1>先找出真正值得你看的内容。</h1></section> : <>{outcome && <ImportOutcome result={outcome} onConfirm={(matchId, publicationId, version) => refreshBatch(() => client.confirmMatch(matchId, publicationId, version))} onCreateExternal={(matchId, version) => refreshBatch(() => client.createExternal(matchId, version))} onConfirmHighConfidence={confirmHighConfidence} />}{brief ? <ReviewBriefView brief={brief} onImport={() => input.current?.click()} onConfirm={(memory) => client.confirmMemory(brief.id, memory)} /> : <section className="empty-review"><p className="eyebrow">当前账号还没有可复盘的真实数据</p><h1>导入平台文件，Agent 会先给结论，再说明证据边界。</h1><p>首版支持 CSV 和 XLSX；平台 API 自动回流放在二期。</p><button className="primary-button" onClick={() => input.current?.click()}>导入真实数据</button></section>}</>}</main>
 }
 
 function browserApi(contentAccountId: string): ReviewApi {

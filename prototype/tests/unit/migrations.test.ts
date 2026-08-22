@@ -68,6 +68,29 @@ describe("database migrations", () => {
     expect(database.prepare("SELECT COUNT(*) count FROM real_metric_snapshots").get()).toEqual({ count: 0 })
   })
 
+  it("为每个 IP 的内容账号提供唯一默认账号标记", () => {
+    database = openDatabase(":memory:")
+    const columns = database.prepare("PRAGMA table_info(content_accounts)").all() as Array<{ name: string }>
+
+    expect(columns.map((column) => column.name)).toContain("is_default")
+    expect(database.prepare("SELECT COUNT(*) count FROM schema_migrations WHERE version=12").get()).toEqual({ count: 1 })
+  })
+
+  it("版本 13 保存扩展视频指标和平台原始列", () => {
+    database = openDatabase(":memory:")
+    const columns = database.prepare("PRAGMA table_info(real_metric_snapshots)").all() as Array<{ name: string }>
+
+    expect(columns.map((column) => column.name)).toEqual(expect.arrayContaining([
+      "three_second_retention",
+      "five_second_retention",
+      "average_watch_seconds",
+      "profile_visits",
+      "followers_gained",
+      "raw_columns_json",
+    ]))
+    expect(database.prepare("SELECT COUNT(*) count FROM schema_migrations WHERE version=13").get()).toEqual({ count: 1 })
+  })
+
   it("应用版本 8 并建立爆款拆解与创作结构谱系", () => {
     database = openDatabase(":memory:")
     applyMigrations(database)
@@ -101,6 +124,15 @@ describe("database migrations", () => {
       );
       CREATE TABLE platform_content_analysis_versions (id TEXT PRIMARY KEY);
       CREATE TABLE platform_structure_candidates (id TEXT PRIMARY KEY);
+      CREATE TABLE content_accounts (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        ip_profile_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE user_current_context (content_account_id TEXT);
+      CREATE TABLE real_metric_snapshots (id TEXT PRIMARY KEY);
     `)
     const markApplied = database.prepare(
       "INSERT INTO schema_migrations (version,filename,applied_at) VALUES (?,?,'2026-08-17T12:00:00.000Z')",

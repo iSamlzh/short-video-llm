@@ -72,11 +72,11 @@ export async function seedDemoData(database: Database.Database, password: string
     }
 
     const accountInsert = database.prepare(`INSERT OR IGNORE INTO content_accounts
-      (id,tenant_id,ip_profile_id,platform,account_name,platform_account_id,status,data_origin,created_at)
-      VALUES (?,?,?,?,?,?,'active','demo',?)`)
-    accountInsert.run("account-linjie-wechat", "tenant-linjie", "ip-linjie", "wechat_channels", "林姐说团购", "linjie-wechat", createdAt)
-    accountInsert.run("account-linjie-douyin", "tenant-linjie", "ip-linjie", "douyin", "林姐聊团购", "linjie-douyin", createdAt)
-    accountInsert.run("account-wangjie-douyin", "tenant-linjie", "ip-wangjie", "douyin", "王姐本地生活", "wangjie-douyin", createdAt)
+      (id,tenant_id,ip_profile_id,platform,account_name,platform_account_id,status,data_origin,is_default,created_at)
+      VALUES (?,?,?,?,?,?,'active','demo',?,?)`)
+    accountInsert.run("account-linjie-wechat", "tenant-linjie", "ip-linjie", "wechat_channels", "林姐说团购", "linjie-wechat", 1, createdAt)
+    accountInsert.run("account-linjie-douyin", "tenant-linjie", "ip-linjie", "douyin", "林姐聊团购", "linjie-douyin", 0, createdAt)
+    accountInsert.run("account-wangjie-douyin", "tenant-linjie", "ip-wangjie", "douyin", "王姐本地生活", "wangjie-douyin", 1, createdAt)
 
     const memberships = [
       { id: "membership-owner", userId: "user-owner", role: "owner", ips: ["ip-linjie", "ip-wangjie"], accounts: ["account-linjie-wechat", "account-linjie-douyin", "account-wangjie-douyin"] },

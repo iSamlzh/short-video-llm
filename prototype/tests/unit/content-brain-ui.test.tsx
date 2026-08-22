@@ -129,6 +129,38 @@ describe("AI 原生爆款拆解工作区", () => {
     expect(screen.getByText("还没有已启用结构")).toBeVisible()
     expect(screen.getByText("结构必须经过样本拆解、人工复核和试生成后才能进入团长创作。" )).toBeVisible()
   })
+
+  it("结构库按启用版本清晰展示结构步骤、适用范围和治理规则", () => {
+    render(<StructureLedger structures={[{
+      templateVersionId: "trust-v3", templateId: "trust", version: 3, name: "真实冲突到责任原则",
+      applicability: { ipTags: ["社区团长"], audiences: ["本地经营者"], goals: ["建立信任"] },
+      nodes: [
+        { kind: "开场", instruction: "用可核验的真实冲突切入", required: true },
+        { kind: "收束", instruction: "落到可长期坚持的责任原则", required: false },
+      ],
+      qualityRules: ["必须包含具体处理动作"], riskRules: ["不得承诺收益"],
+      isGeneral: false, sourceCount: 4,
+    }]} />)
+
+    expect(screen.getByRole("heading", { name: "结构库" })).toBeVisible()
+    expect(screen.getByText("1 个当前启用版本")).toBeVisible()
+    expect(screen.getByText("v3")).toBeVisible()
+    expect(screen.getByText("已启用")).toBeVisible()
+    expect(screen.getByRole("heading", { name: "结构步骤" })).toBeVisible()
+    expect(screen.getByText("用可核验的真实冲突切入")).toBeVisible()
+    expect(screen.getByText("选填")).toBeVisible()
+    expect(screen.getByText("社区团长")).toBeVisible()
+    expect(screen.getByRole("heading", { name: "质量标准" })).toBeVisible()
+    expect(screen.getByText("必须包含具体处理动作")).toBeVisible()
+    expect(screen.getByRole("heading", { name: "风险边界" })).toBeVisible()
+    expect(screen.getByText("不得承诺收益")).toBeVisible()
+  })
+
+  it("进入结构库后不显示只属于样本页的新增动作", async () => {
+    render(<ContentBrainWorkspace initialSamples={[]} initialStructures={[]} canActivate api={fixtureApi() as any} />)
+    await userEvent.click(screen.getByRole("button", { name: "结构库" }))
+    expect(screen.queryByRole("button", { name: "新增爆款样本" })).not.toBeInTheDocument()
+  })
 })
 
 function fixtureApi() {

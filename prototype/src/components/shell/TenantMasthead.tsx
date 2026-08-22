@@ -1,7 +1,11 @@
 import Link from "next/link"
+import { WorkspaceContextSwitcher } from "./WorkspaceContextSwitcher"
+import type { WorkspaceContext } from "@/services/workspace-context-service"
+import { LogoutButton } from "../auth/LogoutButton"
 
-export function TenantMasthead({ context, active }: {
-  context: { teamName: string; ipName: string; accountName: string; userName: string }
+export function TenantMasthead({ context, userName, active }: {
+  context: WorkspaceContext
+  userName: string
   active?: "today" | "review" | "team"
 }) {
   return <header className="masthead tenant-masthead">
@@ -14,10 +18,10 @@ export function TenantMasthead({ context, active }: {
       </nav>
     </div>
     <div className="context-navigation" aria-label="当前工作上下文">
-      <button>当前团队：{context.teamName}</button><span />
-      <button>当前 IP：{context.ipName}</button><span />
-      <button>当前账号：{context.accountName}</button><span />
-      <button>{context.userName}</button>
+      <WorkspaceContextSwitcher initialContext={context} />
+      <span className="context-divider" aria-hidden="true" />
+      <span className="current-user-name">{userName}</span>
+      <LogoutButton />
     </div>
   </header>
 }

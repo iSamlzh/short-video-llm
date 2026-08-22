@@ -34,6 +34,27 @@ describe("ReviewService", () => {
     expect(review.payload.evidenceLimits).toContain("不能证明因果")
   })
 
+  it("按四段输出可核验指标，缺口明确，下一轮建议引用真实指标和稿件版本", async () => {
+    seedReviewEvidence(database, 2)
+    database.prepare(`UPDATE publications SET source='system',run_id='run-evidence',
+      locked_script_version=3,locked_script_selection_version=2 WHERE id='review-p-1'`).run()
+
+    const review = await service.generateCurrent(owner, "account-linjie-wechat")
+    const hook = review.payload.structureEvidence.find((item: any) => item.segment === "hook")
+    const body = review.payload.structureEvidence.find((item: any) => item.segment === "body")
+
+    expect(review.sampleTier).toBe("facts_only")
+    expect(review.payload.hypotheses).toEqual([])
+    expect(hook).toMatchObject({ status: "missing" })
+    expect(hook!.missingFields).toEqual(expect.arrayContaining(["3秒留存率", "5秒留存率"]))
+    expect(body).toMatchObject({ status: "partial" })
+    expect(body!.metrics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: "完播率", value: 0.3, evidenceSnapshotIds: ["review-s-1"] }),
+    ]))
+    expect(review.payload.nextContentSignals.join(" ")).toContain("稿件 v3")
+    expect(review.payload.nextContentSignals.join(" ")).toContain("完播率 30.0%")
+  })
+
   it("拒绝模型引用服务端输入之外的证据 ID，并保留失败检查点", async () => {
     seedReviewEvidence(database, 3)
     adapter.enqueue({ json: reviewFixture(["invented"]) })

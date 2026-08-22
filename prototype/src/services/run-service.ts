@@ -8,6 +8,7 @@ import { StructuredLlmClient } from "../lib/llm/structured"
 import { prototypePreset } from "../presets"
 import { simulateMetrics, type SimulationScenario } from "../lib/simulation/metric-simulator"
 import type { TemplatePackage } from "../domain/content-brain"
+import { buildCreationEvidenceCatalog, createFallbackCreationDecisionBrief, estimateSpokenDuration, groundCreationDecisionBrief, scriptSegmentsSchema, scriptToSegments, type ScriptSegment } from "../domain/creation-contracts"
 
 export type TemplateRetrievalQuery = { ipTags: string[]; audience: string; goal: string }
 type StructureProvider = (query: TemplateRetrievalQuery) => TemplatePackage[]
@@ -49,6 +50,7 @@ export class RunService {
   async generateTopics(runId: string, inputVersion: number) {
     const run = this.repository.requireVersion(runId, inputVersion)
     const structureContext = this.resolveStructureContext(run.ipProfile)
+    const evidenceCatalog = buildCreationEvidenceCatalog(run.ipProfile)
     const existing = this.repository.getTopicBatch(runId)
     if (existing?.inputVersion === inputVersion && run.state === "WAITING_TOPIC_SELECTION") return existing
     this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
@@ -57,9 +59,14 @@ export class RunService {
         ipProfile: run.ipProfile,
         goal: prototypePreset.goal,
         structures: structureContext.modelStructures,
+        evidenceCatalog,
         presetVersion: prototypePreset.version,
       }, topicBatchSchema, "array")
-      const batch = this.repository.saveTopicBatch(runId, inputVersion, items, `${runId}:topics:${inputVersion}`)
+      const groundedItems = items.map((item) => ({
+        ...item,
+        decisionBrief: groundCreationDecisionBrief(item.decisionBrief, evidenceCatalog, null),
+      }))
+      const batch = this.repository.saveTopicBatch(runId, inputVersion, groundedItems, `${runId}:topics:${inputVersion}`)
       this.repository.setState(runId, transition("GENERATING_TOPICS", "TOPICS_GENERATED"))
       return batch
     } catch (error) {
@@ -72,22 +79,28 @@ export class RunService {
   async generateAutoDraft(runId: string, inputVersion: number, tenantMemory?: ConfirmedCreationMemory) {
     const run = this.repository.requireVersion(runId, inputVersion)
     const structureContext = this.resolveStructureContext(run.ipProfile)
+    const evidenceCatalog = buildCreationEvidenceCatalog(run.ipProfile, tenantMemory)
     this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
     try {
       const result = await this.llm.generateStructured("auto_draft", {
         ipProfile: run.ipProfile,
         goal: prototypePreset.goal,
         structures: structureContext.modelStructures,
+        evidenceCatalog,
         presetVersion: prototypePreset.version,
         ...(tenantMemory ? { tenantMemory } : {}),
       }, autoDraftSchema)
-      const topic = result.topics.find((item) => item.id === result.selectedTopicId)
+      const groundedTopics = result.topics.map((item) => ({
+        ...item,
+        decisionBrief: groundCreationDecisionBrief(item.decisionBrief, evidenceCatalog, tenantMemory),
+      }))
+      const topic = groundedTopics.find((item) => item.id === result.selectedTopicId)
       if (!topic) throw new Error("AUTO_TOPIC_SELECTION_INVALID")
       if (result.scripts.some((item) => item.topicDirectionId !== topic.id)) throw new Error("SCRIPT_DIRECTION_MISMATCH")
       const script = result.scripts.find((item) => item.id === result.selectedScriptId)
       if (!script) throw new Error("AUTO_SCRIPT_SELECTION_INVALID")
 
-      const topics = this.repository.saveTopicBatch(runId, inputVersion, result.topics, `${runId}:auto:topics:${inputVersion}`)
+      const topics = this.repository.saveTopicBatch(runId, inputVersion, groundedTopics, `${runId}:auto:topics:${inputVersion}`)
       this.repository.setState(runId, transition("GENERATING_TOPICS", "TOPICS_GENERATED"))
       this.selectTopic(runId, topics.version, topic.id)
       this.repository.setState(runId, transition("READY_FOR_SCRIPTS", "GENERATE_SCRIPTS"))
@@ -117,7 +130,15 @@ export class RunService {
   ) {
     const run = this.repository.requireVersion(runId, inputVersion)
     const structureContext = this.resolveStructureContext(run.ipProfile)
-    const topics = topicBatchSchema.parse(topicsInput)
+    const evidenceCatalog = buildCreationEvidenceCatalog(run.ipProfile, tenantMemory)
+    const topics = topicBatchSchema.parse(topicsInput.map((item) => ({
+      ...item,
+      decisionBrief: groundCreationDecisionBrief(
+        item.decisionBrief ?? createFallbackCreationDecisionBrief(evidenceCatalog, tenantMemory),
+        evidenceCatalog,
+        tenantMemory,
+      ),
+    })))
     const selectedTopic = topics.find((item) => item.id === selectedTopicId)
     if (!selectedTopic) throw new Error("TOPIC_SELECTION_INVALID")
     this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
@@ -221,19 +242,34 @@ export class RunService {
     }
   }
 
-  saveScriptRevision(runId: string, expectedRevision: number, paragraphsInput: string[]) {
+  saveScriptRevision(runId: string, expectedRevision: number, input: string[] | ScriptSegment[]) {
     const run = this.repository.requireRun(runId)
-    const paragraphs = scriptRevisionParagraphsSchema.parse(paragraphsInput)
     const currentSelection = this.repository.getCurrentScriptSelection(runId)
     const currentScript = this.repository.getSelectedScript(runId)
     if (!currentSelection || !currentScript) throw new Error("SCRIPT_SELECTION_REQUIRED")
 
-    const hook = paragraphs[0]
-    const body = paragraphs.slice(1, -1).join("\n\n")
-    const callToAction = paragraphs.at(-1)!
-    const unchanged = hook === currentScript.hook
-      && body === currentScript.body.trim()
-      && callToAction === currentScript.callToAction
+    const currentSegments = scriptToSegments(currentScript)
+    const legacyParagraphs = typeof input[0] === "string" ? scriptRevisionParagraphsSchema.parse(input) : null
+    const segments = legacyParagraphs
+      ? [
+        ...scriptToSegments({
+        ...currentScript,
+        segments: undefined,
+        hook: legacyParagraphs[0],
+        body: legacyParagraphs.slice(1, -1).join("\n\n"),
+        callToAction: legacyParagraphs.at(-1)!,
+      }).filter((segment) => segment.kind === "spoken"),
+        ...currentSegments.filter((segment) => segment.kind !== "spoken"),
+      ]
+      : scriptSegmentsSchema.parse(input)
+    const spoken = segments.filter((segment) => segment.kind === "spoken")
+    if (spoken.length < 3) throw new Error("SCRIPT_SPOKEN_SEGMENTS_INVALID")
+
+    const hook = spoken[0].text
+    const body = spoken.slice(1, -1).map((segment) => segment.text).join("\n\n")
+    const callToAction = spoken.at(-1)!.text
+    const comparable = (items: ScriptSegment[]) => items.map(({ kind, text }) => ({ kind, text }))
+    const unchanged = JSON.stringify(comparable(segments)) === JSON.stringify(comparable(currentSegments))
     if (unchanged) {
       return { saved: false, revision: currentSelection.version, runView: this.getRunView(runId) }
     }
@@ -245,7 +281,8 @@ export class RunService {
       hook,
       body,
       callToAction,
-      estimatedSeconds: Math.max(15, Math.ceil([hook, body, callToAction].join("").length / 4.5)),
+      segments,
+      estimatedSeconds: Math.max(15, estimateSpokenDuration(segments).estimatedSeconds),
     }
     const contentHash = createHash("sha256").update(JSON.stringify(edited)).digest("hex")
     const batch = this.repository.saveScriptBatch(

@@ -7,6 +7,7 @@ import { presentCreationDraft } from "./creation-presenter"
 import { AutoCreationOrchestrator } from "./auto-creation-orchestrator"
 import { RunService } from "./run-service"
 import { CreationContextProvider } from "./creation-context-provider"
+import type { ScriptSegment } from "../domain/creation-contracts"
 
 type CurrentRow = { ip_profile_id: string; content_account_id: string | null; platform: string | null; profile_json: string }
 
@@ -74,25 +75,36 @@ export class CreationAppService {
     return this.presentRun(runId)
   }
 
+  getLockedExport(context: TenantAccessContext, runId: string) {
+    requireTenantCapability(context, "content.create")
+    if (!this.lineage.canAccess(runId, context)) throw new Error("RUN_NOT_FOUND")
+    const draft = this.presentRun(runId)
+    if (draft.status !== "locked") throw new Error("LOCKED_SCRIPT_REQUIRED")
+    return {
+      title: draft.title,
+      segments: draft.segments,
+    }
+  }
+
   saveDraft(
     context: TenantAccessContext,
     runId: string,
-    input: { expectedRevision: number; paragraphs: string[] },
+    input: { expectedRevision: number; segments?: ScriptSegment[]; paragraphs?: string[] },
   ) {
     requireTenantCapability(context, "content.edit")
     if (!this.lineage.canAccess(runId, context)) throw new Error("RUN_NOT_FOUND")
-    const result = this.runs.saveScriptRevision(runId, input.expectedRevision, input.paragraphs)
+    const result = this.runs.saveScriptRevision(runId, input.expectedRevision, input.segments ?? input.paragraphs ?? [])
     return { ...this.presentRun(runId, result.runView), saved: result.saved }
   }
 
   async finalize(
     context: TenantAccessContext,
     runId: string,
-    input: { expectedRevision: number; paragraphs: string[] },
+    input: { expectedRevision: number; segments?: ScriptSegment[]; paragraphs?: string[] },
   ) {
     requireTenantCapability(context, "content.edit")
     if (!this.lineage.canAccess(runId, context)) throw new Error("RUN_NOT_FOUND")
-    this.runs.saveScriptRevision(runId, input.expectedRevision, input.paragraphs)
+    this.runs.saveScriptRevision(runId, input.expectedRevision, input.segments ?? input.paragraphs ?? [])
     let run = this.runs.getRun(runId)
     if (run.state === "READY_FOR_QA") {
       await this.runs.runQa(runId, run.inputVersion)

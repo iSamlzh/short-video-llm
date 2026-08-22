@@ -77,6 +77,27 @@ describe("PublicationMatcher", () => {
     expect(decision.explanation).toContain("Dice")
   })
 
+  it("为同账号时间窗口内的相似候选给出置信度和逐项依据，但不自动关联", () => {
+    const row = snapshot({ title: "楼道邻里之间的一份约定", publishedAt: "2026-08-10T08:00:00Z" })
+    const candidates = [
+      publication({ id: "p-high", title: "楼道邻里之间的约定", publishedAt: "2026-08-11T08:00:00Z" }),
+      publication({ id: "p-low", title: "楼道邻里的一份约定", publishedAt: "2026-08-29T08:00:00Z" }),
+    ]
+
+    const decision = matcher.decide(row, candidates)
+
+    expect(decision.status).toBe("candidate")
+    expect(decision).not.toHaveProperty("publicationId")
+    expect(decision.candidateEvidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        publicationId: "p-high",
+        confidence: "high",
+        reasons: expect.arrayContaining(["同一内容账号", "发布时间相差 24 小时"]),
+      }),
+      expect.objectContaining({ publicationId: "p-low", confidence: "low" }),
+    ]))
+  })
+
   it("持久化自动匹配并用 expectedVersion 防止过期人工确认", () => {
     const scope = scopeForWechat()
     const batchId = seedBatch(database)

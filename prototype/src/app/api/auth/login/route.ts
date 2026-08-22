@@ -4,6 +4,7 @@ import { IdentityRepository } from "@/lib/db/identity-repository"
 import { LocalIdentityProvider } from "@/lib/auth/local-identity-provider"
 import { SessionRepository } from "@/lib/auth/session"
 import { SESSION_COOKIE } from "@/lib/auth/request-access"
+import { shouldUseSecureSessionCookie } from "@/lib/runtime-features"
 
 export const runtime = "nodejs"
 
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
       .authenticate(parsed.data.email, parsed.data.password)
     const token = new SessionRepository(database).create(identity.userId, identity.audience)
     const response = Response.json({ audience: identity.audience })
-    response.headers.append("Set-Cookie", `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${process.env.NODE_ENV === "production" ? "; Secure" : ""}`)
+    response.headers.append("Set-Cookie", `${SESSION_COOKIE}=${token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${shouldUseSecureSessionCookie(process.env) ? "; Secure" : ""}`)
     return response
   } catch {
     return Response.json({ errorCode: "INVALID_CREDENTIALS", message: "账号或密码不正确" }, { status: 401 })

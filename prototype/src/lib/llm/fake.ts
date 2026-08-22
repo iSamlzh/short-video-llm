@@ -37,6 +37,13 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
     const answerId = (dimension: string) => String(
       firstAnswer(dimension)?.questionId ?? portraitAnswers[0]?.questionId ?? "fixture-q01",
     )
+    const evidenceCatalog = Array.isArray(input.evidenceCatalog)
+      ? input.evidenceCatalog as Array<{ label: string; sourceAnswerId: string }>
+      : []
+    const firstEvidence = evidenceCatalog[0] ?? {
+      label: input.ipProfile?.experience ?? "当前 IP 的已确认经历",
+      sourceAnswerId: "profile:experience",
+    }
     const ipPortrait = {
       contentPortrait: {
         schemaVersion: 1,
@@ -100,6 +107,16 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
       audienceTension: "想拓展本地业务，但害怕选错方法",
       ipFitEvidence: [input.ipProfile?.experience ?? "真实业务经历"],
       structureId: ["failure-turn", "myth-correction", "value-filter"][index], riskNotes: [],
+      decisionBrief: {
+        objective: index === 1 ? "用户教育" : "建立信任",
+        whyToday: index === 0 ? "受众正在判断这个 IP 的经验是否值得长期相信。" : "这个问题与当前受众最常见的决策顾虑直接相关。",
+        audienceProblem: "想做本地生意，但不知道怎样判断一个方法是否适合自己。",
+        ipEvidenceRefs: [{ label: firstEvidence.label, sourceAnswerId: firstEvidence.sourceAnswerId }],
+        recentDataStatus: input.tenantMemory ? "available" : "none",
+        ...(input.tenantMemory ? { recentDataSummary: `已参考确认复盘：${input.tenantMemory.keep?.[0] ?? "当前账号已确认结论"}` } : {}),
+        repetitionRisk: index === 0 ? "low" : "medium",
+        nextSignal: "发布后重点观察完播率，以及评论中出现的真实问题。",
+      },
     }))
     const selectedTopic = input.selectedTopic ?? topics[0]
     const scripts = Array.from({ length: 3 }, (_, index) => ({

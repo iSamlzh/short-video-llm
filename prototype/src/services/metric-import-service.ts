@@ -7,7 +7,7 @@ import { normalizeContentTitle, normalizeVideoUrl } from "../lib/content-identit
 import { MetricsRepository } from "../lib/db/metrics-repository"
 import { PublicationRepository } from "../lib/db/publication-repository"
 import { parseMetricFile, type ParsedMetricFile } from "../lib/import/spreadsheet-parser"
-import { PublicationMatcher } from "./publication-matcher"
+import { buildCandidateEvidence, PublicationMatcher } from "./publication-matcher"
 
 type ImportInput = { contentAccountId: string; filename: string; mimeType: string; bytes: Buffer }
 type Parser = (input: Pick<ImportInput, "filename" | "mimeType" | "bytes">) => Promise<ParsedMetricFile>
@@ -95,11 +95,17 @@ export class MetricImportService {
         } : null,
         candidates: match.candidateIds.flatMap((id) => {
           const publication = publications.get(id)
+          const evidence = snapshot && publication ? buildCandidateEvidence(snapshot, publication) : null
           return publication ? [{
             id: publication.id,
             title: publication.title,
             publishedAt: publication.publishedAt,
-            explanation: candidateExplanation(snapshot?.publishedAt ?? null, publication.publishedAt),
+            explanation: evidence?.reasons.join(" · ")
+              ?? candidateExplanation(snapshot?.publishedAt ?? null, publication.publishedAt),
+            confidence: evidence?.confidence ?? "low",
+            reasons: evidence?.reasons ?? [candidateExplanation(snapshot?.publishedAt ?? null, publication.publishedAt)],
+            titleSimilarity: evidence?.titleSimilarity ?? null,
+            timeDistanceHours: evidence?.timeDistanceHours ?? null,
           }] : []
         }),
       }

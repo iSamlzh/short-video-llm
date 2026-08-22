@@ -8,6 +8,16 @@ import { StructuredLlmClient } from "../../src/lib/llm/structured"
 import { RunService } from "../../src/services/run-service"
 import { AutoCreationOrchestrator } from "../../src/services/auto-creation-orchestrator"
 
+const decisionBrief = {
+  objective: "建立信任" as const,
+  whyToday: "当前受众正在判断这些经验是否值得长期相信。",
+  audienceProblem: "想找到适合自己的方法，但害怕做出错误判断。",
+  ipEvidenceRefs: [{ label: "七年经历", sourceAnswerId: "profile:experience" }],
+  recentDataStatus: "none" as const,
+  repetitionRisk: "low" as const,
+  nextSignal: "发布后观察完播率和评论中的真实问题。",
+}
+
 describe("AutoCreationOrchestrator", () => {
   it("returns one QA-passed draft awaiting confirmation without requiring manual selection", async () => {
     const directory = mkdtempSync(join(tmpdir(), "auto-creation-"))
@@ -50,18 +60,29 @@ describe("AutoCreationOrchestrator", () => {
     }, {
       intent: "change_topic",
       topics: [
-        { id: "topic-1", title: "旧选题方向", angle: "从真实经历说明旧选题的判断过程", audienceTension: "害怕选错方法", ipFitEvidence: ["七年经历"], structureId: "failure-turn", riskNotes: [] },
-        { id: "topic-2", title: "新选题方向", angle: "从真实经历说明新选题的判断过程", audienceTension: "害怕选错方法", ipFitEvidence: ["七年经历"], structureId: "myth-correction", riskNotes: [] },
-        { id: "topic-3", title: "备用选题方向", angle: "从真实经历说明备用选题的判断过程", audienceTension: "害怕选错方法", ipFitEvidence: ["七年经历"], structureId: "value-filter", riskNotes: [] },
+        { id: "topic-1", title: "旧选题方向", angle: "从真实经历说明旧选题的判断过程", audienceTension: "害怕选错方法", ipFitEvidence: ["七年经历"], structureId: "failure-turn", riskNotes: [], decisionBrief },
+        { id: "topic-2", title: "新选题方向", angle: "从真实经历说明新选题的判断过程", audienceTension: "害怕选错方法", ipFitEvidence: ["七年经历"], structureId: "myth-correction", riskNotes: [], decisionBrief },
+        { id: "topic-3", title: "备用选题方向", angle: "从真实经历说明备用选题的判断过程", audienceTension: "害怕选错方法", ipFitEvidence: ["七年经历"], structureId: "value-filter", riskNotes: [], decisionBrief },
       ],
       selectedTopicId: "topic-1",
       previousScript: { title: "旧稿", body: "这是一篇需要被替换的旧口播稿正文，内容已经足够长。" },
+    }, {
+      version: 1,
+      keep: ["保留真实邻里场景"],
+      avoid: ["避免空泛说教"],
+      nextContentSignals: ["更快进入具体冲突"],
     })
 
     expect(result.topicSelection?.topicId).toBe("topic-2")
     expect(result.lockedScript).toBeNull()
     expect(result.scriptBatch?.items.find((script) => script.id === result.scriptSelection?.scriptId)?.topicDirectionId)
       .toBe("topic-2")
+    expect(result.topicBatch?.items.find((topic) => topic.id === "topic-2")?.decisionBrief).toMatchObject({
+      recentDataStatus: "available",
+      recentDataSummary: expect.stringContaining("已参考确认复盘"),
+    })
+    expect(result.topicBatch?.items.find((topic) => topic.id === "topic-2")?.decisionBrief?.recentDataSummary)
+      .toContain("记忆 v1")
     expect(adapter.calls.map((call) => call.operation)).toEqual(["topic_draft"])
     repository.close()
   })

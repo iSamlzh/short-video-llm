@@ -1,9 +1,10 @@
 import { spawn } from "node:child_process"
 import { resolve } from "node:path"
+import { createE2EDatabasePath } from "./e2e-database-path"
 
 process.env.PROTOTYPE_TEST_MODE = "true"
 process.env.PLAYWRIGHT_TEST_MODE = "true"
-process.env.PROTOTYPE_DB_PATH = `.data/e2e-${process.pid}.sqlite`
+process.env.PROTOTYPE_DB_PATH = createE2EDatabasePath()
 process.env.PROTOTYPE_DEMO_CONTROLS = "true"
 
 const [{ getAppDatabase }, { seedDemoData, seedE2ERealPublications }] = await Promise.all([

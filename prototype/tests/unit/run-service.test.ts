@@ -18,6 +18,15 @@ const topics = Array.from({ length: 3 }, (_, index) => ({
   angle: "从社区团购的真实经历切入，讲清可复用的方法",
   audienceTension: "想拓展业务但缺少可信方法",
   ipFitEvidence: ["三年社区团购运营经历"],
+  decisionBrief: {
+    objective: "建立信任" as const,
+    whyToday: "今天需要先回答受众对长期经营可信度的疑问。",
+    audienceProblem: "想拓展业务但缺少可信方法",
+    ipEvidenceRefs: [{ label: "三年社区团购运营经历", sourceAnswerId: "profile:experience" }],
+    recentDataStatus: "none" as const,
+    repetitionRisk: "low" as const,
+    nextSignal: "发布后观察完播和咨询问题。",
+  },
   structureId: "case-breakdown",
   riskNotes: [],
 }))
@@ -62,6 +71,20 @@ describe("RunService topics", () => {
     expect(repository.listStepErrors(run.id)).toEqual([
       expect.objectContaining({ errorCode: "FAKE_LLM_RESPONSE_MISSING:topics", retryFromState: "READY_FOR_TOPICS" }),
     ])
+  })
+
+  it("拒绝模型引用当前 IP 证据目录之外的回答", async () => {
+    adapter.enqueue({ json: topics.map((topic, index) => index === 0 ? {
+      ...topic,
+      decisionBrief: {
+        ...topic.decisionBrief,
+        ipEvidenceRefs: [{ label: "不存在的经历", sourceAnswerId: "answer-foreign" }],
+      },
+    } : topic) })
+    const run = service.createRun(minimumIpInput)
+
+    await expect(service.generateTopics(run.id, run.inputVersion)).rejects.toThrow("DECISION_EVIDENCE_INVALID")
+    expect(repository.listTopicBatches(run.id)).toHaveLength(0)
   })
 })
 

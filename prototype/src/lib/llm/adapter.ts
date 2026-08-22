@@ -1,4 +1,4 @@
-export type LlmOperation = "topics" | "scripts" | "qa" | "review" | "real_review" | "auto_draft" | "topic_draft" | "content_analysis" | "structure_candidate" | "structure_preview" | "repair"
+export type LlmOperation = "ip_portrait" | "topics" | "scripts" | "qa" | "review" | "real_review" | "auto_draft" | "topic_draft" | "content_analysis" | "structure_candidate" | "structure_preview" | "repair"
 export interface TokenUsage { promptTokens?: number; completionTokens?: number; totalTokens?: number }
 export interface LlmRequest {
   operation: LlmOperation
@@ -33,7 +33,7 @@ export class OpenAiCompatibleAdapter implements LlmAdapter {
           headers: { "content-type": "application/json", authorization: `Bearer ${apiKey}` },
           body: JSON.stringify({
             model,
-            temperature: request.operation === "qa" || request.operation === "real_review" || request.operation === "auto_draft" || request.operation === "topic_draft" || request.operation === "content_analysis" || request.operation === "structure_candidate" || request.operation === "structure_preview" ? 0.35 : 0.6,
+            temperature: request.operation === "ip_portrait" || request.operation === "qa" || request.operation === "real_review" || request.operation === "auto_draft" || request.operation === "topic_draft" || request.operation === "content_analysis" || request.operation === "structure_candidate" || request.operation === "structure_preview" ? 0.35 : 0.6,
             messages: [
               { role: "system", content: request.systemPrompt },
               { role: "user", content: JSON.stringify(request.input) },
@@ -45,7 +45,12 @@ export class OpenAiCompatibleAdapter implements LlmAdapter {
         if (!response.ok) {
           const retryable = response.status === 429 || response.status >= 500
           if (retryable && attempt === 0) continue
-          throw Object.assign(new Error(`模型服务返回 ${response.status}`), { code: "LLM_HTTP_ERROR", retryable })
+          const code = response.status === 429
+            ? "MODEL_RATE_LIMITED"
+            : response.status >= 500
+              ? "MODEL_SERVICE_UNAVAILABLE"
+              : "MODEL_REQUEST_REJECTED"
+          throw Object.assign(new Error(modelHttpMessage(response.status)), { code, status: response.status, retryable })
         }
         const body = await response.json() as {
           choices?: Array<{ message?: { content?: string } }>
@@ -63,9 +68,12 @@ export class OpenAiCompatibleAdapter implements LlmAdapter {
           } : undefined,
         }
       } catch (error) {
-        if (attempt === 0 && (error instanceof TypeError || (error instanceof Error && error.name === "AbortError"))) continue
-        if (error instanceof Error && error.name === "AbortError") {
-          throw Object.assign(new Error("模型调用超时"), { code: "LLM_TIMEOUT", retryable: true })
+        if (attempt === 0 && (error instanceof TypeError || isAbortError(error))) continue
+        if (isAbortError(error)) {
+          throw Object.assign(new Error("模型调用超时"), { code: "LLM_TIMEOUT", status: 504, retryable: true })
+        }
+        if (error instanceof TypeError) {
+          throw Object.assign(new Error("无法连接模型服务"), { code: "MODEL_CONNECTION_FAILED", status: 503, retryable: true })
         }
         throw error
       } finally {
@@ -74,4 +82,14 @@ export class OpenAiCompatibleAdapter implements LlmAdapter {
     }
     throw Object.assign(new Error("模型服务暂时不可用"), { code: "LLM_UNAVAILABLE", retryable: true })
   }
+}
+
+function modelHttpMessage(status: number) {
+  if (status === 429) return "模型服务繁忙，请稍后重试"
+  if (status >= 500) return "模型服务暂时不可用"
+  return `模型服务拒绝了请求（${status}）`
+}
+
+function isAbortError(value: unknown) {
+  return typeof value === "object" && value !== null && "name" in value && value.name === "AbortError"
 }

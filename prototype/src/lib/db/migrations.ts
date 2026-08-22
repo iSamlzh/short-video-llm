@@ -39,6 +39,18 @@ const migrations = [
     version: 10,
     filename: "010_ip_onboarding_sessions.sql",
   },
+  {
+    version: 11,
+    filename: "011_user_current_tenant.sql",
+  },
+  {
+    version: 12,
+    filename: "012_content_account_default.sql",
+  },
+  {
+    version: 13,
+    filename: "013_extended_metric_evidence.sql",
+  },
 ] as const
 
 export function applyMigrations(database: Database.Database) {

@@ -3,6 +3,10 @@ node_modules/
 .data/
 playwright-report/
 test-results/
+.deploy/
+outputs/*
+!outputs/design-reference/
+!outputs/design-reference/*.png
 .env.local
 *.tsbuildinfo
 next-env.d.ts

@@ -11,10 +11,11 @@ const accounts = [
 ]
 
 describe("锁稿后的发布回执", () => {
-  it("未锁稿时不打断复制和定稿主路径", () => {
+  it("未锁稿时不打断定稿主路径", () => {
     render(<DailyCreationView draft={{ ...demoProductData.draft, status: "ready_to_confirm" }} publicationAccounts={accounts} />)
     expect(screen.queryByText("这条视频已经发布了吗？")).not.toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "复制并去拍" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "确认定稿" })).toBeVisible()
+    expect(screen.queryByRole("button", { name: "复制文本" })).not.toBeInTheDocument()
   })
 
   it("锁稿文档脚注后显示一个轻量回执，并可展开身份输入", async () => {

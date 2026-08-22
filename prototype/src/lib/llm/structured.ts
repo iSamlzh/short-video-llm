@@ -59,7 +59,7 @@ export async function generateStructuredResult<T>(options: GenerateOptions<T>): 
   if (repairedChecked.success) {
     return { data: repairedChecked.data, model: repaired.model, usage: combineUsage(first.usage, repaired.usage) }
   }
-  throw Object.assign(new Error("模型结构化输出修复失败"), { code: "MODEL_SCHEMA_INVALID", retryable: true })
+  throw Object.assign(new Error("模型结构化输出修复失败"), { code: "MODEL_SCHEMA_INVALID", status: 502, retryable: true })
 }
 
 export async function generateStructured<T>(options: GenerateOptions<T>): Promise<T> {
@@ -68,23 +68,36 @@ export async function generateStructured<T>(options: GenerateOptions<T>): Promis
 
 export class StructuredLlmClient {
   constructor(private readonly adapter: LlmAdapter) {}
-  generateStructured<T>(
+  async generateStructured<T>(
     operation: Exclude<LlmOperation, "repair">,
     input: unknown,
     schema: z.ZodType<T>,
     jsonRoot: "object" | "array" = "object",
   ) {
     const timeoutMs = Number(process.env.LLM_TIMEOUT_SECONDS ?? 60) * 1000
-    return generateStructured({ adapter: this.adapter, operation, input, schema, timeoutMs, jsonRoot })
+    return this.withOperationLog(operation, () => generateStructured({ adapter: this.adapter, operation, input, schema, timeoutMs, jsonRoot }))
   }
 
-  generateStructuredResult<T>(
+  async generateStructuredResult<T>(
     operation: Exclude<LlmOperation, "repair">,
     input: unknown,
     schema: z.ZodType<T>,
     jsonRoot: "object" | "array" = "object",
   ) {
     const timeoutMs = Number(process.env.LLM_TIMEOUT_SECONDS ?? 60) * 1000
-    return generateStructuredResult({ adapter: this.adapter, operation, input, schema, timeoutMs, jsonRoot })
+    return this.withOperationLog(operation, () => generateStructuredResult({ adapter: this.adapter, operation, input, schema, timeoutMs, jsonRoot }))
+  }
+
+  private async withOperationLog<T>(operation: Exclude<LlmOperation, "repair">, call: () => Promise<T>) {
+    const startedAt = Date.now()
+    try {
+      const result = await call()
+      console.info("model_operation", { operation, durationMs: Date.now() - startedAt, outcome: "success" })
+      return result
+    } catch (error) {
+      const code = (error as { code?: string }).code ?? "MODEL_OPERATION_FAILED"
+      console.info("model_operation", { operation, durationMs: Date.now() - startedAt, outcome: "failure", errorCode: code })
+      throw error
+    }
   }
 }

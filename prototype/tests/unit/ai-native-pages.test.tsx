@@ -21,22 +21,63 @@ describe("approved AI-native page hierarchy", () => {
   })
 
   it("shows one usable script before optional adjustments", () => {
-    render(<DailyCreationView draft={demoProductData.draft} />)
+    render(<DailyCreationView draft={{
+      ...demoProductData.draft,
+      decisionBrief: {
+        objective: "建立信任",
+        whyToday: "受众正在决定是否长期相信一个团长的判断。",
+        audienceProblem: "不知道怎样判断一个团长是否值得长期信任。",
+        ipEvidenceRefs: [{ label: "七年社区团购经历", sourceAnswerId: "answer-experience" }],
+        recentDataStatus: "none",
+        repetitionRisk: "low",
+        nextSignal: "发布后重点观察完播率和评论中的信任问题。",
+      },
+    }} />)
 
-    expect(screen.getByText("林姐，今天这篇可以直接拍")).toBeVisible()
+    expect(screen.getByText("今天建议讲")).toBeVisible()
+    expect(screen.getByText("建立信任")).toBeVisible()
+    expect(screen.getByText("受众正在决定是否长期相信一个团长的判断。")).toBeVisible()
+    expect(screen.getByText("不知道怎样判断一个团长是否值得长期信任。")).toBeVisible()
+    expect(screen.getByText("发布后重点观察完播率和评论中的信任问题。")).toBeVisible()
+    expect(screen.getByText("尚未使用历史表现")).toBeVisible()
+    expect(screen.queryByText(/近期账号表现|已参考复盘/)).not.toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "真正难的不是找货，是让邻居愿意一直信你" })).toBeVisible()
-    expect(screen.getByRole("button", { name: "复制并去拍" })).toBeVisible()
+    expect(screen.getByRole("button", { name: "确认定稿" })).toBeVisible()
+    expect(screen.getByText("定稿后可下载 DOCX，复制文本也会启用")).toBeVisible()
+    expect(screen.queryByRole("button", { name: "下载口播稿" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "复制文本" })).not.toBeInTheDocument()
     expect(screen.queryByText("选择今天的口播稿")).not.toBeInTheDocument()
     expect(screen.queryByText("模拟发布表现")).not.toBeInTheDocument()
+  })
+
+  it("把详细证据放入用户主动打开的判断依据层", async () => {
+    render(<DailyCreationView draft={{
+      ...demoProductData.draft,
+      decisionBrief: {
+        objective: "建立信任",
+        whyToday: "今天先回答信任问题。",
+        audienceProblem: "不知道该相信谁。",
+        ipEvidenceRefs: [{ label: "七年社区团购经历", sourceAnswerId: "answer-experience" }],
+        recentDataStatus: "none",
+        repetitionRisk: "medium",
+        nextSignal: "观察真实评论问题。",
+      },
+    }} />)
+
+    expect(screen.queryByRole("dialog", { name: "这次推荐依据" })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "查看完整判断依据" }))
+    expect(screen.getByRole("dialog", { name: "这次推荐依据" })).toBeVisible()
+    expect(screen.getByText("七年社区团购经历")).toBeVisible()
+    expect(screen.getByText("中等重复风险")).toBeVisible()
   })
 
   it("sends different intents for changing the topic and changing the expression", async () => {
     const regenerate = vi.fn()
     render(<DailyCreationView draft={demoProductData.draft} onRegenerate={regenerate} />)
 
-    await userEvent.click(screen.getByRole("button", { name: "换选题" }))
+    await userEvent.click(screen.getByRole("button", { name: "换一个选题" }))
     expect(regenerate).toHaveBeenLastCalledWith("change_topic")
-    await userEvent.click(screen.getByRole("button", { name: "换个讲法" }))
+    await userEvent.click(screen.getByRole("button", { name: "换一种讲法" }))
     expect(regenerate).toHaveBeenLastCalledWith("change_expression")
   })
 
@@ -79,11 +120,11 @@ describe("approved AI-native page hierarchy", () => {
     await userEvent.type(secondParagraph, "持久化后的第二段")
     await userEvent.click(screen.getByRole("button", { name: "完成第 2 段编辑" }))
 
-    expect(save).toHaveBeenCalledWith([
-      demoProductData.draft.paragraphs[0],
-      "持久化后的第二段",
-      ...demoProductData.draft.paragraphs.slice(2),
-    ])
+    expect(save).toHaveBeenCalledWith(demoProductData.draft.paragraphs.map((text, index) => ({
+      id: `draft-${index + 1}`,
+      kind: "spoken",
+      text: index === 1 ? "持久化后的第二段" : text,
+    })))
     expect(screen.queryByRole("textbox", { name: "第 2 段" })).not.toBeInTheDocument()
   })
 
@@ -97,20 +138,58 @@ describe("approved AI-native page hierarchy", () => {
     expect(screen.getByRole("textbox", { name: "第 2 段" })).toBeVisible()
   })
 
-  it("finalizes the visible paragraphs before copying", async () => {
+  it("finalizes the visible paragraphs before enabling export actions", async () => {
     const finalize = vi.fn().mockResolvedValue(undefined)
     render(<DailyCreationView draft={demoProductData.draft} onFinalize={finalize} />)
 
-    await userEvent.click(screen.getByRole("button", { name: "复制并去拍" }))
+    await userEvent.click(screen.getByRole("button", { name: "确认定稿" }))
 
-    expect(finalize).toHaveBeenCalledWith({ paragraphs: [...demoProductData.draft.paragraphs], copyAfter: true })
+    expect(finalize).toHaveBeenCalledWith({
+      segments: demoProductData.draft.paragraphs.map((text, index) => ({
+        id: `draft-${index + 1}`,
+        kind: "spoken",
+        text,
+      })),
+    })
   })
 
-  it("uses server status for the locked label", () => {
-    render(<DailyCreationView draft={{ ...demoProductData.draft, status: "locked", lockedVersion: 1 }} />)
+  it("allows a saved revision to run its check as part of finalization", () => {
+    render(<DailyCreationView draft={{ ...demoProductData.draft, status: "needs_qa" }} />)
 
-    expect(screen.getByRole("button", { name: "已确认定稿" })).toBeDisabled()
-    expect(screen.getByText("锁稿 1")).toBeVisible()
+    expect(screen.getByRole("button", { name: "检查并定稿" })).toBeEnabled()
+    expect(screen.getByText("完成内容检查并定稿后，可下载 DOCX 和复制文本")).toBeVisible()
+  })
+
+  it("makes download primary and keeps copy as a tertiary action after locking", async () => {
+    const download = vi.fn()
+    const copy = vi.fn().mockResolvedValue(undefined)
+    render(<DailyCreationView
+      draft={{ ...demoProductData.draft, status: "locked", lockedVersion: 1, version: "v1 · 已定稿", finalizedAt: "2026-08-18T06:30:00.000Z" }}
+      onDownload={download}
+      onCopy={copy}
+    />)
+
+    expect(screen.getByText("已定稿 · 2026-08-18 14:30")).toBeVisible()
+    await userEvent.click(screen.getByRole("button", { name: "下载口播稿" }))
+    expect(download).toHaveBeenCalledOnce()
+    const copyAction = screen.getByRole("button", { name: "复制文本" })
+    expect(copyAction).toHaveClass("tertiary-action")
+    await userEvent.click(copyAction)
+    expect(copy).toHaveBeenCalledOnce()
+    expect(screen.getByText("v1 · 已定稿")).toBeVisible()
+  })
+
+  it("keeps a locked script read-only until the user explicitly returns to editing", async () => {
+    render(<DailyCreationView draft={{
+      ...demoProductData.draft,
+      status: "locked",
+      lockedVersion: 1,
+      version: "v1 · 已定稿",
+    }} />)
+
+    expect(screen.queryByRole("button", { name: "编辑第 1 段" })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "返回编辑" }))
+    expect(screen.getByRole("button", { name: "编辑第 1 段" })).toBeVisible()
   })
 
   it("显示已自动生效的记忆版本，但不增加选择器或权重设置", () => {
@@ -119,7 +198,7 @@ describe("approved AI-native page hierarchy", () => {
       memoryInfluence: { version: 1, summary: "保留真实邻里场景；开头更快进入冲突" },
     }} />)
     expect(screen.getAllByText(/记忆 v1/).length).toBeGreaterThan(0)
-    expect(screen.getByText(/已参考上次确认的复盘/)).toBeVisible()
+    expect(screen.getByText(/已参考确认复盘/)).toBeVisible()
     expect(screen.queryByText(/权重|选择记忆|是否使用记忆/)).not.toBeInTheDocument()
   })
 

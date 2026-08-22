@@ -14,6 +14,15 @@ type MatchDecision = {
   publicationId?: string
   candidateIds: string[]
   explanation: string
+  candidateEvidence?: CandidateEvidence[]
+}
+
+export type CandidateEvidence = {
+  publicationId: string
+  confidence: "high" | "medium" | "low"
+  titleSimilarity: number
+  timeDistanceHours: number | null
+  reasons: string[]
 }
 
 export class PublicationMatcher {
@@ -49,6 +58,7 @@ export class PublicationMatcher {
         status: "candidate", method: "exact_title_time",
         candidateIds: exactTitles.map((item) => item.id).sort(),
         explanation: `发现 ${exactTitles.length} 个同标题时间候选，需要人工确认`,
+        candidateEvidence: exactTitles.map((item) => buildCandidateEvidence(snapshot, item)),
       }
     }
 
@@ -67,6 +77,7 @@ export class PublicationMatcher {
         status: "candidate", method: "similarity_candidate",
         candidateIds: similar.map(({ item }) => item.id),
         explanation: `标题 Dice 相似度候选：${similar.map(({ score }) => score.toFixed(2)).join("、")}；仅供人工确认`,
+        candidateEvidence: similar.map(({ item }) => buildCandidateEvidence(snapshot, item)),
       }
     }
     return {
@@ -172,6 +183,24 @@ export class PublicationMatcher {
       JSON.stringify(detail), now,
     )
   }
+}
+
+export function buildCandidateEvidence(snapshot: MetricSnapshot, publication: Publication): CandidateEvidence {
+  const titleSimilarity = dice(normalizeContentTitle(snapshot.title), normalizeContentTitle(publication.title))
+  const timeDistanceHours = snapshot.publishedAt
+    ? Math.round(timeDistance(snapshot.publishedAt, publication.publishedAt) / 3_600_000)
+    : null
+  const confidence = titleSimilarity >= 0.76 && timeDistanceHours !== null && timeDistanceHours <= 72
+    ? "high"
+    : titleSimilarity >= 0.78 && timeDistanceHours !== null && timeDistanceHours <= 168
+      ? "medium"
+      : "low"
+  const reasons = [
+    "同一内容账号",
+    `标题相似度 ${(titleSimilarity * 100).toFixed(0)}%`,
+    timeDistanceHours === null ? "导入数据缺少发布时间" : `发布时间相差 ${timeDistanceHours} 小时`,
+  ]
+  return { publicationId: publication.id, confidence, titleSimilarity, timeDistanceHours, reasons }
 }
 
 function matched(method: MatchMethod, publicationId: string, explanation: string): MatchDecision {

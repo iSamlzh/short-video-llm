@@ -85,6 +85,25 @@ describe("CreationAppService draft lifecycle", () => {
     expect(adapter.calls.map((call) => call.operation)).toEqual(["auto_draft"])
   })
 
+  it("持久化结构化段落，并只从锁定版本生成导出数据", async () => {
+    const owner = access.resolve("user-owner", "tenant")
+    if (owner.audience !== "tenant") throw new Error("TENANT_CONTEXT_REQUIRED")
+    const created = await service.create(owner)
+    const segments = created.segments.map((segment: any) => segment.kind === "spoken" && segment.id.endsWith("-2")
+      ? { ...segment, text: `${segment.text} 这是结构化修改。` }
+      : segment)
+
+    const saved = service.saveDraft(owner, created.runId!, { expectedRevision: created.revision, segments })
+    expect(saved.status).toBe("needs_qa")
+    expect(saved.segments).toEqual(segments)
+
+    const finalized = await service.finalize(owner, created.runId!, { expectedRevision: saved.revision, segments })
+    const exported = service.getLockedExport(owner, created.runId!)
+    expect(finalized.status).toBe("locked")
+    expect(exported.segments).toEqual(segments)
+    expect(exported).not.toHaveProperty("paragraphs")
+  })
+
   it("rejects users without edit capability and users outside the run scope", async () => {
     const owner = access.resolve("user-owner", "tenant")
     const reviewer = access.resolve("user-reviewer", "tenant")

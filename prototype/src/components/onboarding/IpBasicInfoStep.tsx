@@ -30,6 +30,7 @@ export function IpBasicInfoStep({ onContinue }: { onContinue(input: IpBasicInfo)
       <option value="other">其他</option>
     </select>
     <p className="onboarding-helper">这些信息只在首次创建或新增IP时填写，后续默认使用当前IP。</p>
-    <button className="primary-button" type="submit" disabled={!displayName.trim()}>继续选择行业</button>
+    {!displayName.trim() && <span className="sr-only" id="ip-basic-submit-hint">请先填写 IP 名称</span>}
+    <button className="primary-button" type="submit" disabled={!displayName.trim()} aria-describedby={!displayName.trim() ? "ip-basic-submit-hint" : undefined}>继续选择行业</button>
   </form>
 }

@@ -14,6 +14,8 @@ import { ContentBrainRepository } from "@/lib/db/content-brain-repository"
 import { PlatformTemplateRetriever } from "@/services/platform-template-retriever"
 import { z } from "zod"
 import { scriptRevisionParagraphsSchema } from "@/domain/schemas"
+import { scriptSegmentsSchema } from "@/domain/creation-contracts"
+import { buildScriptDocx } from "@/services/script-export-service"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -21,8 +23,9 @@ export const dynamic = "force-dynamic"
 let singleton: CreationAppService | undefined
 const draftMutationSchema = z.object({
   expectedRevision: z.number().int().positive(),
-  paragraphs: scriptRevisionParagraphsSchema,
-})
+  segments: scriptSegmentsSchema.optional(),
+  paragraphs: scriptRevisionParagraphsSchema.optional(),
+}).refine((input) => Boolean(input.segments || input.paragraphs), { message: "结构化段落不能为空" })
 
 function service() {
   if (singleton) return singleton
@@ -40,15 +43,23 @@ function service() {
 async function draftMutationInput(request: NextRequest) {
   const parsed = draftMutationSchema.safeParse(await request.json().catch(() => null))
   if (!parsed.success) {
-    throw Object.assign(new Error("SCRIPT_PARAGRAPHS_INVALID"), { code: "SCRIPT_PARAGRAPHS_INVALID" })
+    throw Object.assign(new Error("SCRIPT_SEGMENTS_INVALID"), { code: "SCRIPT_SEGMENTS_INVALID" })
   }
   return parsed.data
 }
 
-function fail(error: unknown) {
+const modelErrorStatuses: Record<string, number> = {
+  MODEL_RATE_LIMITED: 429,
+  LLM_TIMEOUT: 504,
+  MODEL_SCHEMA_INVALID: 502,
+  MODEL_CONNECTION_FAILED: 503,
+  MODEL_SERVICE_UNAVAILABLE: 503,
+}
+
+export function creationErrorResponse(error: unknown) {
   const value = error as { code?: string; message?: string; retryable?: boolean; status?: number }
   const code = value.code ?? value.message ?? "INTERNAL_ERROR"
-  const status = value.status ?? (code === "RUN_NOT_FOUND" ? 404 : code.includes("FORBIDDEN") ? 403 : 400)
+  const status = value.status ?? modelErrorStatuses[code] ?? (code === "RUN_NOT_FOUND" ? 404 : code.includes("FORBIDDEN") ? 403 : 400)
   return Response.json({ errorCode: code, message: value.message ?? "操作失败", retryable: Boolean(value.retryable) }, { status })
 }
 
@@ -71,11 +82,28 @@ async function dispatch(request: NextRequest, segments: string[]) {
     if (request.method === "POST" && segments[0] === "runs" && segments[1] && segments[2] === "finalize" && segments.length === 3) {
       return Response.json(await service().finalize(access, segments[1], await draftMutationInput(request)))
     }
+    if (request.method === "GET" && segments[0] === "runs" && segments[1] && segments[2] === "download" && segments.length === 3) {
+      const exported = service().getLockedExport(access, segments[1])
+      const bytes = await buildScriptDocx(exported)
+      const filename = `${safeFilename(exported.title)}.docx`
+      return new Response(new Uint8Array(bytes).buffer, {
+        headers: {
+          "content-type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "content-disposition": `attachment; filename="script.docx"; filename*=UTF-8''${encodeURIComponent(filename)}`,
+          "cache-control": "private, no-store",
+        },
+      })
+    }
     if (request.method === "GET" && segments[0] === "runs" && segments[1]) return Response.json(service().getRun(access, segments[1]))
     return Response.json({ errorCode: "NOT_FOUND" }, { status: 404 })
   } catch (error) {
-    return fail(error)
+    return creationErrorResponse(error)
   }
+}
+
+function safeFilename(value: string) {
+  const cleaned = value.replace(/[\\/:*?"<>|]/g, " ").replace(/\s+/g, " ").trim()
+  return cleaned.slice(0, 64) || "口播稿"
 }
 
 type RouteContext = { params: Promise<{ segments: string[] }> }

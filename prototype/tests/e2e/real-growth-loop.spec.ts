@@ -19,7 +19,7 @@ async function login(page: Page, email: string) {
 }
 
 async function ensureLocked(page: Page) {
-  await expect(page.getByRole("button", { name: "复制并去拍" })).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText("今天建议讲")).toBeVisible({ timeout: 20_000 })
   const record = page.getByRole("button", { name: "记录已发布" })
   if (!await record.isVisible()) {
     await page.getByRole("button", { name: "确认定稿" }).click()
@@ -62,8 +62,8 @@ test("真实发布数据成为下一次创作使用的已确认记忆", async ({
   await page.screenshot({ path: "test-results/design-qa/import-match-implementation.png", fullPage: true })
 
   await page.goto("/app/today")
-  await page.getByRole("button", { name: "换选题" }).click()
-  await expect(page.getByText("已自动参考上次确认的复盘 · 记忆 v1")).toBeVisible({ timeout: 20_000 })
+  await page.getByRole("button", { name: "换一个选题" }).click()
+  await expect(page.getByText(/已参考确认复盘.*记忆 v1/)).toBeVisible({ timeout: 20_000 })
   await page.screenshot({ path: "test-results/design-qa/memory-in-creation-implementation.png", fullPage: true })
 })
 

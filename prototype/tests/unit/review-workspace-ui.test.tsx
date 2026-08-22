@@ -14,6 +14,22 @@ const review = {
     hypotheses: [{ text: "具体人物可能帮助用户更快进入情境。", confidence: "low", evidenceFor: ["s-1"], evidenceAgainst: ["s-2"] }],
     keep: ["真实人物与具体场景"], avoid: ["空泛说教"],
     nextContentSignals: ["更快进入具体冲突"], evidenceLimits: "只表达当前账号内相关性，不能证明平台分发因果。",
+    structureEvidence: [
+      {
+        segment: "hook", label: "钩子", status: "supported",
+        metrics: [{ label: "3秒留存率", value: 0.68, format: "rate", evidenceSnapshotIds: ["s-1"] }],
+        missingFields: [], interpretation: "开头留存有真实数据支持。",
+        nextAction: "下一条以《真实人物》稿件 v3 的3秒留存率 68.0% 为基线继续验证。",
+      },
+      {
+        segment: "body", label: "主体", status: "partial",
+        metrics: [{ label: "完播率", value: 0.35, format: "rate", evidenceSnapshotIds: ["s-1"] }],
+        missingFields: ["平均观看时长"], interpretation: "只能判断整体看完比例，不能定位主体掉点。",
+        nextAction: "补采平均观看时长后再判断主体节奏。",
+      },
+      { segment: "ending", label: "结尾", status: "missing", metrics: [], missingFields: ["收藏", "分享"], interpretation: "缺少结尾行为证据。", nextAction: "补采收藏和分享。" },
+      { segment: "conversion", label: "转化", status: "missing", metrics: [], missingFields: ["主页访问", "新增关注", "咨询"], interpretation: "缺少转化证据。", nextAction: "补采转化指标。" },
+    ],
   },
 }
 
@@ -72,12 +88,42 @@ describe("结果优先的真实复盘工作区", () => {
     expect(screen.getAllByText(review.evidenceLimits).length).toBeGreaterThan(0)
     expect(screen.getByRole("button", { name: "确认并用于后续创作" })).toBeVisible()
   })
+
+  it("把真实指标按钩子、主体、结尾和转化展示，并明确数据缺口", () => {
+    render(<ReviewBriefView brief={review} />)
+
+    expect(screen.getByRole("heading", { name: "指标如何落到内容结构" })).toBeVisible()
+    for (const label of ["钩子", "主体", "结尾", "转化"]) {
+      expect(screen.getByRole("heading", { name: label })).toBeVisible()
+    }
+    expect(screen.getByText("3秒留存率 68.0%")).toBeVisible()
+    expect(screen.getByText(/缺少：平均观看时长/)).toBeVisible()
+    expect(screen.getByText(/稿件 v3/)).toBeVisible()
+  })
+
+  it("支持一次确认每条记录唯一的高置信候选", async () => {
+    const confirmHighConfidence = vi.fn().mockResolvedValue(undefined)
+    render(<ImportOutcome result={mixedImportResult as any} onConfirmHighConfidence={confirmHighConfidence} />)
+
+    expect(screen.getAllByText("高置信度")).toHaveLength(2)
+    expect(screen.getAllByText(/同一内容账号/).length).toBeGreaterThan(0)
+    await userEvent.click(screen.getByRole("button", { name: "批量确认 2 条高置信候选" }))
+
+    expect(confirmHighConfidence).toHaveBeenCalledWith([
+      { matchId: "m-1", publicationId: "p-1", version: 1 },
+      { matchId: "m-2", publicationId: "p-2", version: 1 },
+    ])
+  })
 })
 
 function candidate(id: string, title: string, publicationId: string) {
   return {
     id, version: 1, status: "candidate", explanation: "标题与发布时间接近，需要人工确认",
     snapshot: { title, publishedAt: "2026-08-10T08:00:00Z" },
-    candidates: [{ id: publicationId, title: `${title}（已发布）`, publishedAt: "2026-08-10T09:00:00Z", explanation: "同账号 · 时间相差 1 小时" }],
+    candidates: [{
+      id: publicationId, title: `${title}（已发布）`, publishedAt: "2026-08-10T09:00:00Z",
+      explanation: "同一内容账号 · 发布时间相差 1 小时", confidence: "high",
+      reasons: ["同一内容账号", "发布时间相差 1 小时", "标题相似度 94%"],
+    }],
   }
 }

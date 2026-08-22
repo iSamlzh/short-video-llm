@@ -26,6 +26,7 @@ export const createExternalPublicationInputSchema = z.object({
 }).strict()
 
 const optionalCount = z.number().int().nonnegative().optional()
+const optionalRate = z.number().min(0).max(1).optional()
 export const metricImportRowSchema = z.object({
   rowNumber: z.number().int().positive(),
   ...optionalIdentitySchema,
@@ -35,13 +36,19 @@ export const metricImportRowSchema = z.object({
   impressions: optionalCount,
   plays: optionalCount,
   completions: optionalCount,
-  completionRate: z.number().min(0).max(1).optional(),
+  completionRate: optionalRate,
+  threeSecondRetention: optionalRate,
+  fiveSecondRetention: optionalRate,
+  averageWatchSeconds: z.number().nonnegative().optional(),
   likes: optionalCount,
   comments: optionalCount,
   saves: optionalCount,
   shares: optionalCount,
+  profileVisits: optionalCount,
+  followersGained: optionalCount,
   inquiries: optionalCount,
   negativeFeedback: optionalCount,
+  rawColumns: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])),
   isSimulated: z.literal(false),
 }).strict().refine((value) => Boolean(value.platformVideoId || value.videoUrl || value.publishedAt), {
   message: "METRIC_IDENTITY_REQUIRED",
@@ -68,6 +75,20 @@ export const realContentReviewSchema = z.object({
   avoid: z.array(z.string().trim().min(2)),
   nextContentSignals: z.array(z.string().trim().min(2)),
   evidenceLimits: z.string().trim().min(10),
+  structureEvidence: z.array(z.object({
+    segment: z.enum(["hook", "body", "ending", "conversion"]),
+    label: z.enum(["钩子", "主体", "结尾", "转化"]),
+    status: z.enum(["supported", "partial", "missing"]),
+    metrics: z.array(z.object({
+      label: z.string().trim().min(1),
+      value: z.number().nonnegative(),
+      format: z.enum(["count", "rate", "seconds"]),
+      evidenceSnapshotIds: z.array(z.string().trim().min(1)).min(1),
+    }).strict()),
+    missingFields: z.array(z.string().trim().min(1)),
+    interpretation: z.string().trim().min(2),
+    nextAction: z.string().trim().min(2),
+  }).strict()).optional(),
 }).strict()
 
 export const confirmMemoryInputSchema = z.object({

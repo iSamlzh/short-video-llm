@@ -101,6 +101,27 @@ describe("MetricImportService", () => {
       unmatched: 0,
     })
   })
+
+  it("把平台原始列和扩展统一指标一起保存", async () => {
+    const result = await service.import(owner, {
+      contentAccountId: "account-linjie-wechat",
+      filename: "扩展.csv",
+      mimeType: "text/csv",
+      bytes: Buffer.from(
+        "作品ID,标题,采集时间,播放量,3秒留存率,平均观看时长,主页访问,平台实验组\nwx-extended,扩展指标内容,2026-08-17T08:00:00Z,900,61%,22.5,35,B组",
+      ),
+    })
+
+    const stored = database.prepare(`SELECT plays,three_second_retention,average_watch_seconds,
+      profile_visits,raw_columns_json FROM real_metric_snapshots WHERE source_batch_id=?`).get(result.batchId) as any
+    expect(stored).toMatchObject({
+      plays: 900,
+      three_second_retention: 0.61,
+      average_watch_seconds: 22.5,
+      profile_visits: 35,
+    })
+    expect(JSON.parse(stored.raw_columns_json)).toEqual(expect.objectContaining({ "平台实验组": "B组" }))
+  })
 })
 
 function mixedFile() {

@@ -215,6 +215,7 @@ export class PrototypeRepository {
       sha256: String(row.sha256),
       script: JSON.parse(String(row.payload_json)) as ScriptCandidate,
       scriptSelectionVersion: row.script_selection_version == null ? null : Number(row.script_selection_version),
+      createdAt: String(row.created_at),
     } : null
   }
 
@@ -227,6 +228,7 @@ export class PrototypeRepository {
       sha256: String(row.sha256),
       script: JSON.parse(String(row.payload_json)) as ScriptCandidate,
       scriptSelectionVersion: Number(row.script_selection_version),
+      createdAt: String(row.created_at),
     } : null
   }
 

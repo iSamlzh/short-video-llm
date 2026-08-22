@@ -13,9 +13,10 @@ export class AccessRepository {
     const membership = this.database.prepare(`SELECT m.id membership_id, m.tenant_id
       FROM memberships m JOIN tenants t ON t.id = m.tenant_id
       JOIN users u ON u.id = m.user_id
+      LEFT JOIN user_current_tenant c ON c.user_id = m.user_id
       WHERE m.user_id = ? AND m.status = 'active' AND t.status = 'active'
         AND u.status = 'active' AND u.audience = 'tenant'
-      ORDER BY m.created_at LIMIT 1`).get(userId) as MembershipRow | undefined
+      ORDER BY CASE WHEN c.tenant_id = m.tenant_id THEN 0 ELSE 1 END, m.created_at, m.id LIMIT 1`).get(userId) as MembershipRow | undefined
     if (!membership) return null
 
     const capabilityRows = this.database.prepare(

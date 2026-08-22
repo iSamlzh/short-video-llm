@@ -82,6 +82,27 @@ describe("parseMetricFile", () => {
     expect(result.errors.map((item) => item.code)).toEqual(["TITLE_REQUIRED", "METRIC_IDENTITY_REQUIRED"])
     expect(result.errors[0].redactedReference).not.toContain("secret-video-id")
   })
+
+  it("归一新增留存和转化指标，同时保留平台未识别的原始列", async () => {
+    const result = await parseMetricFile({
+      filename: "扩展指标.csv",
+      mimeType: "text/csv",
+      bytes: Buffer.from(
+        "作品ID,标题,采集时间,播放量,3秒留存率,5秒留存率,平均观看时长,主页访问,新增关注,平台自定义分层\nwx-2,真实售后,2026-08-17T08:00:00Z,2000,68%,52%,18.5,81,16,A层",
+      ),
+    })
+
+    expect(result.errors).toEqual([])
+    expect(result.validRows[0]).toMatchObject({
+      plays: 2000,
+      threeSecondRetention: 0.68,
+      fiveSecondRetention: 0.52,
+      averageWatchSeconds: 18.5,
+      profileVisits: 81,
+      followersGained: 16,
+      rawColumns: expect.objectContaining({ "平台自定义分层": "A层" }),
+    })
+  })
 })
 
 async function makeWorkbookBuffer(rows: unknown[][]) {

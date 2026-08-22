@@ -12,13 +12,21 @@ type EvidenceRow = {
   plays: number | null
   completions: number | null
   completion_rate: number | null
+  three_second_retention: number | null
+  five_second_retention: number | null
+  average_watch_seconds: number | null
   likes: number | null
   comments: number | null
   saves: number | null
   shares: number | null
+  profile_visits: number | null
+  followers_gained: number | null
   inquiries: number | null
   negative_feedback: number | null
   is_simulated: number
+  publication_source: "system" | "external"
+  locked_script_version: number | null
+  locked_script_selection_version: number | null
 }
 
 export type BaselineSnapshot = {
@@ -29,11 +37,15 @@ export type BaselineSnapshot = {
   capturedAt: string
   metrics: Record<MetricName, number | null>
   isSimulated: boolean
+  publicationSource: "system" | "external"
+  lockedScriptVersion: number | null
+  lockedScriptSelectionVersion: number | null
 }
 
-type MetricName = "impressions" | "plays" | "completions" | "completionRate" | "likes" | "comments" | "saves" | "shares" | "inquiries" | "negativeFeedback"
+type MetricName = "impressions" | "plays" | "completions" | "completionRate" | "threeSecondRetention" | "fiveSecondRetention" | "averageWatchSeconds" | "likes" | "comments" | "saves" | "shares" | "profileVisits" | "followersGained" | "inquiries" | "negativeFeedback"
 const metricNames: MetricName[] = [
-  "impressions", "plays", "completions", "completionRate", "likes", "comments", "saves", "shares", "inquiries", "negativeFeedback",
+  "impressions", "plays", "completions", "completionRate", "threeSecondRetention", "fiveSecondRetention", "averageWatchSeconds",
+  "likes", "comments", "saves", "shares", "profileVisits", "followersGained", "inquiries", "negativeFeedback",
 ]
 
 export class AccountBaselineService {
@@ -41,8 +53,10 @@ export class AccountBaselineService {
 
   build(scope: GrowthScope) {
     const history = (this.database.prepare(`SELECT
-        m.publication_id,p.title,s.id snapshot_id,s.published_at,s.captured_at,s.impressions,s.plays,s.completions,
-        s.completion_rate,s.likes,s.comments,s.saves,s.shares,s.inquiries,s.negative_feedback,s.is_simulated
+        m.publication_id,p.title,p.source publication_source,p.locked_script_version,p.locked_script_selection_version,
+        s.id snapshot_id,s.published_at,s.captured_at,s.impressions,s.plays,s.completions,s.completion_rate,
+        s.three_second_retention,s.five_second_retention,s.average_watch_seconds,s.likes,s.comments,s.saves,
+        s.shares,s.profile_visits,s.followers_gained,s.inquiries,s.negative_feedback,s.is_simulated
       FROM publication_match_versions m
       JOIN real_metric_snapshots s ON s.id=m.snapshot_id
       JOIN publications p ON p.id=m.publication_id AND p.status='active'
@@ -75,10 +89,15 @@ function mapEvidence(row: EvidenceRow): BaselineSnapshot {
   return {
     publicationId: row.publication_id, snapshotId: row.snapshot_id, title: row.title,
     publishedAt: row.published_at, capturedAt: row.captured_at, isSimulated: row.is_simulated === 1,
+    publicationSource: row.publication_source, lockedScriptVersion: row.locked_script_version,
+    lockedScriptSelectionVersion: row.locked_script_selection_version,
     metrics: {
       impressions: row.impressions, plays: row.plays, completions: row.completions,
-      completionRate: row.completion_rate, likes: row.likes, comments: row.comments,
+      completionRate: row.completion_rate, threeSecondRetention: row.three_second_retention,
+      fiveSecondRetention: row.five_second_retention, averageWatchSeconds: row.average_watch_seconds,
+      likes: row.likes, comments: row.comments,
       saves: row.saves, shares: row.shares, inquiries: row.inquiries,
+      profileVisits: row.profile_visits, followersGained: row.followers_gained,
       negativeFeedback: row.negative_feedback,
     },
   }
