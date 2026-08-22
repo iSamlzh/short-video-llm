@@ -23,7 +23,7 @@
 
 用户界面采用“对话 + 活文档”的 AI-native 形态。系统根据 IP 属性和内部内容情报给出多个合适的选题方向；用户只选择一个方向，系统再在该方向下生成多篇完整候选文案，用户选择今天要拍的一篇。文案、证据、发布记录和复盘结果作为持续生长的任务产物嵌入任务流。
 
-第一版只交付内容闭环：团长 IP 建档、内部内容情报、选题方向匹配、同方向候选文案、动态质量标准、确认与锁稿、人工发布记录、平台数据导入、复盘和记忆升级。质量引擎自主发现、提炼和评测新标准，由内容负责人确认启用。系统随版本交付可直接运行的系统基线包，为五类用户角色、三个 Agent、工作流和全部内容闭环组件提供不可变默认版本；独立演示数据可在正式上线前一次性清理。首期只使用单台 4 核 8GB 服务器、基础鉴权与隔离、数据库迁移、任务重试和错误日志。数字人口播、平台 API、灾备、高可用、复杂发布治理和高级运维均不进入第一版。
+第一版只交付内容闭环：首次 IP 初始化与按需新增、当前 IP 持久化、内部内容情报、选题方向匹配、同方向候选文案、动态质量标准、确认与锁稿、人工发布记录、平台数据导入、复盘和记忆升级。IP 建档不是每次创作的步骤；用户完成首次初始化后，系统默认载入其当前 IP，直接进入每日选题。质量引擎自主发现、提炼和评测新标准，由内容负责人确认启用。系统随版本交付可直接运行的系统基线包，为五类用户角色、三个 Agent、工作流和全部内容闭环组件提供不可变默认版本；独立演示数据可在正式上线前一次性清理。首期只使用单台 4 核 8GB 服务器、基础鉴权与隔离、数据库迁移、任务重试和错误日志。数字人口播、平台 API、灾备、高可用、复杂发布治理和高级运维均不进入第一版。
 
 ## 2. 设计依据与已确认决策
 
@@ -54,6 +54,7 @@
 | 数据回流 | 一期表格/链接导入为主，平台 API 二期接入 |
 | 主交互范式 | “对话 + 活文档”；团长默认入口为主动秘书式简报 |
 | 核心业务对象 | 团长 IP 数字分身，而不是一组静态资料表单 |
+| IP 使用方式 | 首次初始化或主动新增时才建档；系统为每位用户记住当前 IP，日常进入后直接基于当前 IP 开始选题；切换 IP 只影响新任务 |
 | 首版默认版本 | 交付不可变 `content-loop-starter-v1` 系统基线包；新租户零配置继承，修改时创建租户版本，不覆盖系统版本 |
 | 上线数据清理 | 系统基线保留或停用；示例租户、示例用户和示例业务数据归入独立演示包，可预览并一次性彻底清理 |
 | 首期部署 | 单台 4 核 8GB，只满足内容闭环试用；备份、灾备、监控告警、发布治理、负载均衡和高可用全部放入第二版 |
@@ -90,6 +91,7 @@
 - **内容任务：** 从一个内容目标开始，依次完成方向选择、候选文案选择、质检确认、生产交接、发布记录和复盘。抖音版、视频号版属于同一任务下的产物，不重复计数。
 - **有效咨询：** 由运营人员确认，具备有效联系方式并明确表达合作、代理、团长加入或进一步洽谈意愿的线索。
 - **IP 快照：** 经团长确认、运营核验后发布的某一版权威 IP 模型；生成内容必须绑定快照版本。
+- **当前 IP：** 用户在某租户内最近明确选定、且仍有访问权的 `IPProfile`。它是持久化的用户创作上下文，不是内容任务的流程状态；创建新任务时解析并绑定其当前有效 `IPProfileVersion`，之后切换当前 IP 不改变已创建任务。
 - **活文档：** 嵌在任务流中、随 Agent 和人工操作持续产生新版本的选题、文案、证据或复盘产物。
 - **Agent Run：** Workflow Runtime 围绕一个目标推进的一次持久任务运行，可暂停、等待、恢复和回放。
 - **选题方向：** 系统根据 IP 属性、当期内容机会和历史效果生成的内容方向候选；它不是独立商业策略，用户必须先选择一个方向，系统才生成该方向下的候选文案。
@@ -139,15 +141,18 @@ flowchart TB
     U2["团长：事实与表达确认"] --> UI
     UI --> API["API / SSE"]
     API --> BASE["System Baseline / Tenant Defaults"]
+    API --> CIP["Current IP Context Resolver"]
+    CIP --> IP["团长 IP 资产域"]
+    CIP --> WF
     API --> WF["Workflow Runtime\n确定性状态机"]
     BASE --> WF
-    WF --> A1["IP Agent"]
+    API -. "首次初始化 / 按需新增" .-> A1["IP Agent"]
     WF --> A2["Content Agent"]
     WF --> A3["Quality & Learning Agent"]
     BASE --> A1 & A2 & A3
     WF -. 第二版 .-> VIDEO["数字人口播异步工作流"]
     A1 & A2 & A3 --> CTX["受控上下文装配器"]
-    CTX --> IP["团长 IP 资产域"]
+    CTX --> IP
     CTX --> INTEL["内部内容智能域"]
     CTX --> RUN["任务 / 产物 / 实验域"]
     A1 & A2 & A3 --> TOOLS["模型与工具 Gateway"]
@@ -169,6 +174,7 @@ flowchart TB
 6. **异步优先。** 模型、导入和复盘均为可暂停、可恢复的异步步骤；数字人口播若未来立项沿用同一模式。
 7. **可追踪和可撤销。** 目标、Agent、工具、模型、产物、审批、成本和记忆升级形成完整谱系。
 8. **开箱可运行，默认也版本化。** 干净环境必须用已校验系统基线直接跑通闭环；租户修改采用覆盖版本，Run 固定有效版本集，演示数据与基线严格分离。
+9. **IP 资产与内容运行解耦。** IP Agent 只在首次初始化、主动新增或校准时工作；日常 Run 通过当前 IP 解析器取得并固化快照，不把建档当作重复步骤。
 
 ### 6.2 首期技术选型
 
@@ -191,7 +197,7 @@ Workflow Runtime 状态机由业务代码显式实现，不把核心运行语义
 |---|---|---|---|---|
 | Identity & Tenant | 用户、组织、角色、授权和同意 | tenants, users, memberships, consents | `authorize()`, `consent.granted` | 内容和 Agent 逻辑 |
 | System Defaults | 系统基线发布、租户默认绑定、有效版本解析、首次初始化和演示数据清理 | system_baseline_bundles, baseline_component_refs, tenant_default_bindings, effective_version_sets, demo_data_manifests | `resolve_effective_versions()`, `system.baseline.activated`, `demo_data.purge.completed` | Agent 决策、业务内容生成或任意范围删除 |
-| IP Core | 团长事实、证据、表达、人设和版本 | ip_profiles, fact_claims, evidence, voice_rules, boundaries | `publish_snapshot()`, `ip.snapshot.published` | 内容模板和任务调度 |
+| IP Core | 团长事实、证据、表达、人设、版本和用户当前 IP 上下文 | ip_profiles, ip_profile_versions, user_current_ip_contexts, fact_claims, evidence, voice_rules, boundaries | `publish_snapshot()`, `resolve_current_ip()`, `ip.snapshot.published`, `user.current_ip.changed` | 内容模板和任务调度 |
 | Content Intelligence | 受保护来源、拆解、模式和人工发布的爆款结构 | source_items, decompositions, patterns, writing_template_versions | `match_templates()`, `writing_template.published` | 团长事实、方向选择和文案确认 |
 | Review & Learning | 单条内容复盘、跨内容规律累积、质量信号、标准提案/评测和内容经验 | insights, quality_signals, quality_standard_proposals, quality_standard_versions, quality_evaluations | `review_content()`, `propose_standard()`, `quality_standard.activated` | 修改事实/合规硬门槛；未经内容负责人确认启用新标准 |
 | Workflow Runtime | Goal、Run、确定性状态机、上下文、模型/工具调用 | goals, runs, run_steps, tool_calls, outbox | `start_run()`, `run.state.changed` | 用模型决定状态；直接修改其他模块数据 |
@@ -204,7 +210,19 @@ Workflow Runtime 状态机由业务代码显式实现，不把核心运行语义
 
 ## 8. 团长 IP 数字分身
 
-### 8.1 IP 模型结构
+### 8.1 IP 资产生命周期与当前上下文
+
+IP 是可长期复用的租户资产，不属于每日内容 Run 的前置步骤。系统将“建档”和“创作”拆成两个生命周期：
+
+1. **首次初始化：** 用户首次进入且没有任何可用 IP 时，进入一次性建档流程；首个 IP 发布有效快照后自动设为该用户当前 IP。
+2. **日常创作：** 登录后读取 `UserCurrentIpContext`。当前 IP 存在、用户仍有访问权且至少有一个 ACTIVE 快照时，直接进入“今日选题”，不再次展示建档表单或要求选择 IP。
+3. **多 IP 切换：** 用户只在顶部当前 IP 上下文或独立 IP 管理页主动切换。系统记住最后一次选择；切换只影响之后创建的 Goal/Run。
+4. **按需新增：** “新增 IP”是独立管理动作。创建草稿不自动改变当前 IP；首个 IP 成功发布时自动绑定，后续新增 IP 只有用户显式选择“设为当前 IP”才替换。
+5. **失效恢复：** 当前 IP 被归档、失去授权或不存在有效快照时，服务端清除失效上下文；有其他可用 IP 时要求选择一个，没有时才进入新增流程。
+
+`UserCurrentIpContext` 以 `(tenant_id, user_id)` 唯一，保存 `ip_profile_id`、`selected_by`、`selected_at` 和乐观锁版本。设置当前 IP 时必须同时校验租户边界、角色访问权、IP 状态和有效快照。创建内容任务时，服务端在同一事务中把当前 `ip_profile_id` 及其 ACTIVE `ip_profile_version_id` 固化到 `GoalContract`；运行中或历史 Run 永不跟随当前 IP 漂移。
+
+### 8.2 IP 模型结构
 
 | 维度 | 内容 | 更新权限 |
 |---|---|---|
@@ -219,7 +237,7 @@ Workflow Runtime 状态机由业务代码显式实现，不把核心运行语义
 | 关系记忆 | 目标人群疑虑、常见问题和互动反馈 | 运营审核后进入选题范围 |
 | 效果记忆 | 某种表达对某平台、受众和目标的效果 | 系统生成；运营审批 |
 
-### 8.2 事实和证据模型
+### 8.3 事实和证据模型
 
 每项可能用于公开表达的事实均建模为 `FactClaim`：
 
@@ -243,7 +261,7 @@ Workflow Runtime 状态机由业务代码显式实现，不把核心运行语义
 
 `verification_status` 只能为 `unverified`、`needs_evidence`、`verified`、`rejected` 或 `expired`。涉及人数、收入、品牌合作、效果承诺等强背书时，`unverified` 和 `needs_evidence` 必须阻断发布。
 
-### 8.3 三次校准
+### 8.4 三次校准
 
 1. **建档校准：** 用户主动选择行业；系统从该行业不少于 30 道受控问题中确定性选择 7 至 10 道内容导向问题；用户检查回答后，IP Agent 一次生成内容画像；团长确认事实和画像依据后发布 IP v1。
 2. **创作校准：** 将修改分类为事实纠正、单稿修改或长期表达偏好；只有明确确认的长期偏好才进入记忆提案。
@@ -395,7 +413,7 @@ Agent 不持有数据库连接、供应商密钥或任意 HTTP 能力。所有�
 | Content Agent | `ContentAgentDefinition v1` | 内置 `TOPIC_DIRECTION` 与 `SCRIPT_GENERATION` 两个模式 |
 | Quality & Learning Agent | `QualityLearningAgentDefinition v1` | 内置 `PRE_PUBLISH_QA`、`POST_PUBLISH_REVIEW`、`CROSS_CONTENT_LEARNING` 三个模式 |
 | 工作流 | `ContentLoopWorkflowVersion v1` | 提供第 11.2 节完整状态机、人工等待、重试和恢复规则 |
-| IP 建档 | `IpProfileSchemaVersion v1` | 提供最小字段、默认访谈问题、事实/表达/内容输出三次校准规则 |
+| IP 资产 | `IpProfileSchemaVersion v1` | 提供首次初始化、按需新增、最小字段、默认访谈问题、事实/表达/内容输出三次校准和当前 IP 解析规则 |
 | 业务目标 | `GoalContractTemplateVersion v1` | 默认“团长招商获客”，允许修改目标受众、平台、CTA 和成功指标 |
 | 爆款结构 | 20～30 个 `WritingTemplateVersion v1` | 由内容负责人确认并随基线发布，只包含抽象结构，不包含爆款原文 |
 | 内容质量 | `QualityStandardVersion v1` | 提供事实、合规、IP 禁区和泄露硬门禁，以及 IP 一致性、可信度、节奏和行动引导软评分 |
@@ -415,18 +433,19 @@ Agent 不持有数据库连接、供应商密钥或任意 HTTP 能力。所有�
 
 | 阶段 | 系统动作 | 产物 | 人工决策 |
 |---|---|---|---|
-| IP 建档 | AI 访谈、资料导入、事实提取 | IP 草稿、缺口列表 | 团长确认事实；运营核验证据 |
+| 首次 IP 初始化或按需新增（条件流程） | 仅在无可用 IP 或用户主动新增时执行 AI 访谈、资料导入、事实提取 | IP 草稿、缺口列表、已发布快照；首个 IP 自动成为当前 IP | 团长确认事实；运营核验证据 |
+| 进入每日工作台 | 解析用户当前 IP 及其 ACTIVE 快照；失效时回退到选择或新增 | 当前 IP 上下文、不可变快照引用 | 正常情况无决策；只有当前 IP 失效或主动切换时选择 |
 | 今日内容目标 | 自然语言转 GoalContract | 目标受众、平台、CTA、数量和成功指标 | 运营确认结构化目标 |
 | 机会研究 | 读取近 7 日情报、IP 和历史效果 | 内部机会卡片 | 无；低置信度结果标记 |
-| 选择选题方向 | 根据 IP 属性生成 3～5 个适配方向并解释原因 | TopicDirectionCandidate 集合 | 用户只选择一个今天要做的方向，或要求换一批 |
-| 生成候选文案 | 在已选方向下匹配模板并生成默认 3 篇完整稿件 | 同一 `topic_selection_id` 下的 ScriptCandidate 集合 | 用户选择今天要拍的一篇，或要求在同方向换一批 |
+| 选择选题方向 | 根据 IP 属性生成 3～5 个适配方向并解释原因 | TopicDirectionCandidate 集合 | 用户只选择一个今天要做的方向，或要求换一批；确认选择即自动触发候选文案生成，不再出现第二个“生成文案”操作 |
+| 生成候选文案 | 方向选择命令落库后由 Outbox 自动启动生成，在已选方向下匹配模板并生成默认 3 篇完整稿件 | 同一 `topic_selection_id` 下的 ScriptCandidate 集合 | 用户等待期间只看到可恢复的生成状态；完成后直接选择今天要拍的一篇，或要求在同方向换一批 |
 | 自动质检 | 事实、口吻、商业承诺、当前质量标准、平台规范、泄露检查 | 绑定 `QualityStandardVersion` 的 QA 报告 | 阻断项必须由人处理；运行中标准版本不可漂移 |
 | 最终确认 | 展示所选稿、逐句差异、证据和风险 | 锁定稿 | 运营确认质量；团长确认事实、像本人且愿意公开 |
 | 内容交接与人工发布 | 输出锁定稿、标题、封面文案和拍摄提示；运营在外部完成制作和发布 | 内容交接包、平台、账号、发布时间、内容 URL/ID | 运营确认发布记录 |
 | 数据导入 | 导入平台和业务数据 | 原始指标、统一指标 | 错误行修复；映射确认 |
 | 复盘与进化 | Quality & Learning Agent 先完成单条复盘，再把多个复盘信号累积为结构权重或质量标准提案 | 复盘卡、爆款结构效果、质量信号和记忆/标准提案 | 内容负责人启用质量标准；运营发布结构效果结论；团长发布长期表达偏好 |
 
-每条已回流数据的内容都产生一次单条复盘；跨内容进化不是第二次独立用户流程，而是 `CROSS_CONTENT_LEARNING` 模式在累计证据达到门槛后自动运行。未达到样本门槛时只保存质量信号，不生成标准升级提案。用户统一在“复盘与优化”中查看单条结论、累积规律和需要确认的提案。
+每条已回流数据的内容都产生一次单条复盘；跨内容进化不是第二次独立用户流程，而是 `CROSS_CONTENT_LEARNING` 模式在累计证据达到门槛后自动运行。未达到样本门槛时只保存质量信号，不生成标准升级提案。用户统一在“复盘与优化”中查看单条结论、累积规律和需要确认的提案。IP 初始化和切换由 IP Core 管理，不进入以下内容 Run 状态机。
 
 ### 11.2 第一版持久状态机
 
@@ -457,6 +476,7 @@ CREATED
 
 系统不以固定左侧菜单、统计大盘和表单列表为主。一个内容目标对应一条持续生长的任务流：
 
+- 顶部以紧凑上下文显示当前 IP；单 IP 用户不需要操作，多 IP 用户可主动切换或新增；
 - 顶部是可随时修改的目标和当前成功标准；
 - 中间只显示用户与统一的“内容增长 Agent”事件流；IP、Content、Quality & Learning 的内部来源按需展开，不把多 Agent 组织图暴露成主界面；
 - 选题方向、同方向候选文案、证据、发布记录和“复盘与优化”以活文档嵌入事件流；用户不分别进入复盘和质量进化页面；
@@ -466,13 +486,15 @@ CREATED
 
 ### 12.2 团长默认入口：主动秘书
 
-团长端默认显示“Agent 已完成什么、今天只需确认什么、预计需要几分钟”。一次只呈现一个清晰问题：先从 3～5 个适配方向中选一个，再从该方向的默认 3 篇完整文案中选出今天要拍的一篇。系统可以给推荐项和适配理由，但不能替用户自动确定方向或把多个方向的稿件混在一起。
+团长端默认载入当前 IP，并显示“Agent 已完成什么、今天只需确认什么、预计需要几分钟”。首次初始化完成后的日常入口直接从 3～5 个适配方向开始，不再重复显示 IP 表单或强制选择 IP。一次只呈现一个清晰问题：先从适配方向中选一个；点击确认方向后系统立即异步生成该方向的默认 3 篇完整文案，不设置“生成文案”中间页或按钮；生成完成后直接进入选稿。系统可以给推荐项和适配理由，但不能替用户自动确定方向或把多个方向的稿件混在一起。只有当前 IP 失效、用户主动切换或主动新增时才打断日常入口。
 
 ### 12.3 动态界面安全
 
 模型不能生成任意 HTML 或可执行前端代码。后端只能输出注册过的 `ui_block`：
 
 - `decision_card`
+- `current_ip_context`
+- `ip_setup_required`
 - `topic_direction_choices`
 - `script_candidate_choices`
 - `artifact_preview`
@@ -538,6 +560,7 @@ SystemBaselineBundle ──< BaselineComponentRef
 Tenant ──1 TenantDefaultBinding ──> SystemBaselineBundle
 AgentRun ──1 EffectiveVersionSet
 Tenant ──< IPProfile ──< IPProfileVersion
+User ──1 UserCurrentIpContext ──> IPProfile
 IPProfileVersion ──< FactClaim >──< Evidence
 IPProfileVersion ──< VoiceRule / Boundary / Offer / CaseStudy
 
@@ -749,6 +772,10 @@ class TalkingAvatarPort(Protocol):
 |---|---|---|
 | `GET /v1/system/baseline-status` | 获取系统基线完整性和 ACTIVE 版本 | readiness 和管理员可读；不返回 Prompt 正文、密钥或内部爆款原文 |
 | `POST /v1/setup/first-admin` | 首次创建租户和管理员 | 只在零租户状态且持有一次性启动令牌时可用；成功后永久关闭该令牌 |
+| `GET /v1/me/current-ip` | 获取用户在当前租户的当前 IP 和 ACTIVE 快照摘要 | 无可用 IP 返回 `setup_required=true`；失效引用不得静默沿用 |
+| `PUT /v1/me/current-ip` | 显式切换当前 IP | 校验租户、访问权、IP 状态和有效快照；使用幂等键；只影响后续 Goal/Run |
+| `GET /v1/ip-profiles` | 获取用户有权访问的 IP 列表 | 默认只返回 ACTIVE；不泄露其他租户或无权管理的 IP |
+| `POST /v1/ip-profiles` | 首次初始化或按需新增 IP | 首个已发布 IP 自动设为当前 IP；后续新增不自动替换当前 IP |
 | `GET /v1/tenant/default-versions` | 查看租户继承和覆盖后的默认版本 | 标明 SYSTEM/TENANT 来源、语义版本和是否被运行中任务使用 |
 | `GET /v1/admin/demo-data/purge-preview` | 生成演示数据清理清单 | 只读；执行非演示引用检查并返回清单哈希和短期确认令牌 |
 | `POST /v1/admin/demo-data/purge` | 一次性清理演示数据 | 必须携带清单哈希和确认令牌；仅能删除 `data_scope=DEMO`，支持幂等续跑 |
@@ -756,7 +783,7 @@ class TalkingAvatarPort(Protocol):
 | `POST /v1/goals/{id}/start` | 启动 Agent Run | 使用幂等键，重复请求返回同一 Run |
 | `GET /v1/runs/{id}` | 获取 Run 和当前决策 | 按租户和角色裁剪字段 |
 | `GET /v1/runs/{id}/stream` | SSE 推送事件和 UI blocks | 支持 `Last-Event-ID` 断线续传 |
-| `POST /v1/runs/{id}/topic-direction-selection` | 选择今天的一个内容方向 | 必须携带候选批次和候选版本；一次 Run 只有一个当前有效方向 |
+| `POST /v1/runs/{id}/topic-direction-selection` | 选择今天的一个内容方向并自动触发候选文案生成 | 必须携带候选批次、候选版本和幂等键；选择与 Outbox 在同一事务提交，返回 202 和当前 Run 状态；一次 Run 只有一个当前有效方向，前端不得再调用单独的“开始生成”命令 |
 | `POST /v1/runs/{id}/script-selection` | 在已选方向下选择今天要拍的文案 | 稿件必须属于当前 `topic_selection_id`；跨方向选择返回 409 |
 | `POST /v1/approvals/{id}/decisions` | 批准、拒绝、修改或补充 | 必须携带被审批版本；过期版本返回 409 |
 | `POST /v1/ip/memory-proposals/{id}/publish` | 发布权威/偏好记忆 | 显式确认、记录旧值并支持撤销 |
@@ -778,6 +805,7 @@ class TalkingAvatarPort(Protocol):
 - `demo_data.purge.completed.v1`
 - `run.state.changed.v1`
 - `ip.snapshot.published.v1`
+- `user.current_ip.changed.v1`
 - `topic.directions.generated.v1`
 - `topic.direction.selected.v1`
 - `script.candidates.generated.v1`
@@ -1083,7 +1111,7 @@ tenant_id → goal_id → run_id → run_step_id
 | 阶段 | 可独立验收的结果 | 出口标准 |
 |---|---|---|
 | P0 最小基座 | 单机启动、系统基线包、五类角色默认入口、三 Agent 默认版本、租户、权限、基础操作记录、对象存储、状态机、可清理演示数据和基础 CI | 干净数据库在 4C8G 单机初始化后无需后台手工配置即可登录并启动内容任务；基线完整性、租户隔离、演示清理通过 |
-| P1 团长 IP | AI 访谈、资料导入、事实/证据核验、IP 快照、记忆提案和撤销 | 10 位团长完成建档；事实 Evals 达标 |
+| P1 团长 IP | 一次性初始化、按需新增、当前 IP 持久化与失效回退、AI 访谈、资料导入、事实/证据核验、IP 快照、记忆提案和撤销 | 10 位团长完成建档；首次发布自动绑定当前 IP；再次登录直接进入今日选题；事实 Evals 达标 |
 | P2 内容闭环 | 受保护原文库、20～30 个人工爆款结构、IP 匹配方向、单方向候选文案、质量标准 v1、质检、确认和真人交接 | 运营独立完成 30 条“选方向 → 选文案”任务；每份 QA 报告绑定质量标准版本；候选批次跨方向混稿为 0；内部原文泄露为 0 |
 | P3 发布数据与自主进化 | 人工发布记录、数据导入、统一指标、复盘、爆款结构效果、质量标准自主提案/评测、人工启用和记忆升级 | 两个真实首期业务周期跑通；至少完成一次“发现 → 提案 → 评测 → 负责人启用/拒绝”的质量标准迭代；导入和标准回滚通过 |
 | 第二版工程化 | 备份、灾备、RPO/RTO、监控告警、兼容迁移、发布回滚、压力/故障测试和高可用 | 不进入第一版研发与验收；内容闭环验证后单独立项 |
@@ -1094,6 +1122,8 @@ tenant_id → goal_id → run_id → run_step_id
 ### 26.1 产品与业务
 
 - 团长建档完成率 ≥ 80%；
+- 已有有效当前 IP 的用户再次进入系统时，重复建档或强制选择 IP 的比例为 0；
+- 切换当前 IP 后，已有 Run 的 `ip_profile_version_id` 漂移数量为 0；
 - 从确认目标到出现选题方向的中位时间 ≤ 3 分钟；
 - 从选择方向到出现 3 篇同方向完整候选稿的中位时间 ≤ 7 分钟；
 - 每个候选批次的全部稿件均属于用户当前选择的同一方向；
@@ -1105,13 +1135,14 @@ tenant_id → goal_id → run_id → run_step_id
 - 至少一个首期业务结果指标连续两个完整周期改善；
 - 团长平均每个任务需要处理的决策卡不超过 3 张。
 - 五类用户角色首次登录后进入各自默认工作入口，不需要管理员先手工配置权限、导航或 Agent；
-- 新租户只录入最小 IP 信息并确认默认业务目标，即可开始完整内容任务。
+- 新租户首次只录入最小 IP 信息并确认默认业务目标即可开始完整内容任务；后续登录默认载入当前 IP 并直接进入每日选题。
 
 ### 26.2 第一版最低技术验收
 
 - 4C8G 单机可以完成部署、登录并创建第一个内容任务；
 - 干净数据库完成迁移和 `baseline-init` 后，系统基线包完整性检查通过，五类角色、三个 Agent、五个 Agent 模式及所有闭环组件均存在有效默认版本；
 - 固定示例数据可以从首次建档跑到 `REVIEWED`，全程不要求进入配置后台；
+- 首个 IP 发布后自动建立 `UserCurrentIpContext`；退出再登录不要求重复建档，多 IP 切换只影响新 Run，当前 IP 失效时能安全回退到选择或新增；
 - Run 保存唯一 `EffectiveVersionSet`；系统基线或租户默认升级后，运行中任务的组件版本不漂移；
 - 演示数据清理预览能阻断跨范围引用；一次性清理后 DEMO 数据和对象均为 0，SYSTEM 基线及正式租户冒烟测试仍通过，重复清理返回 `already_purged`；
 - 生产环境关闭演示种子后，应用重启和升级不会重新生成演示数据；

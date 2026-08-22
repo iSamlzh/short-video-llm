@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 交付一个面向运营团队与团长的 IP 内容增长 MVP，跑通“IP 建档 → 选题方向选择 → 同方向候选文案选择 → 质检锁稿 → 人工发布记录 → 数据导入 → 复盘与优化”的完整内容闭环。首个业务验证场景为团长招商获客，但领域模型、Agent 契约和质量体系不绑定“招商”这一内容形式。
+**Goal:** 交付一个面向运营团队与团长的 IP 内容增长 MVP：首次使用跑通“IP 初始化 → 选题方向选择 → 同方向候选文案选择 → 质检锁稿 → 人工发布记录 → 数据导入 → 复盘与优化”，后续日常默认载入当前 IP 并从每日选题开始。首个业务验证场景为团长招商获客，但领域模型、Agent 契约和质量体系不绑定“招商”这一内容形式。
 
 **Architecture:** 单台 4C8G 服务器部署 Next.js、FastAPI、Celery、PostgreSQL/pgvector 与 Redis。确定性的 `Workflow Runtime` 负责编排状态、等待人工选择、幂等、重试和成本控制；首版只注册 `IP Agent`、`Content Agent`、`Quality & Learning Agent` 三个 Agent。不可变 `content-loop-starter-v1` 系统基线包提供五类用户角色和全部闭环组件默认版本，租户按组件 copy-on-write 覆盖，Run 固定 `EffectiveVersionSet`；独立 DEMO 数据可在正式上线前安全清理。
 
@@ -13,7 +13,10 @@
 ## Global Constraints
 
 - [ ] 首版只实现内容闭环；数字人口播视频、MiniMax/HeyGen、平台发布 API、平台数据 API 均不创建表、接口或占位任务。
+- [ ] IP 建档只在首次初始化或用户主动新增时发生；每位用户在租户内持久化一个当前 IP，日常内容入口默认解析该 IP 的 ACTIVE 快照并直接进入选题，不重复建档或强制选择。
+- [ ] 当前 IP 只作为新 Goal/Run 的默认上下文；Run 创建时固化 `ip_profile_id` 与 `ip_profile_version_id`，之后切换、更新或归档 IP 不得改变运行中和历史 Run。
 - [ ] 候选生成遵守严格的两段式约束：先返回 3–5 个选题方向；用户只能选择一个方向；随后默认只在该方向下返回 3 篇完整文案。
+- [ ] 用户确认选题方向后，服务端在同一事务中保存选择并写入文案生成 Outbox；界面直接进入可恢复的生成状态，完成后展示候选口播稿，不提供单独“生成文案”按钮。
 - [ ] 用户界面只呈现一个“内容增长 Agent”；内部执行来源可以展开查看，但 3 个 Agent 不作为顶层导航或三个聊天机器人出现。
 - [ ] `Workflow Runtime` 是确定性应用服务，不是 Agent；不得使用模型决定状态跳转、权限、幂等或事务边界。
 - [ ] 只注册 3 个 Agent：`IP Agent`、`Content Agent`、`Quality & Learning Agent`。`Content Agent` 只允许 `TOPIC_DIRECTION`、`SCRIPT_GENERATION` 两种模式；`Quality & Learning Agent` 只允许 `PRE_PUBLISH_QA`、`POST_PUBLISH_REVIEW`、`CROSS_CONTENT_LEARNING` 三种模式。
@@ -72,7 +75,7 @@ apps/
         assistant/
         setup/
         admin-defaults/
-        ip-profile/
+        ip-profile/                # 首次初始化、IP 管理和当前 IP 切换，不进入每日 Run 步骤
         publication/
         import/
         review-learning/
@@ -250,15 +253,19 @@ git commit -m "feat: add tenant identity and row isolation"
 - Create: `apps/api/app/modules/ip_core/api.py`
 - Create: `apps/api/alembic/versions/0002_ip_core.py`
 - Create: `apps/api/tests/unit/ip_core/test_ip_agent.py`
+- Create: `apps/api/tests/unit/ip_core/test_current_ip_context.py`
 - Create: `apps/api/tests/integration/ip_core/test_profile_versions.py`
+- Create: `apps/api/tests/integration/ip_core/test_current_ip_access.py`
 
 **Interfaces:**
 - Consumes: Task 2 的 `TenantContext`、权限检查和 RLS 仓储基类。
-- Produces: `IpProfileVersion`、`IP Agent` 建档契约、事实证据和三次校准服务。
+- Produces: `IpProfileVersion`、`UserCurrentIpContext`、`IP Agent` 建档契约、事实证据和三次校准服务。
 - `IpProfileVersion` 保存定位、身份经历、受众、表达风格、可信证据、业务目标、禁区和未知项。
 - `IP Agent` 只产出 `IpInterviewQuestion`、`IpFactProposal`、`IpProfileDraft`；不能直接发布新版本。
 - 每条事实必须有 `source_type`、`source_ref`、`confidence`、`captured_at`。
 - 建档按事实校准、表达校准、内容输出校准三次确认；资料文件使用对象存储预签名直传，模型只读取经授权的解析结果。
+- `UserCurrentIpContext` 以 `(tenant_id, user_id)` 唯一；首个 IP 发布后自动绑定，后续新增不自动覆盖；切换时校验访问权、ACTIVE 状态和有效快照。
+- 当前 IP 被归档、删除授权或缺少 ACTIVE 快照时，读取接口返回显式失效原因；服务有其他可用 IP 时要求选择，否则返回 `setup_required`，不得静默使用旧快照创建新 Run。
 
 - [ ] **Step 1: 写事实证据和发布审批失败测试**
 
@@ -270,6 +277,13 @@ def test_ip_agent_marks_unsupported_claim_as_unknown(ip_agent):
 def test_profile_version_requires_human_confirmation(service, content_operator):
     with pytest.raises(ApprovalRequired):
         service.publish(content_operator, draft_id="draft-1")
+
+def test_first_published_ip_becomes_current(current_ip_service, user, first_profile):
+    current = current_ip_service.resolve(user)
+    assert current.ip_profile_id == first_profile.id
+
+def test_adding_second_ip_does_not_replace_current(current_ip_service, user, first_profile, second_profile):
+    assert current_ip_service.resolve(user).ip_profile_id == first_profile.id
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -284,6 +298,9 @@ Agent 根据缺失字段一次最多提出 5 个问题；整理用户输入时�
 - [ ] **Step 4: 暴露建档 API**
 
 - `POST /v1/ip-profiles`
+- `GET /v1/ip-profiles`
+- `GET /v1/me/current-ip`
+- `PUT /v1/me/current-ip`
 - `POST /v1/ip-profiles/{id}/evidence-upload-url`
 - `POST /v1/ip-profiles/{id}/answers`
 - `POST /v1/ip-profiles/{id}/calibrations/{stage}/confirm`
@@ -294,7 +311,7 @@ Agent 根据缺失字段一次最多提出 5 个问题；整理用户输入时�
 - [ ] **Step 5: 验证版本追溯和租户隔离**
 
 Run: `uv run pytest apps/api/tests/unit/ip_core apps/api/tests/integration/ip_core -q`
-Expected: PASS，历史版本不可覆盖、证据可追溯、未确认草稿不可用于生成。
+Expected: PASS，历史版本不可覆盖、证据可追溯、未确认草稿不可用于生成；首个 IP 自动成为当前 IP，后续新增不抢占，越权或失效 IP 不能被设为当前。
 
 - [ ] **Step 6: Commit**
 
@@ -387,7 +404,7 @@ git commit -m "feat: add protected viral structure library"
 **Interfaces:**
 - Consumes: Task 2 的 `TenantContext`、数据库事务和权限服务。
 - Produces: `GoalContract`、`AgentRun`、`advance()`、Outbox 任务和 Run API。
-- `GoalContract` 固定 `ip_profile_version_id`、业务目标、目标受众、平台、内容形式、约束和成功指标。
+- `GoalContract` 固定 `ip_profile_id`、`ip_profile_version_id`、业务目标、目标受众、平台、内容形式、约束和成功指标。日常入口不要求客户端重复提交 IP；服务端在事务中从 `UserCurrentIpContext` 解析并固化 ACTIVE 快照。
 - Run 状态机：`CREATED → PLANNING → RESEARCHING → WAITING_TOPIC_DIRECTION_SELECTION → DRAFTING_CANDIDATES → WAITING_SCRIPT_SELECTION → QA → WAITING_CONTENT_APPROVAL → CONTENT_LOCKED → WAITING_MANUAL_PUBLICATION → PUBLISHED → WAITING_METRICS_IMPORT → REVIEWING → WAITING_MEMORY_APPROVAL → REVIEWED → ARCHIVED`。
 - `advance(run_id, expected_state, command, idempotency_key)` 只允许状态表声明的跳转；事务同时写 Run、DomainEvent 和 Outbox。
 
@@ -402,6 +419,11 @@ def test_same_idempotency_key_returns_original_result(service):
     first = service.handle(command, idempotency_key="key-1")
     second = service.handle(command, idempotency_key="key-1")
     assert second.event_id == first.event_id
+
+def test_switching_current_ip_does_not_mutate_existing_run(run, current_ip_service, second_profile):
+    original_version_id = run.ip_profile_version_id
+    current_ip_service.select(run.user_id, second_profile.id)
+    assert run.reload().ip_profile_version_id == original_version_id
 ```
 
 - [ ] **Step 2: 运行测试确认失败**
@@ -521,11 +543,11 @@ git commit -m "feat: add controlled context and three-agent registry"
 - Create: `apps/api/tests/evals/test_topic_direction_relevance.py`
 
 **Interfaces:**
-- Consumes: Task 3 的 IP 版本、Task 4 的结构版本、Task 5 的状态机、Task 6 的 Content Agent 与模型网关。
+- Consumes: Task 3 当前 IP 所解析并在 Goal/Run 中固化的 IP 版本、Task 4 的结构版本、Task 5 的状态机、Task 6 的 Content Agent 与模型网关。
 - Produces: `TopicDirectionCandidate`、`TopicSelection` 和方向选择 API。
 - `Content Agent.run(mode="TOPIC_DIRECTION", context) -> list[TopicDirectionCandidate]`，数量为 3–5。
 - `TopicDirectionCandidate` 包含 `title`、`angle`、`audience_tension`、`ip_fit_evidence`、`structure_version_id`、`risk_notes`。
-- `TopicSelection` 每个 Run 只能有一个 current selection；重新选择会创建新版本并使旧文案候选失效。
+- `TopicSelection` 每个 Run 只能有一个 current selection；重新选择会创建新版本并使旧文案候选失效。选择命令与 `GENERATE_SCRIPTS` Outbox 必须原子提交，接口返回后不依赖客户端再次触发生成。
 
 - [ ] **Step 1: 写数量、IP 匹配和单选失败测试**
 
@@ -556,7 +578,7 @@ Expected: FAIL，选题模式和选择服务尚不存在。
 - `GET /v1/runs/{id}/topic-directions`
 - `POST /v1/runs/{id}/topic-direction-selection`
 
-确认选择时将 Run 从 `WAITING_TOPIC_DIRECTION_SELECTION` 推进到 `DRAFTING_CANDIDATES`；未选择前拒绝文案生成。
+确认选择时将 Run 从 `WAITING_TOPIC_DIRECTION_SELECTION` 推进到 `DRAFTING_CANDIDATES`，并在同一事务写入幂等生成任务；未选择前拒绝文案生成，前端不得出现独立的“生成文案”按钮。
 
 - [ ] **Step 5: 运行单元、集成和离线评测**
 
@@ -669,8 +691,11 @@ git commit -m "feat: add same-direction scripts and independent QA"
 - Create: `apps/web/src/features/assistant/blocks/RunStatus.tsx`
 - Create: `apps/web/src/features/assistant/RoleHomeRouter.tsx`
 - Create: `apps/web/src/features/assistant/roleHomes.ts`
-- Create: `apps/web/src/features/ip-profile/IpProfilePanel.tsx`
+- Create: `apps/web/src/features/ip-profile/CurrentIpContext.tsx`
+- Create: `apps/web/src/features/ip-profile/IpSetupFlow.tsx`
+- Create: `apps/web/src/features/ip-profile/IpManager.tsx`
 - Create: `apps/web/tests/assistant-flow.test.tsx`
+- Create: `apps/web/tests/current-ip-entry.test.tsx`
 - Create: `apps/web/tests/role-home-router.test.tsx`
 - Create: `apps/web/e2e/content-loop.spec.ts`
 - Create: `apps/api/tests/integration/workflow_runtime/test_sse_resume.py`
@@ -678,10 +703,11 @@ git commit -m "feat: add same-direction scripts and independent QA"
 **Interfaces:**
 - Consumes: Task 5–8 的 Run 事件、方向/文案/审批 API 和 Task 2 的角色。
 - Produces: `AssistantBlock` 协议、SSE 流、五类角色默认任务入口和单助手工作台。
-- `AssistantBlock.type` 首版支持 `message`、`ip_profile_form`、`topic_direction_choices`、`script_candidate_choices`、`approval`、`run_status`、`publication_form`、`metric_import`、`review_and_learning`。
+- `AssistantBlock.type` 首版支持 `message`、`current_ip_context`、`ip_setup_required`、`topic_direction_choices`、`script_candidate_choices`、`approval`、`run_status`、`publication_form`、`metric_import`、`review_and_learning`。`ip_setup_required` 只在没有可用当前 IP 时出现，不是每日 Run 的固定块。
 - `GET /v1/runs/{id}/stream` 以 SSE 推送事件和 UI Blocks。
 - SSE 事件含递增 `event_id`；客户端带 `Last-Event-ID` 重连并补发缺失事件。
 - 顶层只有一个内容增长对话和当前任务面板；内部 Agent、mode、版本和证据放在可展开详情中。
+- 当前 IP 以紧凑上下文显示在顶部；单 IP 用户无需操作，多 IP 用户可主动切换或进入独立 IP 管理。系统已经存在有效当前 IP 时，工作台首屏必须直接呈现今日选题。
 - 五类角色默认入口分别为今日内容主动简报、待推进内容任务、待拆解/复核来源、待审批规则/质量提案、系统状态/租户管理；它们是同一 AI-native 工作台的首个任务视图，不是五套 SaaS 仪表盘。
 
 - [ ] **Step 1: 写两段式选择和 SSE 恢复失败测试**
@@ -691,6 +717,8 @@ it("selects a topic before showing scripts", async () => {
   render(<AssistantWorkspace initialBlocks={topicBlocks} />)
   expect(screen.queryByText("选择今天的文案")).not.toBeInTheDocument()
   await user.click(screen.getByRole("button", { name: "选择这个方向" }))
+  expect(screen.getByText("正在生成同方向口播稿")).toBeVisible()
+  expect(screen.queryByRole("button", { name: /生成.*文案/ })).not.toBeInTheDocument()
   expect(await screen.findByText("选择今天的文案")).toBeVisible()
 })
 
@@ -703,6 +731,12 @@ it.each([
 ])("routes %s to its default task view", (role, heading) => {
   render(<RoleHomeRouter role={role} />)
   expect(screen.getByRole("heading", { name: heading })).toBeVisible()
+})
+
+it("opens daily topics without asking for IP again", async () => {
+  render(<RoleHomeRouter role="group_leader" currentIp={activeIp} />)
+  expect(await screen.findByText("今天拍什么")).toBeVisible()
+  expect(screen.queryByText("创建你的 IP")).not.toBeInTheDocument()
 })
 ```
 
@@ -717,18 +751,21 @@ Expected: FAIL，块协议和界面尚不存在。
 
 - [ ] **Step 4: 实现单助手工作台**
 
-默认界面突出“下一步该做什么”，按角色定位首个任务视图；团长先用卡片比较 3–5 个方向，再展示选中方向下的 3 篇完整文案。状态、成本、质量标准和内部 Agent 来源默认折叠；不使用传统 SaaS 的多级侧栏、数据大盘和模块宫格作为主体验。
+默认界面突出“下一步该做什么”，按角色定位首个任务视图；已有当前 IP 的团长直接比较 3–5 个今日方向，再展示选中方向下的 3 篇完整文案。IP 初始化只在无可用 IP 时出现，IP 切换和新增放在顶部上下文及独立管理入口。状态、成本、质量标准和内部 Agent 来源默认折叠；不使用传统 SaaS 的多级侧栏、数据大盘和模块宫格作为主体验。
 
 - [ ] **Step 5: 验证响应式、键盘操作和完整前半程**
 
 Run: `npm test --workspace apps/web -- assistant-flow.test.tsx`
 Expected: PASS。
 
+Run: `npm test --workspace apps/web -- current-ip-entry.test.tsx`
+Expected: PASS，首次发布自动进入内容工作台，后续登录默认载入当前 IP；切换只影响新任务，失效上下文安全回退。
+
 Run: `npm test --workspace apps/web -- role-home-router.test.tsx`
 Expected: PASS，五类角色无需配置导航即可进入各自默认任务视图。
 
 Run: `npm run test:e2e --workspace apps/web -- content-loop.spec.ts`
-Expected: PASS，完成 IP 建档、方向选择、文案选择、QA 和确认锁稿。
+Expected: PASS，首次完成 IP 初始化后跑通方向选择、文案选择、QA 和确认锁稿；第二次进入不再建档，直接从当前 IP 的今日选题开始。
 
 Run: `uv run pytest apps/api/tests/integration/workflow_runtime/test_sse_resume.py -q`
 Expected: PASS。
@@ -1288,9 +1325,11 @@ git commit -m "test: harden MVP content loop for single-node release"
 
 ## Release Acceptance
 
-- [ ] 运营可以独立完成至少 30 条首期业务内容，从 IP 建档、方向选择、同方向文案选择到锁定稿、人工发布、指标导入和复盘全程可追溯。
+- [ ] 运营可以独立完成至少 30 条首期业务内容：首次完成 IP 初始化，后续默认使用当前 IP 从方向选择开始；同方向文案、锁定稿、人工发布、指标导入和复盘全程可追溯。
 - [ ] 干净数据库完成迁移与 `baseline-init` 后，五类角色、三 Agent、五个 Agent 模式及全部闭环组件都有有效默认版本，无需进入配置后台即可启动任务。
 - [ ] 五类用户首次登录分别进入今日内容、待推进任务、待拆解/复核、待审批、系统状态的默认任务视图，且系统不存在共享默认账号或密码。
+- [ ] 首个 IP 发布后自动成为当前 IP；已有有效当前 IP 的用户再次登录直接进入今日选题，不重复建档或强制选择；新增第二个 IP 不自动抢占当前 IP。
+- [ ] 多 IP 用户切换后只有新建 Goal/Run 使用新快照，切换前的运行中和历史 Run 仍绑定原 `ip_profile_version_id`；越权、归档或无有效快照的 IP 不能被设为当前。
 - [ ] 新租户继承 SYSTEM 基线而不复制组件；租户覆盖只复制被修改组件；每个 Run 固定唯一 `EffectiveVersionSet`，默认升级不改变运行中任务。
 - [ ] DEMO 清理先预览并阻断正式引用；清理后 DEMO 数据与对象为 0、SYSTEM/TENANT 冒烟测试通过、重复执行返回 `already_purged`，关闭种子后重启不再生成。
 - [ ] 至少 10 位真实团长完成三次 IP 校准；首批人工发布 20–30 个爆款结构，普通团长和生成模型均不能读取原文。
