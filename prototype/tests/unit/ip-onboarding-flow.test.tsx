@@ -3,10 +3,9 @@ import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import { OnboardingRouteView } from "../../src/components/onboarding/OnboardingRouteView"
 
-const push = vi.fn()
-const refresh = vi.fn()
+const { replaceDocument } = vi.hoisted(() => ({ replaceDocument: vi.fn() }))
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh }) }))
+vi.mock("@/lib/client-navigation", () => ({ replaceDocument }))
 
 const question = {
   id: "health-wellness-v1-q01",
@@ -79,8 +78,7 @@ const generatedDraft = {
 describe("首次IP逐题建档", () => {
   afterEach(() => {
     vi.unstubAllGlobals()
-    push.mockReset()
-    refresh.mockReset()
+    replaceDocument.mockReset()
   })
 
   it("从基础信息和行业主动选择进入服务端返回的当前题", async () => {
@@ -157,7 +155,7 @@ describe("首次IP逐题建档", () => {
     }
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(previewView))
-      .mockResolvedValueOnce(response({ ipId: "ip-zhou", accountId: "account-zhou" }))
+      .mockResolvedValueOnce(response({ ipId: "ip-zhou", accountId: "account-zhou", profile: { displayName: "周姐" } }))
     vi.stubGlobal("fetch", fetchMock)
     render(<OnboardingRouteView />)
 
@@ -167,7 +165,7 @@ describe("首次IP逐题建档", () => {
       method: "POST",
       body: JSON.stringify({ portraitDraftVersion: 1 }),
     }))
-    await waitFor(() => expect(push).toHaveBeenCalledWith("/app/today"))
+    await waitFor(() => expect(replaceDocument).toHaveBeenCalledWith("/app/today"))
   })
 })
 

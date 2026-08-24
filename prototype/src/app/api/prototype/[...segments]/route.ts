@@ -7,6 +7,7 @@ import { PrototypeFixtureLlmAdapter } from "@/lib/llm/fake"
 import { StructuredLlmClient } from "@/lib/llm/structured"
 import { RunService } from "@/services/run-service"
 import { resolveRuntimeFeatures } from "@/lib/runtime-features"
+import { authorizePrototypeApi } from "@/lib/prototype-api-access"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -16,8 +17,8 @@ function getService() {
   if (singleton) return singleton
   const dbPath = resolve(/* turbopackIgnore: true */ process.cwd(), process.env.PROTOTYPE_DB_PATH ?? ".data/prototype.sqlite")
   mkdirSync(dirname(dbPath), { recursive: true })
-  const allowFixture = process.env.PROTOTYPE_TEST_MODE === "true" && process.env.PLAYWRIGHT_TEST_MODE === "true"
-  const adapter = allowFixture ? new PrototypeFixtureLlmAdapter() : new OpenAiCompatibleAdapter()
+  const features = resolveRuntimeFeatures(process.env)
+  const adapter = features.prototypeFixtureLlm ? new PrototypeFixtureLlmAdapter() : new OpenAiCompatibleAdapter()
   singleton = new RunService(new PrototypeRepository(dbPath), new StructuredLlmClient(adapter))
   return singleton
 }
@@ -30,6 +31,10 @@ function errorResponse(error: unknown) {
 }
 
 async function dispatch(request: NextRequest, segments: string[]) {
+  const access = authorizePrototypeApi(request, process.env)
+  if (!access.allowed) {
+    return Response.json({ errorCode: access.status === 401 ? "PROTOTYPE_API_TOKEN_REQUIRED" : "NOT_FOUND" }, { status: access.status })
+  }
   const service = getService()
   const body = request.method === "POST" ? await request.json().catch(() => ({})) as Record<string, unknown> : {}
   try {

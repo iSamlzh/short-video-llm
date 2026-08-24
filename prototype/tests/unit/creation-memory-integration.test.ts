@@ -59,7 +59,41 @@ describe("确认记忆回流到创作", () => {
       summary: "保留真实邻里场景；更快进入具体冲突",
     })
   })
+
+  it("从已确认复盘创建下一轮并记录来源复盘和记忆版本", async () => {
+    const owner = access.resolve("user-owner", "tenant")
+    if (owner.audience !== "tenant") throw new Error("TENANT_CONTEXT_REQUIRED")
+    seedConfirmedReview(appDatabase, "review-2")
+
+    const created = await creation.createNextRound(owner, {
+      sourceReviewId: "review-2",
+      expectedMemoryVersion: 2,
+    }, "2026-08-24")
+    const lineage = new CreationLineageRepository(appDatabase).get(created.runId!)
+
+    expect(lineage).toMatchObject({
+      tenantMemoryVersion: 2,
+      triggerType: "review_followup",
+      sourceReviewId: "review-2",
+    })
+    expect(created.creationTrigger).toEqual({ triggerType: "review_followup", sourceReviewId: "review-2" })
+    expect(adapter.calls.findLast((call) => call.operation === "auto_draft")?.input).toMatchObject({
+      tenantMemory: { version: 2, keep: ["保留真实邻里场景"] },
+    })
+  })
 })
+
+function seedConfirmedReview(database: ReturnType<typeof openDatabase>, id: string) {
+  database.prepare(`INSERT INTO content_review_versions
+    (id,tenant_id,ip_profile_id,content_account_id,version,sample_tier,evidence_cutoff_at,evidence_set_hash,
+     payload_json,prompt_version,status,created_by_user_id,created_at)
+    VALUES (?,'tenant-linjie','ip-linjie','account-linjie-wechat',2,'memory_eligible','2026-08-17T02:00:00Z',
+      'review-evidence-hash',?,1,'confirmed','user-owner','2026-08-17T02:00:00Z')`).run(id, JSON.stringify({
+      headline: "继续验证真实邻里场景", observations: [], hypotheses: [], keep: ["保留真实邻里场景"],
+      avoid: ["避免空泛说教"], nextContentSignals: ["更快进入具体冲突"], evidenceLimits: "只表达相关性",
+      structureEvidence: [],
+    }))
+}
 
 function seedMemory(database: ReturnType<typeof openDatabase>, version: number, keep: string) {
   database.prepare(`INSERT INTO tenant_memory_versions

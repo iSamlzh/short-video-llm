@@ -26,6 +26,10 @@ const draftMutationSchema = z.object({
   segments: scriptSegmentsSchema.optional(),
   paragraphs: scriptRevisionParagraphsSchema.optional(),
 }).refine((input) => Boolean(input.segments || input.paragraphs), { message: "结构化段落不能为空" })
+const nextRoundSchema = z.object({
+  sourceReviewId: z.string().trim().min(1),
+  expectedMemoryVersion: z.number().int().positive(),
+}).strict()
 
 function service() {
   if (singleton) return singleton
@@ -59,7 +63,9 @@ const modelErrorStatuses: Record<string, number> = {
 export function creationErrorResponse(error: unknown) {
   const value = error as { code?: string; message?: string; retryable?: boolean; status?: number }
   const code = value.code ?? value.message ?? "INTERNAL_ERROR"
-  const status = value.status ?? modelErrorStatuses[code] ?? (code === "RUN_NOT_FOUND" ? 404 : code.includes("FORBIDDEN") ? 403 : 400)
+  const status = value.status ?? modelErrorStatuses[code] ?? (code === "RUN_NOT_FOUND" ? 404
+    : code.includes("FORBIDDEN") ? 403
+      : ["MEMORY_VERSION_STALE", "MEMORY_REVIEW_MISMATCH", "REVIEW_NOT_CONFIRMED"].includes(code) ? 409 : 400)
   return Response.json({ errorCode: code, message: value.message ?? "操作失败", retryable: Boolean(value.retryable) }, { status })
 }
 
@@ -75,6 +81,10 @@ async function dispatch(request: NextRequest, segments: string[]) {
     if (request.method === "POST" && segments.join("/") === "auto") {
       const body = await request.json().catch(() => ({})) as { intent?: "initial" | "change_topic" | "change_expression"; fromRunId?: string }
       return Response.json(await service().create(access, body), { status: 201 })
+    }
+    if (request.method === "POST" && segments.join("/") === "next-round") {
+      const input = nextRoundSchema.parse(await request.json().catch(() => null))
+      return Response.json(await service().createNextRound(access, input), { status: 201 })
     }
     if (request.method === "PUT" && segments[0] === "runs" && segments[1] && segments[2] === "draft" && segments.length === 3) {
       return Response.json(service().saveDraft(access, segments[1], await draftMutationInput(request)))

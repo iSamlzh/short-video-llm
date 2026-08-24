@@ -11,18 +11,23 @@
 ## 2. 必需配置
 
 ```text
+APP_ENV=production
 LLM_BASE_URL=https://模型服务地址/v1
 LLM_API_KEY=仅通过密钥管理或环境变量注入
 LLM_MODEL=生产模型名称
 LLM_TIMEOUT_SECONDS=120
-PROTOTYPE_DB_PATH=/srv/content-agent/data/prototype.sqlite
+PROTOTYPE_DB_PATH=/srv/content-agent/data/production.sqlite
+ENABLE_PROTOTYPE_API=false
+ALLOW_LIVE_MODEL=false
 PROTOTYPE_DEMO_CONTROLS=false
 PROTOTYPE_TEST_MODE=false
 PLAYWRIGHT_TEST_MODE=false
 PROTOTYPE_ALLOW_DEMO_CLEAR=false
 ```
 
-生产环境必须明确保持三个测试/清理开关为 `false`。`.env.local`、模型密钥、数据库文件和备份文件不得提交到 Git。
+生产环境必须明确设置 `APP_ENV=production`，并保持调试、测试、演示和清理开关为 `false`。应用启动时会执行硬校验，危险组合将直接拒绝启动。`.env.local`、模型密钥、数据库文件和备份文件不得提交到 Git。
+
+开发、共享测试和生产必须使用不同的数据库文件与不同的模型 API Key。E2E 使用每次运行随机生成的数据库并强制 Fixture 模型；共享测试环境如需临时启用调试 API，还必须配置独立的 `PROTOTYPE_API_TOKEN`，不得对公网匿名开放。
 
 ## 3. 进程与目录
 

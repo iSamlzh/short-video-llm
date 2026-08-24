@@ -51,6 +51,10 @@ const migrations = [
     version: 13,
     filename: "013_extended_metric_evidence.sql",
   },
+  {
+    version: 14,
+    filename: "014_review_followup_lineage.sql",
+  },
 ] as const
 
 export function applyMigrations(database: Database.Database) {

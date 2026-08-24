@@ -3,6 +3,7 @@ import type { TenantAccessContext } from "../domain/access"
 import { ipProfileSchema } from "../domain/schemas"
 import { requireTenantCapability } from "../lib/auth/guards"
 import { CreationLineageRepository } from "../lib/db/creation-lineage-repository"
+import { ReviewMemoryRepository, toConfirmedCreationMemory } from "../lib/db/review-memory-repository"
 import { presentCreationDraft } from "./creation-presenter"
 import { AutoCreationOrchestrator } from "./auto-creation-orchestrator"
 import { RunService } from "./run-service"
@@ -32,6 +33,7 @@ export class CreationAppService {
       this.runs.getRunView(lineage.runId),
       this.memoryFor(current, lineage.tenantMemoryVersion),
       lineage.structureVersionIds,
+      { triggerType: lineage.triggerType, sourceReviewId: lineage.sourceReviewId },
     )
   }
 
@@ -67,6 +69,48 @@ export class CreationAppService {
       structureVersionIds: result.structureVersionIds,
     })
     return this.presentWithLineage(result, tenantMemory, result.structureVersionIds)
+  }
+
+  async createNextRound(
+    context: TenantAccessContext,
+    input: { sourceReviewId: string; expectedMemoryVersion: number },
+    businessDate = chinaBusinessDate(),
+  ) {
+    requireTenantCapability(context, "content.create")
+    const current = this.currentContext(context)
+    if (!current.accountId || !current.platform) throw new Error("CONTENT_ACCOUNT_REQUIRED")
+    const scope = {
+      tenantId: current.tenantId,
+      ipId: current.ipId,
+      contentAccountId: current.accountId,
+      platform: current.platform,
+    }
+    const memories = new ReviewMemoryRepository(this.database)
+    const review = memories.requireReview(scope, input.sourceReviewId)
+    if (review.status !== "confirmed") throw new Error("REVIEW_NOT_CONFIRMED")
+    const memory = memories.requireMemory(scope, input.expectedMemoryVersion)
+    if (memory.sourceReviewId !== review.id) throw new Error("MEMORY_REVIEW_MISMATCH")
+    const currentMemory = memories.getCurrentMemory(scope)
+    if (!currentMemory || currentMemory.version !== memory.version) throw new Error("MEMORY_VERSION_STALE")
+
+    const creationMemory = toConfirmedCreationMemory(memory)
+    const result = await this.orchestrator.createUsableDraft(current.profile, undefined, creationMemory)
+    this.lineage.attach({
+      runId: result.run.id,
+      tenantId: context.tenantId,
+      actorUserId: context.userId,
+      ipId: current.ipId,
+      accountId: current.accountId,
+      businessDate,
+      tenantMemoryVersion: memory.version,
+      structureVersionIds: result.structureVersionIds,
+      triggerType: "review_followup",
+      sourceReviewId: review.id,
+    })
+    return this.presentWithLineage(result, creationMemory, result.structureVersionIds, {
+      triggerType: "review_followup",
+      sourceReviewId: review.id,
+    })
   }
 
   getRun(context: TenantAccessContext, runId: string) {
@@ -175,18 +219,26 @@ export class CreationAppService {
   private presentRun(runId: string, runView = this.runs.getRunView(runId)) {
     const lineage = this.lineage.get(runId)
     if (!lineage) throw new Error("RUN_NOT_FOUND")
-    return this.presentWithLineage(runView, this.memoryForRun(runId), lineage.structureVersionIds)
+    return this.presentWithLineage(runView, this.memoryForRun(runId), lineage.structureVersionIds, {
+      triggerType: lineage.triggerType,
+      sourceReviewId: lineage.sourceReviewId,
+    })
   }
 
   private presentWithLineage(
     runView: Parameters<typeof presentCreationDraft>[0],
     memory: Parameters<typeof presentCreationDraft>[1],
     structureVersionIds: string[],
+    lineage: { triggerType: "manual" | "review_followup"; sourceReviewId: string | null } = {
+      triggerType: "manual",
+      sourceReviewId: null,
+    },
   ) {
     return {
       ...presentCreationDraft(runView, memory),
       structureVersionIds,
       structureInfluence: "已结合平台审核通过的内容结构",
+      creationTrigger: lineage,
     }
   }
 

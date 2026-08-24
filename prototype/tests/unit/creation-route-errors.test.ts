@@ -17,4 +17,9 @@ describe("创作路由模型错误合同", () => {
       retryable: true,
     })
   })
+
+  it.each(["MEMORY_VERSION_STALE", "MEMORY_REVIEW_MISMATCH", "REVIEW_NOT_CONFIRMED"])("将下一轮血缘冲突 %s 映射为 409", async (code) => {
+    const response = creationErrorResponse(new Error(code))
+    expect(response.status).toBe(409)
+  })
 })

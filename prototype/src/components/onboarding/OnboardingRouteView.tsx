@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useRouter } from "next/navigation"
+import { replaceDocument } from "@/lib/client-navigation"
 import type { IndustryCategory, PortraitDimension, PortraitQuestion } from "../../domain/ip-onboarding"
 import { IpBasicInfoStep, type IpBasicInfo } from "./IpBasicInfoStep"
 import { IndustryCategoryStep } from "./IndustryCategoryStep"
@@ -23,7 +23,6 @@ type SessionView = {
 }
 
 export function OnboardingRouteView() {
-  const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState("")
@@ -84,9 +83,19 @@ export function OnboardingRouteView() {
 
   async function confirm() {
     if (!view) return
-    const response = await fetch(`/api/app/ip-onboarding/sessions/${view.session.id}/confirm`, jsonRequest("POST", { portraitDraftVersion: view.session.portraitDraftVersion }))
-    await readResponse(response)
-    router.push("/app/today"); router.refresh()
+    setBusy(true); setStatus("")
+    try {
+      const response = await fetch(`/api/app/ip-onboarding/sessions/${view.session.id}/confirm`, jsonRequest("POST", { portraitDraftVersion: view.session.portraitDraftVersion }))
+      const result = await readResponse(response) as { ipId?: string; accountId?: string; profile?: { displayName?: string } }
+      if (!result.ipId || !result.accountId || !result.profile?.displayName) {
+        throw new Error("IP_CONTEXT_CONFIRMATION_INVALID")
+      }
+      replaceDocument("/app/today")
+    } catch (error) {
+      await handleFailure(error)
+    } finally {
+      setBusy(false)
+    }
   }
 
   async function handleFailure(error: unknown) {

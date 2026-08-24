@@ -2,6 +2,9 @@ import { spawn } from "node:child_process"
 import { resolve } from "node:path"
 import { createE2EDatabasePath } from "./e2e-database-path"
 
+process.env.APP_ENV = "e2e"
+process.env.ENABLE_PROTOTYPE_API = "true"
+process.env.ALLOW_LIVE_MODEL = "false"
 process.env.PROTOTYPE_TEST_MODE = "true"
 process.env.PLAYWRIGHT_TEST_MODE = "true"
 process.env.PROTOTYPE_DB_PATH = createE2EDatabasePath()

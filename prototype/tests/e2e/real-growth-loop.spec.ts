@@ -51,20 +51,24 @@ test("真实发布数据成为下一次创作使用的已确认记忆", async ({
   await page.getByRole("button", { name: "确认并用于后续创作" }).click()
   await expect(page.getByText(/已形成不可变记忆 v1/)).toBeVisible()
 
+  await page.reload()
+  await expect(page.getByText(/已形成不可变记忆 v1/)).toBeVisible()
+  await page.getByRole("button", { name: "用本次复盘生成下一条" }).click()
+  await page.waitForURL("**/app/today")
+  await expect(page.getByText(/已依据本账号复盘记忆 v1 开始新一轮验证/)).toBeVisible({ timeout: 20_000 })
+  await expect(page.getByText(/已参考确认复盘.*记忆 v1/)).toBeVisible()
+  await page.screenshot({ path: "test-results/design-qa/memory-in-creation-implementation.png", fullPage: true })
+
   await page.setViewportSize({ width: 390, height: 844 })
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true)
   await page.screenshot({ path: "test-results/design-qa/review-memory-implementation-mobile.png", fullPage: true })
   await page.setViewportSize({ width: 1487, height: 1058 })
 
+  await page.goto("/app/review")
   await page.getByLabel("导入真实平台数据").setInputFiles(resolve(process.cwd(), "tests/e2e/fixtures/mixed-real-metrics.csv"))
   await expect(page.getByRole("heading", { name: "已处理 4 条，1 条已关联" })).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole("heading", { name: "有 1 条需要你看一眼" })).toBeVisible()
   await page.screenshot({ path: "test-results/design-qa/import-match-implementation.png", fullPage: true })
-
-  await page.goto("/app/today")
-  await page.getByRole("button", { name: "换一个选题" }).click()
-  await expect(page.getByText(/已参考确认复盘.*记忆 v1/)).toBeVisible({ timeout: 20_000 })
-  await page.screenshot({ path: "test-results/design-qa/memory-in-creation-implementation.png", fullPage: true })
 })
 
 test("复盘确认权限与平台空间保持隔离", async ({ page, request }) => {

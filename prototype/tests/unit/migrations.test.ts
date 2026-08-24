@@ -91,6 +91,14 @@ describe("database migrations", () => {
     expect(database.prepare("SELECT COUNT(*) count FROM schema_migrations WHERE version=13").get()).toEqual({ count: 1 })
   })
 
+  it("版本 14 保存复盘驱动的下一轮创作血缘", () => {
+    database = openDatabase(":memory:")
+    const columns = database.prepare("PRAGMA table_info(creation_run_context)").all() as Array<{ name: string }>
+
+    expect(columns.map((column) => column.name)).toEqual(expect.arrayContaining(["trigger_type", "source_review_id"]))
+    expect(database.prepare("SELECT COUNT(*) count FROM schema_migrations WHERE version=14").get()).toEqual({ count: 1 })
+  })
+
   it("应用版本 8 并建立爆款拆解与创作结构谱系", () => {
     database = openDatabase(":memory:")
     applyMigrations(database)
@@ -133,6 +141,11 @@ describe("database migrations", () => {
       );
       CREATE TABLE user_current_context (content_account_id TEXT);
       CREATE TABLE real_metric_snapshots (id TEXT PRIMARY KEY);
+      CREATE TABLE creation_run_context (
+        run_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
     `)
     const markApplied = database.prepare(
       "INSERT INTO schema_migrations (version,filename,applied_at) VALUES (?,?,'2026-08-17T12:00:00.000Z')",

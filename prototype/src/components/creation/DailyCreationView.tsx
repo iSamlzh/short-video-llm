@@ -78,6 +78,7 @@ export function DailyCreationView({
     <main className="creation-canvas">
       <header className="creation-decision">
         <p className="creation-kicker">今天建议讲</p>
+        {draft.creationTrigger?.triggerType === "review_followup" && draft.memoryInfluence && <p className="sample-tier-note">已依据本账号复盘记忆 v{draft.memoryInfluence.version} 开始新一轮验证</p>}
         <h1>{draft.title}</h1>
         {locked && <p className="finalized-status"><CheckCircle size={18} weight="fill" />{formatFinalizedAt(draft.finalizedAt)}</p>}
         <div className="creation-adjustments">

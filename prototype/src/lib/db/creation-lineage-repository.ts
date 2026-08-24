@@ -9,12 +9,15 @@ type ContextInput = {
   businessDate: string
   tenantMemoryVersion?: number | null
   structureVersionIds?: string[]
+  triggerType?: "manual" | "review_followup"
+  sourceReviewId?: string | null
 }
 
 type Scope = { tenantId: string; ipIds: string[]; contentAccountIds: string[] }
 type Row = {
   run_id: string; tenant_id: string; ip_profile_id: string; content_account_id: string | null;
-  business_date: string; tenant_memory_version: number | null; structure_version_ids_json: string
+  business_date: string; tenant_memory_version: number | null; structure_version_ids_json: string;
+  trigger_type: "manual" | "review_followup"; source_review_id: string | null
 }
 
 export class CreationLineageRepository {
@@ -22,8 +25,9 @@ export class CreationLineageRepository {
 
   attach(input: ContextInput) {
     this.database.prepare(`INSERT INTO creation_run_context
-      (run_id,tenant_id,actor_user_id,ip_profile_id,content_account_id,business_date,tenant_memory_version,structure_version_ids_json,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?)`).run(
+      (run_id,tenant_id,actor_user_id,ip_profile_id,content_account_id,business_date,tenant_memory_version,
+       structure_version_ids_json,trigger_type,source_review_id,created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
       input.runId,
       input.tenantId,
       input.actorUserId,
@@ -32,6 +36,8 @@ export class CreationLineageRepository {
       input.businessDate,
       input.tenantMemoryVersion ?? null,
       JSON.stringify(input.structureVersionIds ?? []),
+      input.triggerType ?? "manual",
+      input.sourceReviewId ?? null,
       new Date().toISOString(),
     )
   }
@@ -65,6 +71,8 @@ export class CreationLineageRepository {
       businessDate: row.business_date,
       tenantMemoryVersion: row.tenant_memory_version,
       structureVersionIds: parseStringArray(row.structure_version_ids_json),
+      triggerType: row.trigger_type,
+      sourceReviewId: row.source_review_id,
     }
   }
 }

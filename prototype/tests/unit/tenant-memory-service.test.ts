@@ -5,6 +5,7 @@ import { openDatabase } from "../../src/lib/db/database"
 import { AccountBaselineService } from "../../src/services/account-baseline-service"
 import { TenantMemoryService } from "../../src/services/tenant-memory-service"
 import { seedDemoData } from "../../src/scripts/demo-data"
+import { ReviewMemoryRepository } from "../../src/lib/db/review-memory-repository"
 
 describe("TenantMemoryService", () => {
   let database: Database.Database
@@ -49,6 +50,8 @@ describe("TenantMemoryService", () => {
       .toEqual({ status: "confirmed" })
     expect(database.prepare("SELECT action FROM audit_logs WHERE resource_id=?").get(first.id))
       .toEqual({ action: "review.memory.confirmed" })
+    expect(new ReviewMemoryRepository(database).findMemoryByReview(scope(), reviewId))
+      .toMatchObject({ id: first.id, version: 1, sourceReviewId: reviewId })
   })
 
   it("拒绝证据集合已经变化的旧复盘", () => {

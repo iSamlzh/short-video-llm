@@ -134,8 +134,28 @@ export class ReviewService {
     })
   }
 
-  private withSampleCount<T extends { id: string }>(review: T) {
-    return { ...review, sampleCount: this.reviews.countEvidencePublications(review.id) }
+  private withSampleCount<T extends { id: string; tenantId: string; ipId: string; contentAccountId: string; platform: string }>(review: T) {
+    const sampleCount = this.reviews.countEvidencePublications(review.id)
+    const memory = this.reviews.findMemoryByReview(review, review.id)
+    return {
+      ...review,
+      sampleCount,
+      memoryThreshold: 5,
+      samplesUntilMemory: Math.max(0, 5 - sampleCount),
+      confirmation: memory ? {
+        status: "confirmed" as const,
+        memoryId: memory.id,
+        memoryVersion: memory.version,
+        confirmedAt: memory.createdAt,
+        sourceReviewId: review.id,
+      } : {
+        status: "unconfirmed" as const,
+        memoryId: null,
+        memoryVersion: null,
+        confirmedAt: null,
+        sourceReviewId: review.id,
+      },
+    }
   }
 }
 

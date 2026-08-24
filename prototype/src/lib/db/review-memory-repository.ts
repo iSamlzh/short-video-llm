@@ -156,6 +156,16 @@ export class ReviewMemoryRepository {
     return row ? this.mapMemory(row) : null
   }
 
+  findMemoryByReview(scope: GrowthScope, sourceReviewId: string) {
+    const row = this.database.prepare(`SELECT m.*,a.platform FROM tenant_memory_versions m
+      JOIN content_accounts a ON a.id=m.content_account_id
+      WHERE m.source_review_id=? AND m.tenant_id=? AND m.ip_profile_id=?
+        AND m.content_account_id=? AND a.platform=? ORDER BY m.version DESC LIMIT 1`).get(
+      sourceReviewId, scope.tenantId, scope.ipId, scope.contentAccountId, scope.platform,
+    ) as MemoryRow | undefined
+    return row ? this.mapMemory(row) : null
+  }
+
   nextMemoryVersion(scope: GrowthScope) {
     const row = this.database.prepare(`SELECT COALESCE(MAX(version),0)+1 version FROM tenant_memory_versions
       WHERE tenant_id=? AND ip_profile_id=? AND content_account_id=?`).get(

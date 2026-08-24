@@ -5,9 +5,14 @@ import { ImportOutcome } from "../../src/components/review/ImportOutcome"
 import { ReviewBriefView } from "../../src/components/review/ReviewBriefView"
 import { ReviewWorkspace } from "../../src/components/review/ReviewWorkspace"
 
+const { replaceDocument } = vi.hoisted(() => ({ replaceDocument: vi.fn() }))
+vi.mock("@/lib/client-navigation", () => ({ replaceDocument }))
+
 const review = {
   id: "review-1", version: 1, sampleTier: "memory_eligible", sampleCount: 5,
   canConfirm: true, status: "generated", evidenceLimits: "只表达当前账号内相关性，不能证明平台分发因果。",
+  memoryThreshold: 5, samplesUntilMemory: 0,
+  confirmation: { status: "unconfirmed", memoryId: null, memoryVersion: null, confirmedAt: null, sourceReviewId: "review-1" },
   payload: {
     headline: "真实人物与具体场景值得继续验证",
     observations: [{ text: "五条样本都来自真实导入，其中三条播放高于账号中位数。", evidenceSnapshotIds: ["s-1"] }],
@@ -89,9 +94,52 @@ describe("结果优先的真实复盘工作区", () => {
     expect(screen.getByRole("button", { name: "确认并用于后续创作" })).toBeVisible()
   })
 
-  it("把真实指标按钩子、主体、结尾和转化展示，并明确数据缺口", () => {
+  it("确认后展示真实记忆版本，并可直接开始下一轮", async () => {
+    replaceDocument.mockReset()
+    const api = {
+      getCurrentReview: vi.fn().mockResolvedValue(review),
+      getBatch: vi.fn().mockResolvedValue(null), importMetrics: vi.fn(), generateReview: vi.fn(),
+      confirmMatch: vi.fn(), createExternal: vi.fn(),
+      confirmMemory: vi.fn().mockResolvedValue({ id: "memory-7", version: 7, createdAt: "2026-08-24T04:00:00Z", sourceReviewId: "review-1" }),
+      startNextRound: vi.fn().mockResolvedValue({ runId: "run-next" }),
+    }
+    render(<ReviewWorkspace contentAccountId="account-1" api={api as any} />)
+
+    await userEvent.click(await screen.findByRole("button", { name: "确认并用于后续创作" }))
+    expect(await screen.findByText("已形成不可变记忆 v7")).toBeVisible()
+    await userEvent.click(screen.getByRole("button", { name: "用本次复盘生成下一条" }))
+
+    expect(api.startNextRound).toHaveBeenCalledWith("review-1", 7)
+    expect(replaceDocument).toHaveBeenCalledWith("/app/today")
+  })
+
+  it("刷新后使用服务端确认状态，不恢复成未确认", () => {
+    render(<ReviewBriefView brief={{
+      ...review,
+      canConfirm: false,
+      status: "confirmed",
+      confirmation: { status: "confirmed", memoryId: "memory-3", memoryVersion: 3, confirmedAt: "2026-08-24T04:00:00Z", sourceReviewId: "review-1" },
+    }} onStartNextRound={vi.fn()} />)
+
+    expect(screen.getByText("已形成不可变记忆 v3")).toBeVisible()
+    expect(screen.getByLabelText("继续保留")).toBeDisabled()
+    expect(screen.getByRole("button", { name: "用本次复盘生成下一条" })).toBeVisible()
+  })
+
+  it("记忆确认失败时保留页面并显示可读错误", async () => {
+    render(<ReviewBriefView brief={review} onConfirm={vi.fn().mockRejectedValue(new Error("复盘已失效，请重新生成"))} />)
+
+    await userEvent.click(screen.getByRole("button", { name: "确认并用于后续创作" }))
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("复盘已失效，请重新生成")
+    expect(screen.getByLabelText("继续保留")).toHaveValue("真实人物与具体场景")
+  })
+
+  it("首屏先给结论，按需展开钩子、主体、结尾和转化证据", async () => {
     render(<ReviewBriefView brief={review} />)
 
+    expect(screen.getByText("能确定什么")).toBeVisible()
+    await userEvent.click(screen.getByText("查看指标如何落到内容结构"))
     expect(screen.getByRole("heading", { name: "指标如何落到内容结构" })).toBeVisible()
     for (const label of ["钩子", "主体", "结尾", "转化"]) {
       expect(screen.getByRole("heading", { name: label })).toBeVisible()

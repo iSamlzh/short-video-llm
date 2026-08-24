@@ -502,6 +502,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .memory-evidence-limit p { color: var(--muted); font-size: 12px; }
 .memory-preview .primary-button { width: 100%; margin-top: 12px; }
 .memory-confirmed { display: flex; align-items: center; gap: 7px; color: var(--success) !important; }
+.review-evidence-details { margin-top: 34px; padding-top: 20px; border-top: 1px solid var(--line); }
+.review-evidence-details > summary { min-height: 48px; display: flex; align-items: center; cursor: pointer; color: var(--ink); font: 650 15px/1.5 var(--sans); }
+.review-evidence-details > .metric-evidence { padding-top: 24px; }
 
 .delegation-document > blockquote { margin: 0 0 42px; padding: 0 0 36px; border-bottom: 1px dotted var(--line); font: 600 clamp(27px, 2.7vw, 38px)/1.75 var(--serif); }
 .delegation-document > textarea { width: 100%; min-height: 160px; padding: 20px; margin-bottom: 36px; border: 1px solid var(--line); background: var(--sheet); font: 27px/1.7 var(--serif); }
