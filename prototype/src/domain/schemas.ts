@@ -50,6 +50,10 @@ export const topicDirectionCandidateSchema = z.object({
   decisionBrief: creationDecisionBriefSchema,
 })
 export const topicBatchSchema = z.array(topicDirectionCandidateSchema).min(3).max(5)
+export const topicBatchModelOutputSchema = z.preprocess(
+  (input) => Array.isArray(input) ? { topics: input } : input,
+  z.object({ topics: topicBatchSchema }),
+).transform((value) => value.topics)
 
 export const scriptCandidateSchema = z.object({
   id: z.string().min(1),
@@ -61,7 +65,29 @@ export const scriptCandidateSchema = z.object({
   estimatedSeconds: z.number().int().min(15).max(300),
   segments: scriptSegmentsSchema.optional(),
 })
-export const scriptBatchSchema = z.array(scriptCandidateSchema).length(3)
+const singleScriptFieldsSchema = z.object({
+  title: z.string().min(4),
+  hook: z.string().min(5),
+  body: z.string().min(30),
+  callToAction: z.string().min(4),
+})
+export const singleScriptModelOutputSchema = z.preprocess((input) => {
+  let value = input
+  if (Array.isArray(value)) value = value[0]
+  if (value && typeof value === "object" && "scripts" in value) {
+    const scripts = (value as { scripts?: unknown }).scripts
+    if (Array.isArray(scripts)) value = scripts[0]
+  }
+  if (!value || typeof value !== "object") return value
+  const record = value as Record<string, unknown>
+  return {
+    ...record,
+    title: record.title ?? record.scriptTitle,
+    hook: record.hook ?? record.opening,
+    body: record.body ?? record.script ?? record.content,
+    callToAction: record.callToAction ?? record.call_to_action ?? record.cta,
+  }
+}, singleScriptFieldsSchema)
 export const scriptRevisionParagraphsSchema = z.array(z.string().trim().min(1)).min(2).max(30)
 
 const scoreSchema = z.number().min(0).max(100)
@@ -76,20 +102,6 @@ export const qualityReportSchema = z.object({
     callToAction: scoreSchema,
   }),
   suggestions: z.array(z.string()),
-})
-
-export const autoDraftSchema = z.object({
-  topics: topicBatchSchema,
-  selectedTopicId: z.string().min(1),
-  scripts: scriptBatchSchema,
-  selectedScriptId: z.string().min(1),
-  qualityReport: qualityReportSchema,
-})
-
-export const topicDraftSchema = z.object({
-  scripts: scriptBatchSchema,
-  selectedScriptId: z.string().min(1),
-  qualityReport: qualityReportSchema,
 })
 
 export const metricSnapshotSchema = z.object({

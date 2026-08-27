@@ -1,0 +1,19 @@
+[Unit]
+Description=团长内容增长 Agent SQLite 在线备份
+After=content-agent.service
+
+[Service]
+Type=oneshot
+User=content-agent
+Group=content-agent
+EnvironmentFile=/etc/content-agent/content-agent.env
+ExecStart=/bin/bash -c 'exec /bin/bash /opt/content-agent/current/deploy/scripts/backup-sqlite.sh "$PROTOTYPE_DB_PATH" "$BACKUP_DIRECTORY"'
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/var/backups/content-agent

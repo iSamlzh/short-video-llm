@@ -6,7 +6,7 @@ import { PlatformMasthead } from "../../src/components/shell/PlatformMasthead"
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: vi.fn() }) }))
 
 describe("editorial app mastheads", () => {
-  it("exposes only the three customer tasks and current context", () => {
+  it("exposes the four customer tasks and current context", () => {
     render(<TenantMasthead context={{
       team: { id: "tenant-linjie", label: "林姐内容团队" },
       ip: { id: "ip-linjie", label: "林姐" },
@@ -14,10 +14,11 @@ describe("editorial app mastheads", () => {
       teams: [{ id: "tenant-linjie", label: "林姐内容团队" }],
       ips: [{ id: "ip-linjie", label: "林姐" }],
       accounts: [{ id: "account-linjie-wechat", label: "视频号｜林姐说团购" }],
-    }} userName="林姐" />)
+    }} userName="林姐" canManageTeam />)
 
     expect(screen.getByRole("navigation", { name: "主要任务" })).toBeVisible()
     expect(screen.getByRole("link", { name: "今日创作" })).toHaveAttribute("href", "/app/today")
+    expect(screen.getByRole("link", { name: "内容记录" })).toHaveAttribute("href", "/app/content")
     expect(screen.getByRole("link", { name: "复盘与优化" })).toHaveAttribute("href", "/app/review")
     expect(screen.getByRole("link", { name: "团队" })).toHaveAttribute("href", "/app/team")
     expect(screen.getByRole("button", { name: /切换当前 IP 和账号/ })).toBeVisible()

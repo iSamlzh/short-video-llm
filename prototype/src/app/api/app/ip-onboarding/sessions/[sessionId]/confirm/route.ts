@@ -3,6 +3,7 @@ import { resolveCurrentAccess } from "@/lib/auth/request-access"
 import { onboardingFailure, onboardingHttpContext } from "@/services/ip-onboarding-http"
 import { getIpOnboardingServices, type IpOnboardingServices } from "@/services/ip-onboarding-service-factory"
 import { z } from "zod"
+import { withRequestLog } from "@/lib/observability/request-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -28,7 +29,7 @@ export async function handleConfirm(
 }
 
 type Context = { params: Promise<{ sessionId: string }> }
-export async function POST(request: Request, context: Context) {
+async function post(request: Request, context: Context) {
   return handleConfirm(
     request,
     (await context.params).sessionId,
@@ -36,3 +37,5 @@ export async function POST(request: Request, context: Context) {
     getIpOnboardingServices(),
   )
 }
+
+export const POST = withRequestLog(post)

@@ -2,6 +2,7 @@ import type { AccessContext } from "@/domain/access"
 import { resolveCurrentAccess } from "@/lib/auth/request-access"
 import { onboardingFailure, onboardingHttpContext } from "@/services/ip-onboarding-http"
 import { getIpOnboardingServices, type IpOnboardingServices } from "@/services/ip-onboarding-service-factory"
+import { withRequestLog } from "@/lib/observability/request-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -20,6 +21,8 @@ export async function handleSession(request: Request, sessionId: string, access:
 }
 
 type Context = { params: Promise<{ sessionId: string }> }
-export async function GET(request: Request, context: Context) {
+async function get(request: Request, context: Context) {
   return handleSession(request, (await context.params).sessionId, await resolveCurrentAccess(), getIpOnboardingServices())
 }
+
+export const GET = withRequestLog(get)

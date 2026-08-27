@@ -3,6 +3,7 @@ import type { AccessContext } from "@/domain/access"
 import { resolveCurrentAccess } from "@/lib/auth/request-access"
 import { getAppDatabase } from "@/lib/db/app-database"
 import { WorkspaceContextService } from "@/services/workspace-context-service"
+import { withRequestLog } from "@/lib/observability/request-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -45,10 +46,13 @@ function service() {
   return new WorkspaceContextService(getAppDatabase())
 }
 
-export async function GET(request: Request) {
+async function get(request: Request) {
   return handleWorkspaceContext(request, await resolveCurrentAccess(), service())
 }
 
-export async function POST(request: Request) {
+async function post(request: Request) {
   return handleWorkspaceContext(request, await resolveCurrentAccess(), service())
 }
+
+export const GET = withRequestLog(get)
+export const POST = withRequestLog(post)

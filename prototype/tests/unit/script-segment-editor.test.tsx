@@ -4,14 +4,14 @@ import { describe, expect, it, vi } from "vitest"
 import { ScriptSegmentEditor } from "../../src/components/creation/ScriptSegmentEditor"
 
 describe("ScriptSegmentEditor", () => {
-  it("明确显示每段类型，并提交修改后的结构化段落", async () => {
+  it("用结构标题展示口播段落，并提交修改后的结构化段落", async () => {
     const save = vi.fn().mockResolvedValue(undefined)
     render(<ScriptSegmentEditor segments={[
       { id: "segment-1", kind: "spoken", text: "这是一段口播正文。" },
       { id: "segment-2", kind: "shot_instruction", text: "正面机位。" },
     ]} canEdit onSave={save} />)
 
-    expect(screen.getByText("口播")).toBeVisible()
+    expect(screen.getByRole("heading", { name: "开场钩子" })).toBeVisible()
     expect(screen.getByText("拍摄提示")).toBeVisible()
     await userEvent.click(screen.getByRole("button", { name: "编辑第 1 段" }))
     await userEvent.selectOptions(screen.getByRole("combobox", { name: "第 1 段类型" }), "shot_instruction")

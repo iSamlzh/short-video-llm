@@ -12,6 +12,14 @@ export type RuntimeEnvironment = {
   PLAYWRIGHT_TEST_MODE?: string
   PROTOTYPE_ALLOW_DEMO_CLEAR?: string
   PROTOTYPE_API_TOKEN?: string
+  LLM_BASE_URL?: string
+  LLM_API_KEY?: string
+  LLM_MODEL?: string
+  LLM_STREAMING?: string
+  LLM_MAX_OUTPUT_TOKENS?: string
+  DISK_MIN_FREE_MB?: string
+  HEALTH_MODEL_FAILURE_THRESHOLD?: string
+  APP_VERSION?: string
 }
 
 export type RuntimeFeatures = {

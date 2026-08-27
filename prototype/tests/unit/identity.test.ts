@@ -24,7 +24,7 @@ describe("local identity and opaque sessions", () => {
     })
 
     await expect(provider.authenticate(" owner@example.test", "correct horse battery staple"))
-      .resolves.toEqual({ userId: "user-owner", audience: "tenant" })
+      .resolves.toEqual({ userId: "user-owner", audience: "tenant", mustChangePassword: false })
     await expect(provider.authenticate("owner@example.test", "wrong password"))
       .rejects.toThrowError("INVALID_CREDENTIALS")
   })

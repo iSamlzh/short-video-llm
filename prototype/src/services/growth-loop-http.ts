@@ -23,7 +23,16 @@ const statusByCode: Record<string, number> = {
   REAL_METRICS_REQUIRED: 400,
   MEMORY_SAMPLE_INSUFFICIENT: 409,
   REVIEW_SUPERSEDED: 409,
-  LLM_TIMEOUT: 503,
+  IDEMPOTENCY_KEY_MISSING: 400,
+  IDEMPOTENCY_KEY_INVALID: 400,
+  MODEL_TASK_IN_PROGRESS: 409,
+  MODEL_TASK_ALREADY_SUCCEEDED: 409,
+  MODEL_TASK_PREVIOUSLY_FAILED: 409,
+  MODEL_GLOBAL_CONCURRENCY_LIMIT: 429,
+  MODEL_TENANT_CONCURRENCY_LIMIT: 429,
+  MODEL_DAILY_TASK_LIMIT: 429,
+  MODEL_DAILY_TOKEN_LIMIT: 429,
+  LLM_TIMEOUT: 504,
   MODEL_SCHEMA_INVALID: 502,
   MODEL_EVIDENCE_INVALID: 502,
 }
@@ -43,6 +52,12 @@ const messages: Record<string, string> = {
   LLM_TIMEOUT: "模型响应超时，可以直接重试复盘",
   MODEL_SCHEMA_INVALID: "模型返回结构不完整，可以直接重试复盘",
   MODEL_EVIDENCE_INVALID: "模型引用了未批准的证据，可以直接重试复盘",
+  IDEMPOTENCY_KEY_MISSING: "请求缺少幂等标识，请刷新后重试",
+  MODEL_TASK_IN_PROGRESS: "同一复盘任务正在处理中，请稍候",
+  MODEL_GLOBAL_CONCURRENCY_LIMIT: "模型任务繁忙，请稍后重试",
+  MODEL_TENANT_CONCURRENCY_LIMIT: "当前团队同时生成的任务较多，请稍后重试",
+  MODEL_DAILY_TASK_LIMIT: "今日模型任务额度已用完",
+  MODEL_DAILY_TOKEN_LIMIT: "今日模型用量额度已用完",
 }
 
 export function tenantHttpContext(access: AccessContext | null):
@@ -54,14 +69,14 @@ export function tenantHttpContext(access: AccessContext | null):
 
 export function growthLoopFailure(error: unknown, inputCode?: string) {
   if (error instanceof ZodError) return errorResponse(inputCode ?? "INPUT_INVALID", 400)
-  const value = error as { code?: string; message?: string; retryable?: boolean }
+  const value = error as { code?: string; message?: string; retryable?: boolean; status?: number }
   const rawCode = value.code ?? value.message ?? "INTERNAL_ERROR"
   const code = /^[A-Z][A-Z0-9_]+$/.test(rawCode) ? rawCode : "INTERNAL_ERROR"
-  const status = statusByCode[code] ?? (code.endsWith("_INVALID") || code.endsWith("_REQUIRED") ? 400 : 500)
+  const status = value.status ?? statusByCode[code] ?? (code.endsWith("_INVALID") || code.endsWith("_REQUIRED") ? 400 : 500)
   return Response.json({
     errorCode: code,
     message: messages[code] ?? (status >= 500 ? "服务暂时不可用" : "请求无法处理"),
-    retryable: Boolean(value.retryable) || status === 502 || status === 503,
+    retryable: Boolean(value.retryable) || status === 502 || status === 503 || status === 504,
   }, { status })
 }
 

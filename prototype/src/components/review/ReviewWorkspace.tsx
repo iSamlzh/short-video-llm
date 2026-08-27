@@ -79,11 +79,23 @@ function browserApi(contentAccountId: string): ReviewApi {
     getCurrentReview: () => fetch(`/api/app/reviews/current?contentAccountId=${encodeURIComponent(contentAccountId)}`).then(read),
     getBatch: (batchId) => fetch(`/api/app/metrics/imports/${encodeURIComponent(batchId)}`).then(read),
     importMetrics: (file) => { const form = new FormData(); form.append("file", file); return fetch("/api/app/metrics/imports", { method: "POST", body: form }).then(read) },
-    generateReview: () => fetch("/api/app/reviews/generate", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ contentAccountId }) }).then(read),
+    generateReview: () => fetch("/api/app/reviews/generate", { method: "POST", headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() }, body: JSON.stringify({ contentAccountId }) }).then(read),
     confirmMatch: (matchId, publicationId, expectedVersion) => fetch(`/api/app/metrics/matches/${encodeURIComponent(matchId)}/confirm`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ publicationId, expectedVersion }) }).then(read),
     createExternal: (matchId, expectedVersion) => fetch(`/api/app/metrics/matches/${encodeURIComponent(matchId)}/external`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedVersion }) }).then(read),
     confirmMemory: (reviewId, input) => fetch(`/api/app/reviews/${encodeURIComponent(reviewId)}/confirm`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input) }).then(read),
-    startNextRound: (sourceReviewId, expectedMemoryVersion) => fetch("/api/app/creation/next-round", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sourceReviewId, expectedMemoryVersion }) }).then(read),
+    startNextRound: async (sourceReviewId, expectedMemoryVersion) => {
+      const operationKey = crypto.randomUUID()
+      const pool = await fetch("/api/app/creation/next-round", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": `${operationKey}:topics` },
+        body: JSON.stringify({ sourceReviewId, expectedMemoryVersion }),
+      }).then(read)
+      return fetch("/api/app/creation/scripts", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": `${operationKey}:script` },
+        body: JSON.stringify({ runId: pool.runId, topicId: pool.recommendedTopicId, intent: "initial" }),
+      }).then(read)
+    },
   }
 }
 

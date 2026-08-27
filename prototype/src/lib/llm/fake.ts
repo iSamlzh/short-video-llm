@@ -101,31 +101,53 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
       },
       account: { platform: input.primaryPlatform ?? "wechat_channels", name: `${displayName}聊经营` },
     }
-    const topics = Array.from({ length: 3 }, (_, index) => ({
-      id: `topic-${index + 1}`, title: ["把踩过的坑变成信任", "新团长最容易误判的三件事", "我为什么不承诺确定收益"][index],
+    const fallbackStructures = ["failure-turn", "myth-correction", "value-filter"].map((structureId, index) => ({
+      structureId,
+      structureName: ["踩坑转折结构", "误区纠正结构", "价值筛选结构"][index],
+      nodes: [{ instruction: "先说具体冲突，再讲真实经历，最后给出可采用的判断" }],
+    }))
+    const structures = input.structures?.length ? input.structures : fallbackStructures
+    const topics = Array.from({ length: 3 }, (_, index) => {
+      const title = ["把踩过的坑变成信任", "新团长最容易误判的三件事", "我为什么不承诺确定收益"][index]
+      const structure = structures[index % structures.length]
+      return {
+      id: `topic-${index + 1}`, title,
       angle: "从三年社区团购的真实经历切入，给目标受众一个今天能采用的方法",
       audienceTension: "想拓展本地业务，但害怕选错方法",
       ipFitEvidence: [input.ipProfile?.experience ?? "真实业务经历"],
-      structureId: ["failure-turn", "myth-correction", "value-filter"][index], riskNotes: [],
+      structureId: structure.structureId, riskNotes: [],
       decisionBrief: {
+        recommendationSummary: `结合当前 IP 的一线经验与真诚表达定位，今天优先讲“${title}”，帮助想拓展本地业务的人降低选错方法的顾虑。`,
+        portraitFitSummary: "画像显示该 IP 长期参与一线业务、习惯用真实案例讲判断，适合通过复盘经历建立专业信任。",
         objective: index === 1 ? "用户教育" : "建立信任",
         whyToday: index === 0 ? "受众正在判断这个 IP 的经验是否值得长期相信。" : "这个问题与当前受众最常见的决策顾虑直接相关。",
         audienceProblem: "想做本地生意，但不知道怎样判断一个方法是否适合自己。",
-        ipEvidenceRefs: [{ label: firstEvidence.label, sourceAnswerId: firstEvidence.sourceAnswerId }],
+        topicOpportunity: "从一次真实踩坑及其后的判断标准切入，把抽象的信任转成可验证的选择方法。",
+        ipEvidenceRefs: [{
+          label: firstEvidence.label,
+          sourceAnswerId: firstEvidence.sourceAnswerId,
+          relevance: `这条真实经历让“${title}”可以用第一手业务判断来讲，而不是泛泛说教。`,
+        }],
+        structureChoice: {
+          structureId: structure.structureId,
+          structureName: structure.structureName,
+          reason: `用“${structure.nodes?.map((node: { instruction: string }) => node.instruction).join(" → ") || "先冲突、再经历、后判断"}”承接受众顾虑，适合把真实经历转成可信方法。`,
+        },
         recentDataStatus: input.tenantMemory ? "available" : "none",
         ...(input.tenantMemory ? { recentDataSummary: `已参考确认复盘：${input.tenantMemory.keep?.[0] ?? "当前账号已确认结论"}` } : {}),
         repetitionRisk: index === 0 ? "low" : "medium",
         nextSignal: "发布后重点观察完播率，以及评论中出现的真实问题。",
       },
-    }))
+    }})
     const selectedTopic = input.selectedTopic ?? topics[0]
-    const scripts = Array.from({ length: 3 }, (_, index) => ({
-      id: `script-${index + 1}`, topicDirectionId: selectedTopic.id,
-      title: index === 0 ? (request.operation === "topic_draft" ? `${selectedTopic.title}：今天这样讲` : "真正难的不是找货，是让邻居愿意一直信你") : `同方向表达路径 ${index + 1}`,
-      hook: [`大家好，我是${displayName}。很多人问我，做这类事情最难的是什么？后来才发现，真正难的不是追求一时结果，而是让别人愿意一直信你。`, "新手别急着追求规模", "真正愿意长期了解的人，会先问这件事"][index],
-      body: index === 0 ? `我刚开始做这件事的时候，也踩过不少坑。有一次，因为判断不够充分，我推荐了自己并不真正了解的选择，结果反馈并不好。从那以后，我给自己定了三条底线：不熟悉的不讲，不确定的不讲，没有事实依据的不讲。\n\n这些年，我慢慢摸出一套自己的判断办法。第一，先亲自验证，自己认可才分享；第二，看真实反馈，不用单个案例下结论；第三，考虑对方的实际场景。我不盲目追热点，只讲适合自己的经验。\n\n信任不是靠一次表达建立的，是靠一次次把小事做好。有问题先核实、先承担，再复盘改进。别人说跟着${displayName}了解这些内容心里踏实，这句话比什么都重要。` : `这是围绕唯一方向的第 ${index + 1} 种完整表达。我会从自己的真实经历讲起，把当时的判断、踩过的坑和后来验证有效的动作说明白，让听众获得可以结合自身情况使用的方法，而不是一个无法核实的收益承诺。`,
-      callToAction: index === 0 ? "如果你也在做相关选择，记住：结果可以慢一点，但判断一定要真实。把每次分享当成长期信任的一部分，你会走得更稳、更远。" : "如果你也在面对类似问题，可以留言说说你的具体情况。", estimatedSeconds: index === 0 ? 130 : 75,
-    }))
+    const script = {
+      id: "script-1", topicDirectionId: selectedTopic.id,
+      title: selectedTopic.id === "topic-1" ? "真正难的不是找货，是让邻居愿意一直信你" : `${selectedTopic.title}：今天这样讲`,
+      hook: `大家好，我是${displayName}。很多人问我，做这类事情最难的是什么？后来才发现，真正难的不是追求一时结果，而是让别人愿意一直信你。`,
+      body: `我刚开始做这件事的时候，也踩过不少坑。有一次，因为判断不够充分，我推荐了自己并不真正了解的选择，结果反馈并不好。从那以后，我给自己定了三条底线：不熟悉的不讲，不确定的不讲，没有事实依据的不讲。\n\n这些年，我慢慢摸出一套自己的判断办法。第一，先亲自验证，自己认可才分享；第二，看真实反馈，不用单个案例下结论；第三，考虑对方的实际场景。我不盲目追热点，只讲适合自己的经验。\n\n信任不是靠一次表达建立的，是靠一次次把小事做好。有问题先核实、先承担，再复盘改进。别人说跟着${displayName}了解这些内容心里踏实，这句话比什么都重要。`,
+      callToAction: "如果你也在做相关选择，记住：结果可以慢一点，但判断一定要真实。把每次分享当成长期信任的一部分，你会走得更稳、更远。",
+      estimatedSeconds: 130,
+    }
     const qualityReport = {
       hardGatePassed: true, hardGateReasons: [],
       scores: { hook: 84, ipFit: 92, credibility: 90, structure: 82, callToAction: 78 },
@@ -164,11 +186,7 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
       qualityChecks: [{ rule: "包含具体处理动作", passed: true }],
       riskChecks: [{ rule: "不得承诺收益", passed: true }],
     }
-    const payload = request.operation === "ip_portrait" ? ipPortrait : request.operation === "topics" ? topics : request.operation === "scripts" ? scripts : request.operation === "qa" ? qualityReport : request.operation === "auto_draft" ? {
-      topics, selectedTopicId: topics[0].id, scripts, selectedScriptId: scripts[0].id, qualityReport,
-    } : request.operation === "topic_draft" ? {
-      scripts, selectedScriptId: scripts[0].id, qualityReport,
-    } : request.operation === "review" ? {
+    const payload = request.operation === "ip_portrait" ? ipPortrait : request.operation === "topics" ? topics : request.operation === "scripts" ? script : request.operation === "qa" ? qualityReport : request.operation === "review" ? {
       summary: "本轮模拟结果用于验证从创作到复盘的完整交互。",
       keep: ["真实经历与选题方向保持一致"], improve: ["下一稿可让开头更快进入受众矛盾"],
       nextContent: "继续沿当前方向拆解一个真实场景中的判断过程。",

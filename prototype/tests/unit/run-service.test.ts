@@ -95,7 +95,7 @@ describe("RunService scripts", () => {
     const service = new RunService(repository, new StructuredLlmClient(adapter))
     const run = service.createRun(minimumIpInput)
     const topicBatch = await service.generateTopics(run.id, run.inputVersion)
-    adapter.enqueue({ json: makeScripts(topics[0].id) })
+    adapter.enqueue({ json: makeScripts(topics[0].id)[0] })
 
     const scriptBatch = await service.selectTopicAndGenerateScripts(
       run.id,
@@ -104,7 +104,7 @@ describe("RunService scripts", () => {
       run.inputVersion,
     )
 
-    expect(scriptBatch.items).toHaveLength(3)
+    expect(scriptBatch.items).toHaveLength(1)
     expect(service.getRun(run.id).state).toBe("WAITING_SCRIPT_SELECTION")
   })
 
@@ -126,7 +126,7 @@ describe("RunService scripts", () => {
     expect(service.getRun(run.id).state).toBe("READY_FOR_SCRIPTS")
   })
 
-  it("stores exactly three scripts for the selected direction", async () => {
+  it("每次模型请求只保存一篇已选方向的口播稿", async () => {
     const repository = new PrototypeRepository(":memory:")
     const adapter = new FakeLlmAdapter([{ json: topics }])
     const service = new RunService(repository, new StructuredLlmClient(adapter))
@@ -134,15 +134,15 @@ describe("RunService scripts", () => {
     const topicBatch = await service.generateTopics(run.id, run.inputVersion)
     service.selectTopic(run.id, topicBatch.version, topics[0].id)
     const scripts = makeScripts(topics[0].id)
-    adapter.enqueue({ json: scripts })
+    adapter.enqueue({ json: scripts[0] })
 
     const batch = await service.generateScripts(run.id, run.inputVersion)
-    expect(batch.items).toHaveLength(3)
+    expect(batch.items).toHaveLength(1)
     expect(new Set(batch.items.map(item => item.topicDirectionId))).toEqual(new Set([topics[0].id]))
     expect(service.getRun(run.id).state).toBe("WAITING_SCRIPT_SELECTION")
   })
 
-  it("rejects the whole batch when one script changes direction", async () => {
+  it("由服务端绑定选题方向，不信任模型返回的方向标识", async () => {
     const repository = new PrototypeRepository(":memory:")
     const adapter = new FakeLlmAdapter([{ json: topics }])
     const service = new RunService(repository, new StructuredLlmClient(adapter))
@@ -150,12 +150,26 @@ describe("RunService scripts", () => {
     const topicBatch = await service.generateTopics(run.id, run.inputVersion)
     service.selectTopic(run.id, topicBatch.version, topics[0].id)
     const scripts = makeScripts(topics[0].id)
-    scripts[2].topicDirectionId = "foreign-direction"
-    adapter.enqueue({ json: scripts })
+    adapter.enqueue({ json: { ...scripts[0], topicDirectionId: "foreign-direction" } })
 
-    await expect(service.generateScripts(run.id, run.inputVersion))
-      .rejects.toMatchObject({ message: expect.stringContaining("SCRIPT_DIRECTION_MISMATCH") })
-    expect(repository.listScriptBatches(run.id)).toHaveLength(0)
+    const batch = await service.generateScripts(run.id, run.inputVersion)
+    expect(batch.items[0].topicDirectionId).toBe(topics[0].id)
+    expect(repository.listScriptBatches(run.id)).toHaveLength(1)
+  })
+
+  it("兼容模型把单稿错误包成数组，但每次仍只保存第一篇", async () => {
+    const repository = new PrototypeRepository(":memory:")
+    const adapter = new FakeLlmAdapter([{ json: topics }])
+    const service = new RunService(repository, new StructuredLlmClient(adapter))
+    const run = service.createRun(minimumIpInput)
+    const topicBatch = await service.generateTopics(run.id, run.inputVersion)
+    service.selectTopic(run.id, topicBatch.version, topics[0].id)
+    adapter.enqueue({ json: makeScripts(topics[0].id) })
+
+    const batch = await service.generateScripts(run.id, run.inputVersion)
+
+    expect(batch.items).toHaveLength(1)
+    expect(batch.items[0].title).toBe("同一方向口播稿1")
   })
 })
 
@@ -167,11 +181,12 @@ describe("RunService QA and locking", () => {
     expect(adapter.calls.at(-1)?.operation).toBe("qa")
   })
 
-  it("does not lock a script that fails a hard gate", async () => {
-    const { service, adapter, run } = await selectedScriptFixture()
+  it("首版将质量检查作为建议，不阻断用户锁稿", async () => {
+    const { repository, service, adapter, run } = await selectedScriptFixture()
     adapter.enqueue({ json: qualityReport(false) })
     await service.runQa(run.id, run.inputVersion)
-    expect(() => service.lockScript(run.id)).toThrow("QA_HARD_GATE_BLOCKED")
+    expect(service.lockScript(run.id)).toMatchObject({ version: 1 })
+    expect(repository.getLatestQualityReport(run.id)?.hardGatePassed).toBe(false)
   })
 
   it("binds QA and locked output to the selected script revision", async () => {
@@ -225,14 +240,14 @@ describe("RunService QA and locking", () => {
     expect(repository.listScriptBatches(run.id)).toHaveLength(1)
   })
 
-  it("rejects locking when QA belongs to an older script revision", async () => {
+  it("首版不让旧 QA 阻断用户锁定新修订", async () => {
     const { repository, service, adapter, run } = await selectedScriptFixture()
     adapter.enqueue({ json: qualityReport(true) })
     await service.runQa(run.id, run.inputVersion)
     const selection = repository.getCurrentScriptSelection(run.id)!
     service.saveScriptRevision(run.id, selection.version, ["更新开头", "这是 QA 之后更新的正文内容，旧质量报告不能用于锁定这个版本。", "更新结尾"])
 
-    expect(() => service.lockScript(run.id)).toThrow("QA_RESULT_STALE")
+    expect(service.lockScript(run.id)).toMatchObject({ version: 1 })
   })
 
   it("returns the same lock when the same revision is finalized twice", async () => {
@@ -273,9 +288,9 @@ async function selectedScriptFixture() {
   const topicBatch = await service.generateTopics(run.id, run.inputVersion)
   service.selectTopic(run.id, topicBatch.version, topics[0].id)
   const scripts = makeScripts(topics[0].id)
-  adapter.enqueue({ json: scripts })
+  adapter.enqueue({ json: scripts[0] })
   const scriptBatch = await service.generateScripts(run.id, run.inputVersion)
-  service.selectScript(run.id, scriptBatch.version, scripts[0].id)
+  service.selectScript(run.id, scriptBatch.version, scriptBatch.items[0].id)
   return { repository, adapter, service, run }
 }
 

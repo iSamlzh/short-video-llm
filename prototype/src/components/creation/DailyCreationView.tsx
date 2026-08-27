@@ -97,7 +97,11 @@ export function DailyCreationView({
 
         <ScriptSegmentEditor segments={segments} canEdit={canEdit} saving={busyAction === "saving"} onSave={saveSegments} />
 
-        <p className="content-check-status"><CheckCircle size={18} weight="fill" />{draft.status === "needs_qa" ? "修改已保存，定稿时将重新进行内容检查" : "内容检查已完成：事实与表达边界"}</p>
+        <p className="content-check-status"><CheckCircle size={18} weight="fill" />{
+          draft.qualityAdvisory?.requiresReview
+              ? `草稿已生成，请人工确认：${draft.qualityAdvisory.reasons?.join("；") || "存在需要确认的表达"}`
+              : "首版质量门禁未启用，请在定稿前人工确认事实与表达边界"
+        }</p>
 
         {locked && draft.lockedVersion && <PublicationReceipt
           runId={draft.runId}
@@ -119,8 +123,8 @@ export function DailyCreationView({
           <button className="tertiary-action" type="button" onClick={() => setEditingLockedDraft(true)}>返回编辑</button>
         </div>
       </> : <>
-        <button className="finalize-script-button" type="button" disabled={busyAction === "finalizing"} onClick={() => void onFinalize?.({ segments: [...segments] }).catch(() => undefined)}>{busyAction === "finalizing" ? "正在检查并定稿…" : draft.status === "needs_qa" ? "检查并定稿" : "确认定稿"}</button>
-        <p>{draft.status === "needs_qa" ? "完成内容检查并定稿后，可下载 DOCX 和复制文本" : "定稿后可下载 DOCX，复制文本也会启用"}</p>
+        <button className="finalize-script-button" type="button" disabled={busyAction === "finalizing"} onClick={() => void onFinalize?.({ segments: [...segments] }).catch(() => undefined)}>{busyAction === "finalizing" ? "正在确认定稿…" : "确认定稿"}</button>
+        <p>人工确认后定稿，即可下载 DOCX；复制文本也会启用</p>
       </>}
       <span className="action-notice" aria-live="polite">{actionNotice}</span>
     </aside>

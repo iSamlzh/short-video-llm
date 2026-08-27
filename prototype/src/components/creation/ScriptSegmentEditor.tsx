@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Check, PencilSimple } from "@phosphor-icons/react"
-import type { ScriptSegment, ScriptSegmentKind } from "../../domain/creation-contracts"
+import { scriptSegmentHeading, type ScriptSegment, type ScriptSegmentKind } from "../../domain/creation-contracts"
 
 const kindLabels: Record<ScriptSegmentKind, string> = {
   spoken: "口播",
@@ -44,9 +44,15 @@ export function ScriptSegmentEditor({
     {draft.map((segment, index) => {
       const editing = editingIndex === index
       const lockedKind = segment.kind === "compliance_note"
+      const spokenSegments = draft.filter((item) => item.kind === "spoken")
+      const spokenIndex = segment.kind === "spoken"
+        ? spokenSegments.findIndex((item) => item.id === segment.id)
+        : -1
+      const heading = scriptSegmentHeading(segment, spokenIndex, spokenSegments.length)
       return <section className={`spoken-segment segment-kind-${segment.kind}`} key={segment.id}>
         <div className="segment-index" aria-hidden="true">{index + 1}</div>
         <div className="segment-content">
+          <h3>{heading}</h3>
           {editing ? <>
             <label className="segment-kind-field">
               <span>第 {index + 1} 段类型</span>
@@ -70,10 +76,7 @@ export function ScriptSegmentEditor({
                 ? { ...item, text: event.target.value }
                 : item))}
             />
-          </> : <>
-            <h3>{kindLabels[segment.kind]}</h3>
-            <p>{segment.text}</p>
-          </>}
+          </> : <p>{segment.text}</p>}
         </div>
         {canEdit && <button
           className={`paragraph-edit-button ${editing ? "is-editing" : ""}`}

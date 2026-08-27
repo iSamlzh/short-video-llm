@@ -11,9 +11,11 @@ type SwitchInput = { teamId?: string; ipId?: string; accountId?: string }
 export function WorkspaceContextSwitcher({
   initialContext,
   switchContext = requestContextSwitch,
+  canManageIps = false,
 }: {
   initialContext: WorkspaceContext
   switchContext?: (input: SwitchInput) => Promise<WorkspaceContext>
+  canManageIps?: boolean
 }) {
   const router = useRouter()
   const [context, setContext] = useState(initialContext)
@@ -108,7 +110,7 @@ export function WorkspaceContextSwitcher({
         </section>}
 
         {error && <p className="context-switch-error" role="alert" aria-live="assertive">{error}</p>}
-        <footer><Link href="/app/setup/ip" onClick={closeDialog}><Plus size={17} aria-hidden="true" />新增 IP</Link><span>新 IP 建档不会影响当前内容</span></footer>
+        <footer>{canManageIps && <Link href="/app/settings/ip" onClick={closeDialog}>管理 IP 与账号</Link>}<Link href="/app/setup/ip" onClick={closeDialog}><Plus size={17} aria-hidden="true" />新增 IP</Link><span>新 IP 建档不会影响当前内容</span></footer>
       </div>
     </dialog>
   </div>

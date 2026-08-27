@@ -61,22 +61,33 @@ export function AgentRationaleDrawer({ brief }: { brief: CreationDecisionBrief }
           </div>
           <button ref={closeRef} type="button" aria-label="关闭判断依据" onClick={closeDialog}><X size={20} aria-hidden="true" /></button>
         </header>
-        <section aria-labelledby="evidence-heading">
-          <h3 id="evidence-heading">来自当前 IP 的已确认信息</h3>
-          <ul className="rationale-evidence-list">
-            {brief.ipEvidenceRefs.map((reference) => <li key={reference.sourceAnswerId}>
-              <strong>{reference.label}</strong>
-              <span>{reference.sourceAnswerId.startsWith("memory:") ? "账号已确认复盘" : "IP 建档回答"}</span>
-            </li>)}
-          </ul>
+        <section className="rationale-portrait-fit" aria-labelledby="evidence-heading">
+          <h3 id="evidence-heading">画像匹配依据</h3>
+          <p>{(brief.portraitFitSummary
+            ?? brief.ipEvidenceRefs.map((reference) => reference.relevance).filter(Boolean).join("；"))
+            || "画像显示当前 IP 具备与这条选题相关的真实经历和表达基础。"}</p>
         </section>
-        <section className="rationale-risk" aria-labelledby="risk-heading">
-          <h3 id="risk-heading">重复性判断</h3>
-          <p>{repetitionLabels[brief.repetitionRisk]}</p>
+        <section className="rationale-reasoning" aria-labelledby="reasoning-heading">
+          <h3 id="reasoning-heading">选题推导</h3>
+          <dl>
+            <div><dt>推荐结论</dt><dd>{brief.recommendationSummary ?? brief.whyToday}</dd></div>
+            <div><dt>受众卡点</dt><dd>{brief.audienceProblem}</dd></div>
+            <div><dt>选题切入</dt><dd>{brief.topicOpportunity ?? brief.whyToday}</dd></div>
+            <div><dt>内容目标</dt><dd>{brief.objective}</dd></div>
+          </dl>
         </section>
-        <section className="rationale-data" aria-labelledby="data-heading">
-          <h3 id="data-heading">历史表现使用情况</h3>
-          <p>{brief.recentDataStatus === "available" ? brief.recentDataSummary : "尚未使用历史表现"}</p>
+        {brief.structureChoice && <section className="rationale-structure" aria-labelledby="structure-heading">
+          <h3 id="structure-heading">结构选择</h3>
+          <strong>{brief.structureChoice.structureName}</strong>
+          <p>{brief.structureChoice.reason}</p>
+        </section>}
+        <section className="rationale-validation" aria-labelledby="validation-heading">
+          <h3 id="validation-heading">验证与风险</h3>
+          <dl>
+            <div><dt>重复性判断</dt><dd>{repetitionLabels[brief.repetitionRisk]}</dd></div>
+            <div><dt>历史表现</dt><dd>{brief.recentDataStatus === "available" ? brief.recentDataSummary : "尚未使用历史表现"}</dd></div>
+            <div><dt>发布后观察</dt><dd>{brief.nextSignal}</dd></div>
+          </dl>
         </section>
       </div>
     </dialog>}

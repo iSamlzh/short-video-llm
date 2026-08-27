@@ -1,0 +1,41 @@
+[Unit]
+Description=团长内容增长 Agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=content-agent
+Group=content-agent
+WorkingDirectory=/opt/content-agent/current
+Environment=NODE_ENV=production
+Environment=HOSTNAME=127.0.0.1
+Environment=PORT=3000
+EnvironmentFile=/etc/content-agent/content-agent.env
+ExecStartPre=/usr/bin/test -r /etc/content-agent/content-agent.env
+ExecStartPre=/usr/bin/test -w /var/lib/content-agent
+ExecStart=/usr/bin/npm run start -- --hostname 127.0.0.1 --port 3000
+StandardOutput=append:/var/log/content-agent/app-access.jsonl
+StandardError=append:/var/log/content-agent/app-error.jsonl
+SyslogIdentifier=content-agent
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/content-agent /var/cache/content-agent /var/log/content-agent
+LimitNOFILE=65535
+TasksMax=512
+MemoryMax=3G
+
+[Install]
+WantedBy=multi-user.target

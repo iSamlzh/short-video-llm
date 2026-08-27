@@ -14,6 +14,9 @@ describe("IpPortraitService", () => {
 
     expect(result.contentPortrait.topicPillars[0].sourceQuestionIds).toContain("health-wellness-v1-q01")
     expect(result.contentPortrait.confirmedFacts[0].sourceQuestionIds).toContain("health-wellness-v1-q06")
+    expect(result.portrait.name).toBe("周姐")
+    expect(result.profile.displayName).toBe("周姐")
+    expect(result.account).toEqual({ platform: "wechat_channels", name: "周姐讲给父母选日常滋补产品" })
     expect(adapter.calls).toHaveLength(1)
     expect(adapter.calls[0]).toMatchObject({
       operation: "ip_portrait",
@@ -24,6 +27,19 @@ describe("IpPortraitService", () => {
       },
     })
     expect(adapter.calls[0].input).not.toHaveProperty("introduction")
+  })
+
+  it("模型只需生成内容画像，用户投影由服务端确定性派生", async () => {
+    const contentPortrait = portraitDraft().contentPortrait
+    const adapter = new FakeLlmAdapter([{ json: { contentPortrait } }])
+    const service = new IpPortraitService(new StructuredLlmClient(adapter))
+
+    const result = await service.generatePreview(generationInput())
+
+    expect(result.portrait.headline).toContain("周姐")
+    expect(result.portrait.verifiedFacts).toEqual(["经营健康门店六年"])
+    expect(result.profile.contentPortrait).toEqual(contentPortrait)
+    expect(adapter.calls[0].systemPrompt).toContain("根字段只能是 contentPortrait")
   })
 
   it("拒绝模型引用输入回答之外的问题编号", async () => {

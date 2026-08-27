@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
-import { autoDraftSchema, contentReviewSchema, qualityReportSchema, scriptBatchSchema, scriptRevisionParagraphsSchema, topicBatchSchema, topicDraftSchema, type ScriptCandidate, type TopicDirectionCandidate } from "../domain/schemas"
+import { contentReviewSchema, qualityReportSchema, scriptCandidateSchema, scriptRevisionParagraphsSchema, singleScriptModelOutputSchema, topicBatchModelOutputSchema, topicBatchSchema, type ScriptCandidate, type TopicDirectionCandidate } from "../domain/schemas"
 import { transition } from "../domain/state-machine"
 import type { IpProfile } from "../domain/models"
 import type { ConfirmedCreationMemory } from "../domain/growth-loop"
@@ -8,10 +8,17 @@ import { StructuredLlmClient } from "../lib/llm/structured"
 import { prototypePreset } from "../presets"
 import { simulateMetrics, type SimulationScenario } from "../lib/simulation/metric-simulator"
 import type { TemplatePackage } from "../domain/content-brain"
-import { buildCreationEvidenceCatalog, createFallbackCreationDecisionBrief, estimateSpokenDuration, groundCreationDecisionBrief, scriptSegmentsSchema, scriptToSegments, type ScriptSegment } from "../domain/creation-contracts"
+import { buildCreationEvidenceCatalog, createFallbackCreationDecisionBrief, creationDecisionBriefSchema, estimateSpokenDuration, groundCreationDecisionBrief, scriptSegmentsSchema, scriptToSegments, type CreationEvidenceCatalogItem, type ScriptSegment } from "../domain/creation-contracts"
 
 export type TemplateRetrievalQuery = { ipTags: string[]; audience: string; goal: string }
 type StructureProvider = (query: TemplateRetrievalQuery) => TemplatePackage[]
+type ModelStructure = {
+  structureId: string
+  structureName: string
+  nodes: TemplatePackage["nodes"]
+  qualityRules: string[]
+  riskRules: string[]
+}
 
 const prototypeTemplatePackage: TemplatePackage = {
   templateVersionId: "prototype-default-v1",
@@ -23,6 +30,43 @@ const prototypeTemplatePackage: TemplatePackage = {
   riskRules: ["不得虚构案例或承诺收益"],
 }
 
+function buildGroundedDecisionBrief(
+  item: TopicDirectionCandidate,
+  evidenceCatalog: CreationEvidenceCatalogItem[],
+  structures: ModelStructure[],
+  memory?: ConfirmedCreationMemory,
+) {
+  const grounded = groundCreationDecisionBrief(item.decisionBrief, evidenceCatalog, memory)
+  const structure = structures.find((candidate) => candidate.structureId === item.structureId) ?? structures[0]
+  const topicOpportunity = grounded.topicOpportunity
+    ?? `${item.angle}，直接回应“${item.audienceTension}”这个具体顾虑。`
+  const structureReason = grounded.structureChoice?.structureId === structure.structureId
+    ? grounded.structureChoice.reason
+    : `这条内容需要用“${structure.nodes.map((node) => node.instruction).join(" → ")}”把真实经历转成受众能理解的判断。`
+
+  const portraitFitSummary = (grounded.portraitFitSummary
+    ?? grounded.ipEvidenceRefs.map((reference) => reference.relevance).filter(Boolean).join("；"))
+    || "画像显示该 IP 具备与当前选题相关的真实经历，适合输出有事实基础的判断。"
+
+  return creationDecisionBriefSchema.parse({
+    ...grounded,
+    portraitFitSummary,
+    recommendationSummary: grounded.recommendationSummary
+      ?? `结合当前 IP 的真实经历与表达定位，建议今天讲“${item.title}”，回应受众“${item.audienceTension}”的顾虑。`,
+    topicOpportunity,
+    ipEvidenceRefs: grounded.ipEvidenceRefs.map((reference) => ({
+      ...reference,
+      relevance: reference.relevance
+        ?? `这条已确认信息能为“${item.title}”提供可信的第一手讲述依据。`,
+    })),
+    structureChoice: {
+      structureId: structure.structureId,
+      structureName: structure.structureName,
+      reason: structureReason,
+    },
+  })
+}
+
 export class RunService {
   constructor(
     private readonly repository: PrototypeRepository,
@@ -31,6 +75,14 @@ export class RunService {
   ) {}
 
   createRun(input: IpProfile) { return this.repository.createRun(input) }
+  createRunWithTopicPool(input: IpProfile, topicsInput: TopicDirectionCandidate[]) {
+    const run = this.repository.createRun(input)
+    const topics = topicBatchSchema.parse(topicsInput)
+    this.repository.setState(run.id, transition(run.state, "GENERATE_TOPICS"))
+    const batch = this.repository.saveTopicBatch(run.id, run.inputVersion, topics, `${run.id}:copied-topics:${run.inputVersion}`)
+    this.repository.setState(run.id, transition("GENERATING_TOPICS", "TOPICS_GENERATED"))
+    return { run: this.repository.requireRun(run.id), batch }
+  }
   getRun(runId: string) { return this.repository.requireRun(runId) }
   getRunView(runId: string) {
     return {
@@ -47,10 +99,10 @@ export class RunService {
     }
   }
 
-  async generateTopics(runId: string, inputVersion: number) {
+  async generateTopics(runId: string, inputVersion: number, tenantMemory?: ConfirmedCreationMemory) {
     const run = this.repository.requireVersion(runId, inputVersion)
     const structureContext = this.resolveStructureContext(run.ipProfile)
-    const evidenceCatalog = buildCreationEvidenceCatalog(run.ipProfile)
+    const evidenceCatalog = buildCreationEvidenceCatalog(run.ipProfile, tenantMemory)
     const existing = this.repository.getTopicBatch(runId)
     if (existing?.inputVersion === inputVersion && run.state === "WAITING_TOPIC_SELECTION") return existing
     this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
@@ -61,10 +113,11 @@ export class RunService {
         structures: structureContext.modelStructures,
         evidenceCatalog,
         presetVersion: prototypePreset.version,
-      }, topicBatchSchema, "array")
+        ...(tenantMemory ? { tenantMemory } : {}),
+      }, topicBatchModelOutputSchema)
       const groundedItems = items.map((item) => ({
         ...item,
-        decisionBrief: groundCreationDecisionBrief(item.decisionBrief, evidenceCatalog, null),
+        decisionBrief: buildGroundedDecisionBrief(item, evidenceCatalog, structureContext.modelStructures, tenantMemory),
       }))
       const batch = this.repository.saveTopicBatch(runId, inputVersion, groundedItems, `${runId}:topics:${inputVersion}`)
       this.repository.setState(runId, transition("GENERATING_TOPICS", "TOPICS_GENERATED"))
@@ -72,50 +125,6 @@ export class RunService {
     } catch (error) {
       this.repository.setState(runId, "READY_FOR_TOPICS")
       this.recordFailure(runId, error, "READY_FOR_TOPICS")
-      throw error
-    }
-  }
-
-  async generateAutoDraft(runId: string, inputVersion: number, tenantMemory?: ConfirmedCreationMemory) {
-    const run = this.repository.requireVersion(runId, inputVersion)
-    const structureContext = this.resolveStructureContext(run.ipProfile)
-    const evidenceCatalog = buildCreationEvidenceCatalog(run.ipProfile, tenantMemory)
-    this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
-    try {
-      const result = await this.llm.generateStructured("auto_draft", {
-        ipProfile: run.ipProfile,
-        goal: prototypePreset.goal,
-        structures: structureContext.modelStructures,
-        evidenceCatalog,
-        presetVersion: prototypePreset.version,
-        ...(tenantMemory ? { tenantMemory } : {}),
-      }, autoDraftSchema)
-      const groundedTopics = result.topics.map((item) => ({
-        ...item,
-        decisionBrief: groundCreationDecisionBrief(item.decisionBrief, evidenceCatalog, tenantMemory),
-      }))
-      const topic = groundedTopics.find((item) => item.id === result.selectedTopicId)
-      if (!topic) throw new Error("AUTO_TOPIC_SELECTION_INVALID")
-      if (result.scripts.some((item) => item.topicDirectionId !== topic.id)) throw new Error("SCRIPT_DIRECTION_MISMATCH")
-      const script = result.scripts.find((item) => item.id === result.selectedScriptId)
-      if (!script) throw new Error("AUTO_SCRIPT_SELECTION_INVALID")
-
-      const topics = this.repository.saveTopicBatch(runId, inputVersion, groundedTopics, `${runId}:auto:topics:${inputVersion}`)
-      this.repository.setState(runId, transition("GENERATING_TOPICS", "TOPICS_GENERATED"))
-      this.selectTopic(runId, topics.version, topic.id)
-      this.repository.setState(runId, transition("READY_FOR_SCRIPTS", "GENERATE_SCRIPTS"))
-      const scripts = this.repository.saveScriptBatch(runId, inputVersion, result.scripts, `${runId}:auto:scripts:${inputVersion}`)
-      this.repository.setState(runId, transition("GENERATING_SCRIPTS", "SCRIPTS_GENERATED"))
-      const selection = this.selectScript(runId, scripts.version, script.id)
-      this.repository.setState(runId, transition("READY_FOR_QA", "RUN_QA"))
-      this.repository.saveQualityReport(runId, result.qualityReport, selection.version)
-      this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
-      if (!result.qualityReport.hardGatePassed) throw Object.assign(new Error("DRAFT_NEEDS_ATTENTION"), { code: "DRAFT_NEEDS_ATTENTION", retryable: true })
-      return { ...this.getRunView(runId), structureVersionIds: structureContext.structureVersionIds }
-    } catch (error) {
-      const current = this.repository.requireRun(runId)
-      if (current.state === "GENERATING_TOPICS") this.repository.setState(runId, "READY_FOR_TOPICS")
-      this.recordFailure(runId, error, this.repository.requireRun(runId).state)
       throw error
     }
   }
@@ -133,39 +142,26 @@ export class RunService {
     const evidenceCatalog = buildCreationEvidenceCatalog(run.ipProfile, tenantMemory)
     const topics = topicBatchSchema.parse(topicsInput.map((item) => ({
       ...item,
-      decisionBrief: groundCreationDecisionBrief(
-        item.decisionBrief ?? createFallbackCreationDecisionBrief(evidenceCatalog, tenantMemory),
+      decisionBrief: buildGroundedDecisionBrief(
+        {
+          ...item,
+          decisionBrief: item.decisionBrief ?? createFallbackCreationDecisionBrief(evidenceCatalog, tenantMemory),
+        },
         evidenceCatalog,
+        structureContext.modelStructures,
         tenantMemory,
       ),
     })))
-    const selectedTopic = topics.find((item) => item.id === selectedTopicId)
-    if (!selectedTopic) throw new Error("TOPIC_SELECTION_INVALID")
+    if (!topics.some((item) => item.id === selectedTopicId)) throw new Error("TOPIC_SELECTION_INVALID")
     this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
     try {
-      const result = await this.llm.generateStructured("topic_draft", {
-        ipProfile: run.ipProfile,
-        goal: prototypePreset.goal,
-        selectedTopic,
-        adjustment,
-        structures: structureContext.modelStructures,
-        ...(tenantMemory ? { tenantMemory } : {}),
-      }, topicDraftSchema)
-      if (result.scripts.some((item) => item.topicDirectionId !== selectedTopic.id)) throw new Error("SCRIPT_DIRECTION_MISMATCH")
-      const selectedScript = result.scripts.find((item) => item.id === result.selectedScriptId)
-      if (!selectedScript) throw new Error("AUTO_SCRIPT_SELECTION_INVALID")
-
       const topicBatch = this.repository.saveTopicBatch(runId, inputVersion, topics, `${runId}:adjust:topics:${inputVersion}`)
       this.repository.setState(runId, transition("GENERATING_TOPICS", "TOPICS_GENERATED"))
-      this.selectTopic(runId, topicBatch.version, selectedTopic.id)
-      this.repository.setState(runId, transition("READY_FOR_SCRIPTS", "GENERATE_SCRIPTS"))
-      const scripts = this.repository.saveScriptBatch(runId, inputVersion, result.scripts, `${runId}:adjust:scripts:${inputVersion}`)
-      this.repository.setState(runId, transition("GENERATING_SCRIPTS", "SCRIPTS_GENERATED"))
-      const selection = this.selectScript(runId, scripts.version, selectedScript.id)
-      this.repository.setState(runId, transition("READY_FOR_QA", "RUN_QA"))
-      this.repository.saveQualityReport(runId, result.qualityReport, selection.version)
-      this.repository.setState(runId, transition("RUNNING_QA", "QA_COMPLETED"))
-      if (!result.qualityReport.hardGatePassed) throw Object.assign(new Error("DRAFT_NEEDS_ATTENTION"), { code: "DRAFT_NEEDS_ATTENTION", retryable: true })
+      this.selectTopic(runId, topicBatch.version, selectedTopicId)
+      const scripts = await this.generateScripts(runId, inputVersion, tenantMemory, adjustment)
+      const selectedScript = scripts.items[0]
+      if (!selectedScript) throw new Error("NO_SCRIPT_GENERATED")
+      this.selectScript(runId, scripts.version, selectedScript.id)
       return { ...this.getRunView(runId), structureVersionIds: structureContext.structureVersionIds }
     } catch (error) {
       if (this.repository.requireRun(runId).state === "GENERATING_TOPICS") this.repository.setState(runId, "READY_FOR_TOPICS")
@@ -188,7 +184,12 @@ export class RunService {
     return this.generateScripts(runId, inputVersion)
   }
 
-  async generateScripts(runId: string, inputVersion: number) {
+  async generateScripts(
+    runId: string,
+    inputVersion: number,
+    tenantMemory?: ConfirmedCreationMemory,
+    adjustment?: { intent: "change_topic" | "change_expression"; previousScript?: Pick<ScriptCandidate, "title" | "body"> },
+  ) {
     const run = this.repository.requireVersion(runId, inputVersion)
     const existing = this.repository.getScriptBatch(runId)
     if (existing?.inputVersion === inputVersion && run.state === "WAITING_SCRIPT_SELECTION") return existing
@@ -196,14 +197,34 @@ export class RunService {
     if (!selection) throw new Error("TOPIC_SELECTION_REQUIRED")
     const topic = this.repository.getTopicBatch(runId, selection.batchVersion)?.items.find(item => item.id === selection.topicId)
     if (!topic) throw new Error("TOPIC_SELECTION_STALE")
+    const structureContext = this.resolveStructureContext(run.ipProfile)
+    const selectedStructure = structureContext.modelStructures.find((item) => item.structureId === topic.structureId)
+      ?? structureContext.modelStructures[0]
     this.repository.setState(runId, transition(run.state, "GENERATE_SCRIPTS"))
     try {
-      const items = await this.llm.generateStructured("scripts", {
+      const generated = await this.llm.generateStructured("scripts", {
         ipProfile: run.ipProfile, goal: prototypePreset.goal, selectedTopic: topic,
-        instruction: "围绕这个唯一方向生成恰好三篇完整文案",
-      }, scriptBatchSchema, "array")
-      if (items.some(item => item.topicDirectionId !== selection.topicId)) throw new Error("SCRIPT_DIRECTION_MISMATCH")
-      const batch = this.repository.saveScriptBatch(runId, inputVersion, items, `${runId}:scripts:${inputVersion}:${selection.version}`)
+        structures: structureContext.modelStructures,
+        instruction: "一次只生成一篇可以直接拍摄的完整口播稿",
+        ...(adjustment ? { adjustment } : {}),
+        ...(tenantMemory ? { tenantMemory } : {}),
+      }, singleScriptModelOutputSchema)
+      const id = randomUUID()
+      const segments = scriptToSegments({
+        id,
+        hook: generated.hook,
+        body: generated.body,
+        callToAction: generated.callToAction,
+      }, selectedStructure.nodes)
+      const estimatedSeconds = Math.max(15, Math.min(300, estimateSpokenDuration(segments).estimatedSeconds))
+      const item = scriptCandidateSchema.parse({
+        ...generated,
+        id,
+        topicDirectionId: selection.topicId,
+        estimatedSeconds,
+        segments,
+      })
+      const batch = this.repository.saveScriptBatch(runId, inputVersion, [item], `${runId}:scripts:${inputVersion}:${selection.version}`)
       this.repository.setState(runId, transition("GENERATING_SCRIPTS", "SCRIPTS_GENERATED"))
       return batch
     } catch (error) {
@@ -298,11 +319,8 @@ export class RunService {
 
   lockScript(runId: string) {
     const run = this.repository.requireRun(runId)
-    const report = this.repository.getLatestQualityReport(runId)
     const selection = this.repository.getCurrentScriptSelection(runId)
     if (!selection) throw new Error("SCRIPT_SELECTION_REQUIRED")
-    if (!report || report.scriptSelectionVersion !== selection.version) throw new Error("QA_RESULT_STALE")
-    if (!report.hardGatePassed) throw new Error("QA_HARD_GATE_BLOCKED")
     const existing = this.repository.getLockedScriptForSelection(runId, selection.version)
     if (existing) return existing
     const locked = this.repository.lockSelectedScript(runId, selection.version)
@@ -359,6 +377,10 @@ export class RunService {
     })
   }
 
+  getStructureVersionIds(profile: IpProfile) {
+    return this.resolveStructureContext(profile).structureVersionIds
+  }
+
   private resolveStructureContext(profile: IpProfile) {
     const packages = this.structureProvider({
       ipTags: [profile.expertise],
@@ -370,7 +392,9 @@ export class RunService {
     }
     return {
       structureVersionIds: packages.map((item) => item.templateVersionId),
-      modelStructures: packages.map((item) => ({
+      modelStructures: packages.map((item, index) => ({
+        structureId: `structure-${index + 1}`,
+        structureName: `推荐表达结构 ${index + 1}`,
         nodes: item.nodes,
         qualityRules: item.qualityRules,
         riskRules: item.riskRules,

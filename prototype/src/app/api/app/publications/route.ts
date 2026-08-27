@@ -4,6 +4,7 @@ import { resolveCurrentAccess } from "@/lib/auth/request-access"
 import { requireTenantCapability } from "@/lib/auth/guards"
 import { getGrowthLoopServices, type GrowthLoopServices } from "@/services/growth-loop-service-factory"
 import { growthLoopFailure, tenantHttpContext } from "@/services/growth-loop-http"
+import { withRequestLog } from "@/lib/observability/request-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -37,10 +38,13 @@ export async function handlePublications(
   }
 }
 
-export async function GET(request: Request) {
+async function get(request: Request) {
   return handlePublications(request, await resolveCurrentAccess(), getGrowthLoopServices())
 }
 
-export async function POST(request: Request) {
+async function post(request: Request) {
   return handlePublications(request, await resolveCurrentAccess(), getGrowthLoopServices())
 }
+
+export const GET = withRequestLog(get)
+export const POST = withRequestLog(post)

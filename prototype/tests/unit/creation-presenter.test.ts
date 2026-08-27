@@ -33,8 +33,33 @@ describe("presentCreationDraft", () => {
       qualityReport: { scriptSelectionVersion: 1, scores: { hook: 84, ipFit: 92, credibility: 90, structure: 82, callToAction: 78 }, suggestions: [] },
     })
 
-    expect(draft.status).toBe("needs_qa")
+    expect(draft.status).toBe("ready_to_confirm")
     expect(draft.checks).toEqual([])
+  })
+
+  it("首版把未通过的质量检查作为可见建议而非阻断状态", () => {
+    const draft = presentCreationDraft({
+      run: { id: "run-advisory", state: "WAITING_LOCK_CONFIRMATION" },
+      topicBatch: { items: [{ id: "topic-1", title: "真实经历" }] },
+      topicSelection: { topicId: "topic-1" },
+      scriptBatch: { version: 1, items: [{ id: "script-1", title: "待确认稿", hook: "先说结论。", body: "这是一篇已经生成但仍需人工确认表达边界的完整口播正文。", callToAction: "说说你的看法。", estimatedSeconds: 60 }] },
+      scriptSelection: { version: 1, batchVersion: 1, scriptId: "script-1" },
+      lockedScript: null,
+      qualityReport: {
+        scriptSelectionVersion: 1,
+        hardGatePassed: false,
+        hardGateReasons: ["有一处表述需要确认"],
+        scores: { hook: 80, ipFit: 85, credibility: 72, structure: 83, callToAction: 78 },
+        suggestions: ["补充事实依据"],
+      },
+    })
+
+    expect(draft.status).toBe("ready_to_confirm")
+    expect(draft.qualityAdvisory).toEqual({
+      requiresReview: true,
+      reasons: ["有一处表述需要确认"],
+      suggestions: ["补充事实依据"],
+    })
   })
 
   it("marks only the matching immutable revision as locked", () => {
@@ -92,9 +117,9 @@ describe("presentCreationDraft", () => {
     })
 
     expect(draft.segments.slice(0, 3)).toEqual([
-      { id: "legacy-script-spoken-1", kind: "spoken", text: "历史开头。" },
-      { id: "legacy-script-spoken-2", kind: "spoken", text: "这是历史稿中仍需正常显示的完整正文内容。" },
-      { id: "legacy-script-spoken-3", kind: "spoken", text: "历史结尾。" },
+      { id: "legacy-script-spoken-1", kind: "spoken", heading: "开场钩子", text: "历史开头。" },
+      { id: "legacy-script-spoken-2", kind: "spoken", heading: "核心内容", text: "这是历史稿中仍需正常显示的完整正文内容。" },
+      { id: "legacy-script-spoken-3", kind: "spoken", heading: "行动引导", text: "历史结尾。" },
     ])
   })
 })

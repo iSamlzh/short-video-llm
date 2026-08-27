@@ -10,22 +10,9 @@
 
 ## 2. 必需配置
 
-```text
-APP_ENV=production
-LLM_BASE_URL=https://模型服务地址/v1
-LLM_API_KEY=仅通过密钥管理或环境变量注入
-LLM_MODEL=生产模型名称
-LLM_TIMEOUT_SECONDS=120
-PROTOTYPE_DB_PATH=/srv/content-agent/data/production.sqlite
-ENABLE_PROTOTYPE_API=false
-ALLOW_LIVE_MODEL=false
-PROTOTYPE_DEMO_CONTROLS=false
-PROTOTYPE_TEST_MODE=false
-PLAYWRIGHT_TEST_MODE=false
-PROTOTYPE_ALLOW_DEMO_CLEAR=false
-```
+环境变量的完整字段和默认值只以当前 release 根目录的 `.env.example` 为准。部署时先复制该文件，再逐项填写模型、数据库、额度、健康检查和备份配置；不要从运维文档维护或复制另一套变量清单。
 
-生产环境必须明确设置 `APP_ENV=production`，并保持调试、测试、演示和清理开关为 `false`。应用启动时会执行硬校验，危险组合将直接拒绝启动。`.env.local`、模型密钥、数据库文件和备份文件不得提交到 Git。
+生产环境必须明确设置 `APP_ENV=production`、正式模型和绝对数据库路径，允许真实模型调用，并保持原型 API、测试 Fixture、Demo 控件、模拟复盘和演示清理开关关闭。`src/lib/runtime-environment-validation.ts` 会执行硬校验，危险组合将直接拒绝启动。`.env.local`、模型密钥、数据库文件和备份文件不得提交到 Git。
 
 开发、共享测试和生产必须使用不同的数据库文件与不同的模型 API Key。E2E 使用每次运行随机生成的数据库并强制 Fixture 模型；共享测试环境如需临时启用调试 API，还必须配置独立的 `PROTOTYPE_API_TOKEN`，不得对公网匿名开放。
 
@@ -81,7 +68,9 @@ proxy_send_timeout 180s;
 
 ## 7. 日志与告警
 
-日志可以记录请求 ID、Run ID、批次 ID、复盘版本、模型名称、耗时、Token 用量和稳定错误码。不得记录 LLM API Key、Session Cookie、完整上传文件、完整用户文稿或模型隐藏推理。
+Nginx 为入口请求生成 `requestId`，应用响应通过 `X-Request-Id` 返回，并将其传递到 API 请求日志、模型日志和 `model_tasks`。日志可以记录请求 ID、Run ID、批次 ID、复盘版本、模型名称、耗时、Token 用量和稳定错误码。不得记录 URL 查询参数、请求体、LLM API Key、Session Cookie、完整上传文件、完整用户文稿或模型隐藏推理。
+
+正常应用与 Nginx 请求日志最长保留 14 天，5xx、模型失败和运行异常日志最长保留 90 天；每天由 `logrotate.timer` 压缩和清理，单文件达到 100 MB 时提前轮转。业务审计和模型任务血缘保存在 SQLite 并随数据库备份，不参与普通日志清理。
 
 至少对以下情况告警：进程连续重启、5xx 比例异常、模型超时上升、SQLite 写入失败、备份失败、磁盘低水位和上传错误突然增加。
 

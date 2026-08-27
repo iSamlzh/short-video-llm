@@ -1,11 +1,14 @@
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import nextEnv from "@next/env"
 import type { LlmAdapter, LlmRequest, LlmResponse } from "../../src/lib/llm/adapter"
 import { OpenAiCompatibleAdapter } from "../../src/lib/llm/adapter"
 import { PrototypeRepository } from "../../src/lib/db/repository"
 import { StructuredLlmClient } from "../../src/lib/llm/structured"
 import { RunService } from "../../src/services/run-service"
+
+nextEnv.loadEnvConfig(process.cwd())
 
 const required = ["LLM_BASE_URL", "LLM_API_KEY", "LLM_MODEL"] as const
 const missing = required.filter(name => !process.env[name])
@@ -35,14 +38,14 @@ if (missing.length) {
     if (topics.items.length < 3 || topics.items.length > 5) throw new Error("LIVE_TOPICS_COUNT_INVALID")
     service.selectTopic(run.id, topics.version, topics.items[0].id)
     const scripts = await service.generateScripts(run.id, run.inputVersion)
-    if (scripts.items.length !== 3 || scripts.items.some(item => item.topicDirectionId !== topics.items[0].id)) throw new Error("LIVE_SCRIPTS_INVALID")
+    if (scripts.items.length !== 1 || scripts.items[0].topicDirectionId !== topics.items[0].id) throw new Error("LIVE_SINGLE_SCRIPT_INVALID")
     service.selectScript(run.id, scripts.version, scripts.items[0].id)
-    const report = await service.runQa(run.id, run.inputVersion)
-    if (!report.hardGatePassed) throw new Error(`LIVE_QA_HARD_GATE_BLOCKED:${report.hardGateReasons.join("；")}`)
     service.lockScript(run.id)
-    const snapshot = service.simulatePublication(run.id)
-    const review = await service.generateReview(run.id, snapshot.version)
-    if (review.claimsRealCausation) throw new Error("LIVE_REVIEW_CAUSALITY_VIOLATION")
+    const businessCalls = calls.filter(call => call.operation !== "repair")
+    const repairCalls = calls.filter(call => call.operation === "repair")
+    if (businessCalls.length !== 2 || businessCalls[0].operation !== "topics" || businessCalls[1].operation !== "scripts" || repairCalls.length > 2) {
+      throw new Error(`LIVE_MODEL_CALL_BOUNDARY_INVALID:${calls.map(call => call.operation).join(",")}`)
+    }
     console.table(calls.map(call => ({ operation: call.operation, model: call.model, durationMs: call.durationMs, totalTokens: call.totalTokens ?? "n/a" })))
   } finally {
     repository.close()

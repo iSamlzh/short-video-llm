@@ -3,12 +3,16 @@ import { contentAnalysisSchema, createContentSampleSchema, structureCandidateSch
 import { resolveCurrentAccess } from "@/lib/auth/request-access"
 import { getContentBrainServices, type ContentBrainServices } from "@/services/content-brain-service-factory"
 import { contentBrainFailure, contentBrainNotFound, platformHttpContext } from "@/services/content-brain-http"
+import { requireIdempotencyKey } from "@/lib/http/idempotency-key"
+import { getModelTaskService } from "@/services/model-task-service-factory"
+import type { ModelTaskService } from "@/services/model-task-service"
 import { z } from "zod"
+import { withRequestLog } from "@/lib/observability/request-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-type ContentBrainDeps = ContentBrainServices
+type ContentBrainDeps = ContentBrainServices & { modelTasks?: ModelTaskService }
 
 const emptySchema = z.object({}).strict()
 const versionSchema = z.object({ expectedVersion: z.number().int().positive() }).strict()
@@ -52,7 +56,12 @@ export async function handleContentBrain(
     }
     if (request.method === "POST" && segments.length === 3 && segments[0] === "samples" && segments[2] === "analyze") {
       emptySchema.parse(await request.json())
-      return Response.json(await deps.analysis.analyze(context, segments[1]))
+      const run = () => deps.analysis.analyze(context, segments[1])
+      const result = deps.modelTasks ? await deps.modelTasks.run({
+        scopeType: "platform", actorUserId: context.userId, operation: "content_brain.analysis",
+        idempotencyKey: requireIdempotencyKey(request), signal: request.signal,
+      }, run, run) : await run()
+      return Response.json(result)
     }
     if (request.method === "PUT" && segments.length === 2 && segments[0] === "analyses") {
       const input = analysisDraftSchema.parse(await request.json())
@@ -60,7 +69,13 @@ export async function handleContentBrain(
     }
     if (request.method === "POST" && segments.length === 3 && segments[0] === "analyses" && segments[2] === "approve") {
       const input = analysisDraftSchema.parse(await request.json())
-      return Response.json(await deps.analysis.approveAndPropose(context, segments[1], input))
+      const result = deps.modelTasks ? await deps.modelTasks.run({
+        scopeType: "platform", actorUserId: context.userId, operation: "content_brain.structure_candidate",
+        idempotencyKey: requireIdempotencyKey(request), signal: request.signal,
+      }, () => deps.analysis.approveAndPropose(context, segments[1], input),
+      () => deps.analysis.findApprovedResult(segments[1]))
+        : await deps.analysis.approveAndPropose(context, segments[1], input)
+      return Response.json(result)
     }
     if (request.method === "POST" && segments.length === 3 && segments[0] === "analyses" && segments[2] === "reject") {
       const input = versionReasonSchema.parse(await request.json())
@@ -72,7 +87,13 @@ export async function handleContentBrain(
     }
     if (request.method === "POST" && segments.length === 3 && segments[0] === "candidates" && segments[2] === "preview") {
       const input = versionSchema.parse(await request.json())
-      return Response.json(await deps.workflow.previewCandidate(context, segments[1], input.expectedVersion))
+      const result = deps.modelTasks ? await deps.modelTasks.run({
+        scopeType: "platform", actorUserId: context.userId, operation: "content_brain.structure_preview",
+        idempotencyKey: requireIdempotencyKey(request), signal: request.signal,
+      }, () => deps.workflow.previewCandidate(context, segments[1], input.expectedVersion),
+      () => deps.workflow.getLatestPreview(context, segments[1], input.expectedVersion))
+        : await deps.workflow.previewCandidate(context, segments[1], input.expectedVersion)
+      return Response.json(result)
     }
     if (request.method === "POST" && segments.length === 3 && segments[0] === "candidates" && segments[2] === "reject") {
       const input = versionReasonSchema.parse(await request.json())
@@ -100,12 +121,18 @@ export async function handleContentBrain(
 }
 
 type RouteContext = { params: Promise<{ segments: string[] }> }
-export async function GET(request: Request, route: RouteContext) {
+async function get(request: Request, route: RouteContext) {
   return handleContentBrain(request, (await route.params).segments, await resolveCurrentAccess(), getContentBrainServices())
 }
-export async function POST(request: Request, route: RouteContext) {
+async function post(request: Request, route: RouteContext) {
+  return handleContentBrain(request, (await route.params).segments, await resolveCurrentAccess(), {
+    ...getContentBrainServices(), modelTasks: getModelTaskService(),
+  })
+}
+async function put(request: Request, route: RouteContext) {
   return handleContentBrain(request, (await route.params).segments, await resolveCurrentAccess(), getContentBrainServices())
 }
-export async function PUT(request: Request, route: RouteContext) {
-  return handleContentBrain(request, (await route.params).segments, await resolveCurrentAccess(), getContentBrainServices())
-}
+
+export const GET = withRequestLog(get)
+export const POST = withRequestLog(post)
+export const PUT = withRequestLog(put)

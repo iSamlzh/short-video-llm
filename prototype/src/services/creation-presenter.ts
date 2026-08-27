@@ -5,7 +5,7 @@ type RunView = {
   run?: { id?: string; state?: string }
   id?: string
   ipProfile?: { displayName?: string }
-  topicBatch?: { items?: Array<{ id: string; title: string; ipFitEvidence?: string[]; decisionBrief?: CreationDecisionBrief }> } | null
+  topicBatch?: { items?: TopicView[] } | null
   topicSelection?: { topicId: string } | null
   scriptBatch?: {
     version: number
@@ -20,9 +20,21 @@ type RunView = {
   } | null
   qualityReport?: {
     scriptSelectionVersion: number | null
+    hardGatePassed?: boolean
+    hardGateReasons?: string[]
     scores: { hook: number; ipFit: number; credibility: number; structure: number; callToAction: number }
     suggestions?: string[]
   } | null
+}
+
+type TopicView = {
+  id: string
+  title: string
+  angle?: string
+  audienceTension?: string
+  structureId?: string
+  ipFitEvidence?: string[]
+  decisionBrief?: CreationDecisionBrief
 }
 
 export function presentCreationDraft(view: RunView, memory?: ConfirmedCreationMemory | null) {
@@ -31,29 +43,32 @@ export function presentCreationDraft(view: RunView, memory?: ConfirmedCreationMe
   if (!selection || !script) throw new Error("SCRIPT_SELECTION_REQUIRED")
   const qualityMatches = view.qualityReport?.scriptSelectionVersion === selection.version
   const lockedMatches = view.lockedScript?.scriptSelectionVersion === selection.version
-  const status = lockedMatches ? "locked" : qualityMatches ? "ready_to_confirm" : "needs_qa"
+  const status = lockedMatches ? "locked" : "ready_to_confirm"
   const topic = view.topicBatch?.items?.find((item) => item.id === view.topicSelection?.topicId)
   const segments = scriptToSegments(script)
   const spokenSegments = segments.filter((segment) => segment.kind === "spoken")
   const productionSegments = segments.filter((segment) => segment.kind === "shot_instruction" || segment.kind === "subtitle_emphasis")
   const spokenMetrics = estimateSpokenDuration(segments)
   const score = qualityMatches ? view.qualityReport?.scores : undefined
+  const qualityAdvisory = qualityMatches && view.qualityReport?.hardGatePassed === false ? {
+    requiresReview: true,
+    reasons: view.qualityReport.hardGateReasons ?? [],
+    suggestions: view.qualityReport.suggestions ?? [],
+  } : null
   const checks = score ? [
-    { title: "事实可信", note: `可信度 ${score.credibility}，基于当前 IP 的已确认经历，未发现虚构案例。` },
-    { title: "符合你的表达", note: `匹配度 ${score.ipFit}，已遵守当前 IP 的说话方式与内容边界。` },
-    { title: "无收益承诺", note: `结构分 ${score.structure}，未出现收益保证、绝对化用语或诱导表达。` },
+    { title: "事实可信", note: `可信度 ${score.credibility}，请结合建档事实进行最终确认。` },
+    { title: "符合你的表达", note: `匹配度 ${score.ipFit}，可继续按本人说话习惯调整。` },
+    { title: "结构与边界", note: `结构分 ${score.structure}，检查建议仅作首版辅助，不阻断编辑与定稿。` },
   ] : []
   return {
     runId: view.run?.id ?? view.id,
     lead: status === "locked"
       ? `${view.ipProfile?.displayName ?? "当前 IP"}，这篇已经定稿`
-      : status === "needs_qa"
-        ? "修改已保存，定稿前需要重新检查"
-        : `${view.ipProfile?.displayName ?? "当前 IP"}，今天这篇可以直接拍`,
+      : `${view.ipProfile?.displayName ?? "当前 IP"}，今天这篇可以直接拍`,
     title: script.title,
     duration: `约 ${spokenMetrics.estimatedSeconds} 秒`,
     wordCount: `约 ${spokenMetrics.spokenCharacters} 字`,
-    version: `v${selection.version} · ${status === "locked" ? "已定稿" : status === "needs_qa" ? "待检查" : "待确认"}`,
+    version: `v${selection.version} · ${status === "locked" ? "已定稿" : "待确认"}`,
     revision: selection.version,
     status,
     lockedVersion: view.lockedScript?.version ?? null,
@@ -62,7 +77,8 @@ export function presentCreationDraft(view: RunView, memory?: ConfirmedCreationMe
     paragraphs: spokenSegments.map((segment) => segment.text),
     shootingTips: productionSegments.map((segment) => segment.text),
     checks,
-    decisionBrief: topic?.decisionBrief ?? legacyDecisionBrief(topic?.ipFitEvidence, memory),
+    qualityAdvisory,
+    decisionBrief: presentDecisionBrief(topic, memory),
     evidence: [
       ...(topic?.ipFitEvidence?.length ? topic.ipFitEvidence : ["当前 IP 的已确认画像"]),
       "表达边界：不夸大、不承诺、不贬低竞品",
@@ -75,6 +91,30 @@ export function presentCreationDraft(view: RunView, memory?: ConfirmedCreationMe
       version: memory.version,
       summary: [...memory.keep.slice(0, 1), ...memory.nextContentSignals.slice(0, 1)].join("；"),
     } : null,
+  }
+}
+
+function presentDecisionBrief(topic: TopicView | undefined, memory?: ConfirmedCreationMemory | null): CreationDecisionBrief {
+  const brief = topic?.decisionBrief ?? legacyDecisionBrief(topic?.ipFitEvidence, memory)
+  const audienceTension = topic?.audienceTension ?? brief.audienceProblem
+  const title = topic?.title ?? "当前选题"
+  const portraitFitSummary = (brief.portraitFitSummary
+    ?? brief.ipEvidenceRefs.map((reference) => reference.relevance).filter(Boolean).join("；"))
+    || `画像显示当前 IP 具备与“${title}”相关的真实经历和表达基础。`
+
+  return {
+    ...brief,
+    portraitFitSummary,
+    recommendationSummary: brief.recommendationSummary
+      ?? `结合当前 IP 的经历与表达定位，建议讲“${title}”，回应受众“${audienceTension}”的具体顾虑。`,
+    topicOpportunity: brief.topicOpportunity
+      ?? topic?.angle
+      ?? brief.whyToday,
+    ipEvidenceRefs: brief.ipEvidenceRefs.map((reference) => ({
+      ...reference,
+      relevance: reference.relevance
+        ?? `这条已确认建档信息能让“${title}”从真实经历出发，而不是泛泛讲道理。`,
+    })),
   }
 }
 

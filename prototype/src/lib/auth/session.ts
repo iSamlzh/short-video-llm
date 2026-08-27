@@ -19,15 +19,20 @@ export class SessionRepository {
   }
 
   resolve(rawToken: string) {
-    const row = this.database.prepare(`SELECT s.user_id, s.audience
+    const row = this.database.prepare(`SELECT s.user_id, s.audience, u.must_change_password
       FROM sessions s JOIN users u ON u.id = s.user_id
       WHERE s.token_hash = ? AND s.revoked_at IS NULL AND s.expires_at > ? AND u.status = 'active'`)
-      .get(hashToken(rawToken), new Date().toISOString()) as { user_id: string; audience: ActorAudience } | undefined
-    return row ? { userId: row.user_id, audience: row.audience } : null
+      .get(hashToken(rawToken), new Date().toISOString()) as { user_id: string; audience: ActorAudience; must_change_password: number } | undefined
+    return row ? { userId: row.user_id, audience: row.audience, mustChangePassword: Boolean(row.must_change_password) } : null
   }
 
   revoke(rawToken: string) {
     this.database.prepare("UPDATE sessions SET revoked_at = ? WHERE token_hash = ? AND revoked_at IS NULL")
       .run(new Date().toISOString(), hashToken(rawToken))
+  }
+
+  revokeAll(userId: string) {
+    this.database.prepare("UPDATE sessions SET revoked_at=? WHERE user_id=? AND revoked_at IS NULL")
+      .run(new Date().toISOString(), userId)
   }
 }

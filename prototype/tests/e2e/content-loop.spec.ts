@@ -56,12 +56,13 @@ test("tenant default path produces one usable draft and keeps internal brain pri
   await login(page, "owner@example.test")
   await expect(page.getByText("今天建议讲")).toBeVisible({ timeout: 20_000 })
   await expect(page.getByRole("button", { name: "确认定稿" })).toBeVisible()
-  await expect(page.getByText("内容检查已完成：事实与表达边界")).toBeVisible()
+  await expect(page.getByText("首版质量门禁未启用，请在定稿前人工确认事实与表达边界")).toBeVisible()
   await expect(page.getByText("为什么今天推荐这篇")).toBeVisible()
   await expect(page.getByText("尚未使用历史表现")).toBeVisible()
   await page.getByRole("button", { name: "查看完整判断依据" }).click()
   await expect(page.getByRole("dialog", { name: "这次推荐依据" })).toBeVisible()
-  await expect(page.getByText(/IP 建档回答/).first()).toBeVisible()
+  await expect(page.getByRole("region", { name: "画像匹配依据" })).toBeVisible()
+  await expect(page.getByText(/IP 建档回答/)).toHaveCount(0)
   await page.getByRole("button", { name: "关闭判断依据" }).click()
   const currentResult = await page.evaluate(async () => {
     const response = await fetch("/api/app/creation/current")
@@ -78,12 +79,12 @@ test("tenant default path produces one usable draft and keeps internal brain pri
   await expect(page.getByRole("textbox", { name: "第 1 段" })).toHaveCount(0)
   await page.getByRole("textbox", { name: "第 2 段" }).fill("这是刷新后仍然存在的第二段。")
   await page.getByRole("button", { name: "完成第 2 段编辑" }).click()
-  await expect(page.getByText("修改已保存，定稿前会重新检查")).toBeVisible()
+  await expect(page.getByText("修改已保存，请人工确认事实与表达边界")).toBeVisible()
   await expect(page.getByText("这是刷新后仍然存在的第二段。")).toBeVisible()
-  await expect(page.getByText("v2 · 待检查")).toBeVisible()
+  await expect(page.getByText("v2 · 待确认")).toBeVisible()
   await page.reload()
   await expect(page.getByText("这是刷新后仍然存在的第二段。")).toBeVisible()
-  await page.getByRole("button", { name: "检查并定稿" }).click()
+  await page.getByRole("button", { name: "确认定稿" }).click()
   await expect(page.getByRole("button", { name: "下载口播稿" })).toBeVisible()
   await expect(page.getByText("v2 · 已定稿")).toBeVisible()
   const downloadPromise = page.waitForEvent("download")
@@ -95,8 +96,8 @@ test("tenant default path produces one usable draft and keeps internal brain pri
   await page.getByRole("button", { name: "编辑第 2 段" }).click()
   await page.getByRole("textbox", { name: "第 2 段" }).fill("这是定稿后再次修改并形成第三版的第二段。")
   await page.getByRole("button", { name: "完成第 2 段编辑" }).click()
-  await expect(page.getByText("v3 · 待检查")).toBeVisible()
-  await page.getByRole("button", { name: "检查并定稿" }).click()
+  await expect(page.getByText("v3 · 待确认")).toBeVisible()
+  await page.getByRole("button", { name: "确认定稿" }).click()
   await expect(page.getByText("v3 · 已定稿")).toBeVisible()
   await page.screenshot({ path: "test-results/design-qa/daily-implementation.png", fullPage: true })
   await page.getByRole("button", { name: "换一个选题" }).click()
@@ -122,12 +123,15 @@ test("换选题可取消，迟到响应不会覆盖当前稿件", async ({ page 
   })
 
   let releaseResponse: (() => void) | undefined
-  await page.route("**/api/app/creation/auto", async (route) => {
+  await page.route("**/api/app/creation/topics", async (route) => {
     await new Promise<void>((resolve) => { releaseResponse = resolve })
     await route.fulfill({
       status: 201,
       contentType: "application/json",
-      body: JSON.stringify({ ...currentDraft, title: "这是一条已经迟到的新选题" }),
+      body: JSON.stringify({
+        runId: "late-run", recommendedTopicId: "late-topic",
+        topics: [{ id: "late-topic", title: "这是一条已经迟到的新选题", angle: "迟到响应不应写入界面" }],
+      }),
     }).catch(() => undefined)
   })
 
@@ -197,8 +201,19 @@ test("运营员工只能看到负责人授权的 IP 与账号", async ({ page })
 test("delegation and platform content brain are usable in their own scopes", async ({ page }) => {
   await login(page, "owner@example.test")
   await page.goto("/app/team")
-  await page.getByRole("button", { name: "确认并邀请小周" }).click()
-  await expect(page.getByText(/小周现在只能操作林姐/)).toBeVisible()
+  await page.getByRole("button", { name: "新增成员" }).click()
+  const form = page.getByRole("heading", { name: "新增运营成员" }).locator("..")
+  await form.getByLabel("姓名").fill("小周")
+  await form.getByLabel("登录邮箱").fill("xiaozhou@example.test")
+  for (const checkbox of await form.locator('input[name="ipIds"]').all()) await checkbox.uncheck()
+  for (const checkbox of await form.locator('input[name="contentAccountIds"]').all()) await checkbox.uncheck()
+  await form.getByLabel("林姐", { exact: true }).check()
+  await form.getByLabel(/林姐说团购/).check()
+  await form.getByRole("button", { name: "创建并生成临时密码" }).click()
+  await expect(page.getByText("成员已创建，请安全转交临时密码")).toBeVisible()
+  await expect(page.getByText("一次性临时密码")).toBeVisible()
+  const member = page.locator("article.team-member-card").filter({ hasText: "xiaozhou@example.test" })
+  await expect(member).toContainText("可访问 1 个 IP、1 个内容账号")
 
   await page.evaluate(() => fetch("/api/auth/logout", { method: "POST" }))
   await login(page, "platform@example.test")

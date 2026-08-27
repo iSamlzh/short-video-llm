@@ -39,16 +39,21 @@ describe("确认记忆回流到创作", () => {
     const owner = access.resolve("user-owner", "tenant")
     if (owner.audience !== "tenant") throw new Error("TENANT_CONTEXT_REQUIRED")
     const created = await creation.create(owner)
-    const input = adapter.calls.find((call) => call.operation === "auto_draft")?.input
+    const inputs = adapter.calls
+      .filter((call) => call.operation === "topics" || call.operation === "scripts")
+      .map((call) => call.input)
 
-    expect(input).toMatchObject({ tenantMemory: {
-      version: 2,
-      keep: ["保留真实邻里场景"],
-      avoid: ["避免空泛说教"],
-      nextContentSignals: ["更快进入具体冲突"],
-    } })
-    expect(JSON.stringify(input)).not.toContain("evidenceLimits")
-    expect(JSON.stringify(input)).not.toContain("rawMetrics")
+    expect(inputs).toHaveLength(2)
+    for (const input of inputs) {
+      expect(input).toMatchObject({ tenantMemory: {
+        version: 2,
+        keep: ["保留真实邻里场景"],
+        avoid: ["避免空泛说教"],
+        nextContentSignals: ["更快进入具体冲突"],
+      } })
+      expect(JSON.stringify(input)).not.toContain("evidenceLimits")
+      expect(JSON.stringify(input)).not.toContain("rawMetrics")
+    }
 
     const lineage = new CreationLineageRepository(appDatabase)
     expect(lineage.get(created.runId!)?.tenantMemoryVersion).toBe(2)
@@ -76,8 +81,13 @@ describe("确认记忆回流到创作", () => {
       triggerType: "review_followup",
       sourceReviewId: "review-2",
     })
-    expect(created.creationTrigger).toEqual({ triggerType: "review_followup", sourceReviewId: "review-2" })
-    expect(adapter.calls.findLast((call) => call.operation === "auto_draft")?.input).toMatchObject({
+    expect(created.topics.length).toBeGreaterThan(0)
+    await creation.createScriptFromTopic(owner, {
+      runId: created.runId,
+      topicId: created.recommendedTopicId,
+      intent: "initial",
+    })
+    expect(adapter.calls.findLast((call) => call.operation === "scripts")?.input).toMatchObject({
       tenantMemory: { version: 2, keep: ["保留真实邻里场景"] },
     })
   })

@@ -9,5 +9,5 @@ export default async function TenantLayout({ children }: { children: ReactNode }
   const database = getAppDatabase()
   const context = new WorkspaceContextService(database).get(access.userId)
   const user = database.prepare("SELECT display_name displayName FROM users WHERE id=?").get(access.userId) as { displayName: string } | undefined
-  return <div className="app-shell"><TenantMasthead context={context} userName={user?.displayName ?? "用户"} />{children}</div>
+  return <div className="app-shell"><TenantMasthead context={context} userName={user?.displayName ?? "用户"} canManageTeam={access.capabilities.includes("team.manage")} canManageIps={access.capabilities.includes("ip.manage")} />{children}</div>
 }

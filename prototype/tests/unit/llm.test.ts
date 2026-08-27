@@ -63,6 +63,36 @@ describe("structured model client", () => {
     expect(body.response_format).toEqual({ type: "json_object" })
   })
 
+  it("流式读取 SSE 内容并保留 Token 用量", async () => {
+    const streamBody = [
+      'data: {"model":"stream-model","choices":[{"delta":{"content":"{\\"ok\\":"}}]}',
+      'data: {"model":"stream-model","choices":[{"delta":{"content":"true}"}}]}',
+      'data: {"model":"stream-model","choices":[],"usage":{"prompt_tokens":12,"completion_tokens":3,"total_tokens":15}}',
+      "data: [DONE]",
+      "",
+    ].join("\n")
+    const fetchMock = vi.fn().mockResolvedValue(new Response(streamBody, {
+      status: 200,
+      headers: { "content-type": "text/event-stream; charset=utf-8" },
+    }))
+    vi.stubGlobal("fetch", fetchMock)
+    const adapter = new OpenAiCompatibleAdapter({
+      baseUrl: "https://model.example/v1", apiKey: "secret", model: "test-model", streaming: true,
+    })
+
+    const result = await adapter.generate({
+      operation: "qa", systemPrompt: "return an object", input: {}, timeoutMs: 1_000, jsonRoot: "object",
+    })
+
+    const request = fetchMock.mock.calls[0][1] as RequestInit
+    const body = JSON.parse(String(request.body))
+    expect(body).toMatchObject({ stream: true, stream_options: { include_usage: true } })
+    expect(result).toEqual({
+      text: '{"ok":true}', model: "stream-model",
+      usage: { promptTokens: 12, completionTokens: 3, totalTokens: 15 },
+    })
+  })
+
   it("repairs invalid structured output only once", async () => {
     const adapter = new FakeLlmAdapter([
       { text: "not-json" },
@@ -123,18 +153,23 @@ describe("structured model client", () => {
   })
 
   it("将网络连接失败映射成可重试稳定错误", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("fetch failed: secret prompt must not leak")))
+    const fetchMock = vi.fn().mockRejectedValue(new TypeError("fetch failed: secret prompt must not leak", {
+      cause: Object.assign(new Error("socket closed"), { code: "UND_ERR_SOCKET" }),
+    }))
+    vi.stubGlobal("fetch", fetchMock)
     const adapter = new OpenAiCompatibleAdapter({
       baseUrl: "https://model.example/v1", apiKey: "secret", model: "test-model",
     })
 
     await expect(adapter.generate({
       operation: "topics", systemPrompt: "sensitive", input: { private: "content" }, timeoutMs: 1_000,
-    })).rejects.toMatchObject({ code: "MODEL_CONNECTION_FAILED", status: 503, retryable: true })
+    })).rejects.toMatchObject({ code: "MODEL_CONNECTION_FAILED", status: 503, retryable: true, transportCode: "UND_ERR_SOCKET" })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
-  it("保留兼容的超时错误码并标记为可重试", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new DOMException("aborted", "AbortError")))
+  it("超时后不重复提交生成任务，并保留兼容错误码", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new DOMException("aborted", "AbortError"))
+    vi.stubGlobal("fetch", fetchMock)
     const adapter = new OpenAiCompatibleAdapter({
       baseUrl: "https://model.example/v1", apiKey: "secret", model: "test-model",
     })
@@ -142,6 +177,43 @@ describe("structured model client", () => {
     await expect(adapter.generate({
       operation: "topics", systemPrompt: "prompt", input: {}, timeoutMs: 1_000,
     })).rejects.toMatchObject({ code: "LLM_TIMEOUT", status: 504, retryable: true })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  it("用户取消后立即停止，不把取消误报成超时", async () => {
+    const fetchMock = vi.fn()
+    vi.stubGlobal("fetch", fetchMock)
+    const adapter = new OpenAiCompatibleAdapter({
+      baseUrl: "https://model.example/v1", apiKey: "secret", model: "test-model",
+    })
+    const controller = new AbortController()
+    controller.abort()
+
+    await expect(adapter.generate({
+      operation: "topics", systemPrompt: "prompt", input: {}, timeoutMs: 1_000, signal: controller.signal,
+    })).rejects.toMatchObject({ code: "MODEL_TASK_CANCELLED", status: 499, retryable: false })
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  it("首次生成和结构修复共享同一个总超时预算", async () => {
+    const timeouts: number[] = []
+    let calls = 0
+    const adapter = {
+      async generate(request: Parameters<OpenAiCompatibleAdapter["generate"]>[0]) {
+        timeouts.push(request.timeoutMs)
+        calls += 1
+        if (calls === 1) {
+          await new Promise(resolve => setTimeout(resolve, 20))
+          return { text: "bad", model: "test-model" }
+        }
+        return { text: JSON.stringify(validTopicBatch), model: "test-model" }
+      },
+    }
+
+    await generateStructured({ adapter, operation: "topics", input: {}, schema: topicBatchSchema, timeoutMs: 200 })
+
+    expect(timeouts).toHaveLength(2)
+    expect(timeouts[1]).toBeLessThan(timeouts[0])
   })
 
   it("模型调用日志只记录操作、耗时和结果，不记录 Prompt 或 API Key", async () => {
@@ -150,9 +222,9 @@ describe("structured model client", () => {
 
     await client.generateStructured("topics", { apiKey: "secret-key", private: "sensitive prompt" }, topicBatchSchema, "array")
 
-    expect(info).toHaveBeenCalledWith("model_operation", expect.objectContaining({
-      operation: "topics", outcome: "success", durationMs: expect.any(Number),
-    }))
+    expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({
+      event: "model_operation", operation: "topics", outcome: "success", durationMs: expect.any(Number),
+    })
     const serialized = JSON.stringify(info.mock.calls)
     expect(serialized).not.toContain("secret-key")
     expect(serialized).not.toContain("sensitive prompt")

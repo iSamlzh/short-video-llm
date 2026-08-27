@@ -5,6 +5,7 @@ import { requireTenantCapability } from "@/lib/auth/guards"
 import { getGrowthLoopServices, type GrowthLoopServices } from "@/services/growth-loop-service-factory"
 import { growthLoopFailure, tenantHttpContext } from "@/services/growth-loop-http"
 import { z } from "zod"
+import { withRequestLog } from "@/lib/observability/request-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -57,9 +58,12 @@ export async function handleMetrics(
 }
 
 type RouteContext = { params: Promise<{ segments: string[] }> }
-export async function GET(request: Request, route: RouteContext) {
+async function get(request: Request, route: RouteContext) {
   return handleMetrics(request, (await route.params).segments, await resolveCurrentAccess(), getGrowthLoopServices())
 }
-export async function POST(request: Request, route: RouteContext) {
+async function post(request: Request, route: RouteContext) {
   return handleMetrics(request, (await route.params).segments, await resolveCurrentAccess(), getGrowthLoopServices())
 }
+
+export const GET = withRequestLog(get)
+export const POST = withRequestLog(post)

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest"
 import {
   estimateSpokenDuration,
   normalizeScriptSegments,
+  scriptToSegments,
   spokenSegmentText,
 } from "../../src/domain/creation-contracts"
 
@@ -30,5 +31,27 @@ describe("结构化口播段落", () => {
       { id: "shot-1", kind: "shot_instruction", text: "镜头推近" },
       { id: "spoken-2", kind: "spoken", text: "第二段口播" },
     ])).toBe("第一段口播\n\n第二段口播")
+  })
+
+  it("按照所选内容结构给口播自然段生成可读标题", () => {
+    const segments = scriptToSegments({
+      id: "script-1",
+      hook: "很多团长第一步就做反了。",
+      body: "我刚开始也踩过这个坑。\n\n后来我总结出三个判断方法。\n\n最后只保留适合长期做的选择。",
+      callToAction: "留言说说你正在面对的问题。",
+    }, [
+      { kind: "contrast", instruction: "身份反差：先说反常识结论" },
+      { kind: "failure", instruction: "失败经历：讲清真实代价" },
+      { kind: "insight", instruction: "经验提炼：给出判断方法" },
+      { kind: "value", instruction: "价值筛选：说明长期原则" },
+    ])
+
+    expect(segments.filter((item) => item.kind === "spoken").map((item) => item.heading)).toEqual([
+      "身份反差",
+      "失败经历",
+      "经验提炼",
+      "价值筛选",
+      "行动引导",
+    ])
   })
 })

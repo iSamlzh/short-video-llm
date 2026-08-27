@@ -49,6 +49,33 @@ describe("CreationAppService draft lifecycle", () => {
     appDatabase.close()
   })
 
+  it("先持久化选题池，再用独立请求为推荐选题生成单篇口播稿", async () => {
+    const owner = access.resolve("user-owner", "tenant")
+    if (owner.audience !== "tenant") throw new Error("TENANT_CONTEXT_REQUIRED")
+
+    const pool = await service.ensureTopicPool(owner, "2026-08-24")
+
+    expect(pool.topics).toHaveLength(3)
+    expect(pool.recommendedTopicId).toBe(pool.topics[0].id)
+    expect(adapter.calls.map((call) => call.operation)).toEqual(["topics"])
+    expect(service.getCurrent(owner, "2026-08-24")).toBeNull()
+
+    const draft = await service.createScriptFromTopic(owner, {
+      runId: pool.runId,
+      topicId: pool.recommendedTopicId,
+    })
+
+    expect(draft.runId).toBe(pool.runId)
+    expect(draft.status).toBe("ready_to_confirm")
+    expect(adapter.calls.map((call) => call.operation)).toEqual(["topics", "scripts"])
+    expect(repository.getScriptBatch(pool.runId)?.items).toHaveLength(1)
+    expect(service.getCurrent(owner, "2026-08-24")?.runId).toBe(pool.runId)
+
+    const samePool = await service.ensureTopicPool(owner, "2026-08-24")
+    expect(samePool.runId).toBe(pool.runId)
+    expect(adapter.calls.map((call) => call.operation)).toEqual(["topics", "scripts"])
+  })
+
   it("saves a new immutable revision, reruns QA and locks that exact revision", async () => {
     const owner = access.resolve("user-owner", "tenant")
     if (owner.audience !== "tenant") throw new Error("TENANT_CONTEXT_REQUIRED")
@@ -60,7 +87,7 @@ describe("CreationAppService draft lifecycle", () => {
 
     expect(saved.saved).toBe(true)
     expect(saved.revision).toBe(created.revision + 1)
-    expect(saved.status).toBe("needs_qa")
+    expect(saved.status).toBe("ready_to_confirm")
     expect(saved.checks).toEqual([])
 
     const finalized = await service.finalize(owner, created.runId!, { expectedRevision: saved.revision, paragraphs })
@@ -68,7 +95,7 @@ describe("CreationAppService draft lifecycle", () => {
     expect(finalized.status).toBe("locked")
     expect(finalized.revision).toBe(saved.revision)
     expect(finalized.lockedVersion).toBe(1)
-    expect(adapter.calls.map((call) => call.operation)).toEqual(["auto_draft", "qa"])
+    expect(adapter.calls.map((call) => call.operation)).toEqual(["topics", "scripts"])
   })
 
   it("reuses the current matching QA result when finalizing an unchanged generated draft", async () => {
@@ -82,7 +109,7 @@ describe("CreationAppService draft lifecycle", () => {
     })
 
     expect(finalized.status).toBe("locked")
-    expect(adapter.calls.map((call) => call.operation)).toEqual(["auto_draft"])
+    expect(adapter.calls.map((call) => call.operation)).toEqual(["topics", "scripts"])
   })
 
   it("持久化结构化段落，并只从锁定版本生成导出数据", async () => {
@@ -94,7 +121,7 @@ describe("CreationAppService draft lifecycle", () => {
       : segment)
 
     const saved = service.saveDraft(owner, created.runId!, { expectedRevision: created.revision, segments })
-    expect(saved.status).toBe("needs_qa")
+    expect(saved.status).toBe("ready_to_confirm")
     expect(saved.segments).toEqual(segments)
 
     const finalized = await service.finalize(owner, created.runId!, { expectedRevision: saved.revision, segments })

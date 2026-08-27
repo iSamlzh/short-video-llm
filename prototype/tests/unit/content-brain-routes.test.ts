@@ -75,7 +75,7 @@ describe("平台内容大脑私有路由", () => {
   it.each([
     [new Error("CONTENT_SAMPLE_NOT_FOUND"), 404, "CONTENT_SAMPLE_NOT_FOUND", false],
     [new Error("ANALYSIS_VERSION_CONFLICT"), 409, "ANALYSIS_VERSION_CONFLICT", false],
-    [Object.assign(new Error("模型调用超时"), { code: "LLM_TIMEOUT", retryable: true }), 503, "LLM_TIMEOUT", true],
+    [Object.assign(new Error("模型调用超时"), { code: "LLM_TIMEOUT", retryable: true }), 504, "LLM_TIMEOUT", true],
   ] as const)("统一映射平台错误", async (error, status, errorCode, retryable) => {
     const deps = routeDeps()
     deps.repository.listSamples.mockImplementation(() => { throw error })

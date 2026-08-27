@@ -8,6 +8,7 @@ import { StructuredLlmClient } from "@/lib/llm/structured"
 import { RunService } from "@/services/run-service"
 import { resolveRuntimeFeatures } from "@/lib/runtime-features"
 import { authorizePrototypeApi } from "@/lib/prototype-api-access"
+import { withRequestLog } from "@/lib/observability/request-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -78,5 +79,5 @@ async function dispatch(request: NextRequest, segments: string[]) {
 }
 
 type RouteContext = { params: Promise<{ segments: string[] }> }
-export async function GET(request: NextRequest, context: RouteContext) { return dispatch(request, (await context.params).segments) }
-export async function POST(request: NextRequest, context: RouteContext) { return dispatch(request, (await context.params).segments) }
+export const GET = withRequestLog(async (request: NextRequest, context: RouteContext) => dispatch(request, (await context.params).segments))
+export const POST = withRequestLog(async (request: NextRequest, context: RouteContext) => dispatch(request, (await context.params).segments))

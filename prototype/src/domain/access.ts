@@ -9,6 +9,7 @@ export const capabilities = [
   "review.view",
   "review.confirm",
   "team.manage",
+  "ip.manage",
 ] as const
 
 export type Capability = typeof capabilities[number]

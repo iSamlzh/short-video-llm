@@ -30,6 +30,15 @@ export class ContentBrainWorkflowService {
     })
   }
 
+  getLatestPreview(context: AccessContext, candidateId: string, expectedVersion: number) {
+    requirePlatformOperator(context)
+    const candidate = this.repository.requireCandidate(candidateId)
+    if (candidate.version !== expectedVersion) throw new Error("CANDIDATE_VERSION_CONFLICT")
+    const preview = this.repository.latestPreview(candidateId, expectedVersion)
+    if (!preview) throw new Error("STRUCTURE_PREVIEW_NOT_FOUND")
+    return { ...preview, candidateId, candidateVersion: expectedVersion }
+  }
+
   reviewCandidate(context: AccessContext, candidateId: string, input: { expectedVersion: number; payload: unknown }) {
     requirePlatformOperator(context)
     const payload = structureCandidateSchema.parse(input.payload)

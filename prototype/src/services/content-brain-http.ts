@@ -21,7 +21,18 @@ const statusByCode: Record<string, number> = {
   TEMPLATE_VERSION_NOT_ACTIVE: 409,
   TEMPLATE_VERSION_NOT_ROLLBACKABLE: 409,
   PREVIEW_REQUIRED: 409,
-  LLM_TIMEOUT: 503,
+  APPROVED_ANALYSIS_RESULT_NOT_FOUND: 409,
+  STRUCTURE_PREVIEW_NOT_FOUND: 409,
+  IDEMPOTENCY_KEY_MISSING: 400,
+  IDEMPOTENCY_KEY_INVALID: 400,
+  MODEL_TASK_IN_PROGRESS: 409,
+  MODEL_TASK_ALREADY_SUCCEEDED: 409,
+  MODEL_TASK_PREVIOUSLY_FAILED: 409,
+  MODEL_GLOBAL_CONCURRENCY_LIMIT: 429,
+  MODEL_PLATFORM_CONCURRENCY_LIMIT: 429,
+  MODEL_DAILY_TASK_LIMIT: 429,
+  MODEL_DAILY_TOKEN_LIMIT: 429,
+  LLM_TIMEOUT: 504,
   LLM_RATE_LIMITED: 503,
   MODEL_SCHEMA_INVALID: 502,
   CONTENT_ANALYSIS_EVIDENCE_INVALID: 502,
@@ -56,6 +67,15 @@ const messages: Record<string, string> = {
   LLM_RATE_LIMITED: "模型服务繁忙，请稍后重试",
   MODEL_SCHEMA_INVALID: "模型返回结构不完整，可以直接重试",
   CONTENT_ANALYSIS_EVIDENCE_INVALID: "模型证据引用无效，可以直接重试",
+  IDEMPOTENCY_KEY_MISSING: "请求缺少幂等标识，请刷新后重试",
+  IDEMPOTENCY_KEY_INVALID: "请求幂等标识格式不正确",
+  MODEL_TASK_IN_PROGRESS: "同一任务正在处理中，请稍候",
+  MODEL_TASK_ALREADY_SUCCEEDED: "该任务已经完成，请刷新页面",
+  MODEL_TASK_PREVIOUSLY_FAILED: "上次任务失败，请使用新的请求重试",
+  MODEL_GLOBAL_CONCURRENCY_LIMIT: "模型任务繁忙，请稍后重试",
+  MODEL_PLATFORM_CONCURRENCY_LIMIT: "平台内容任务繁忙，请稍后重试",
+  MODEL_DAILY_TASK_LIMIT: "今日模型任务额度已用完",
+  MODEL_DAILY_TOKEN_LIMIT: "今日模型用量额度已用完",
 }
 
 export function platformHttpContext(access: AccessContext | null):
@@ -67,11 +87,11 @@ export function platformHttpContext(access: AccessContext | null):
 
 export function contentBrainFailure(error: unknown, inputCode = "CONTENT_BRAIN_INPUT_INVALID") {
   if (error instanceof ZodError || error instanceof SyntaxError) return errorResponse(inputCode, 400)
-  const value = error as { code?: string; message?: string; retryable?: boolean }
+  const value = error as { code?: string; message?: string; retryable?: boolean; status?: number }
   const rawCode = value.code ?? value.message ?? "INTERNAL_ERROR"
   const code = /^[A-Z][A-Z0-9_]+$/.test(rawCode) ? rawCode : "INTERNAL_ERROR"
-  const status = statusByCode[code] ?? (code.endsWith("_INVALID") || code.endsWith("_REQUIRED") ? 400 : 500)
-  return errorResponse(code, status, Boolean(value.retryable) || status === 502 || status === 503)
+  const status = value.status ?? statusByCode[code] ?? (code.endsWith("_INVALID") || code.endsWith("_REQUIRED") ? 400 : 500)
+  return errorResponse(code, status, Boolean(value.retryable) || status === 502 || status === 503 || status === 504)
 }
 
 export function contentBrainNotFound() {

@@ -3,6 +3,7 @@ import { resolveCurrentAccess } from "@/lib/auth/request-access"
 import { onboardingFailure, onboardingHttpContext } from "@/services/ip-onboarding-http"
 import { getIpOnboardingServices, type IpOnboardingServices } from "@/services/ip-onboarding-service-factory"
 import { onboardingAnswerInputSchema } from "@/services/ip-onboarding-session-service"
+import { withRequestLog } from "@/lib/observability/request-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -29,7 +30,9 @@ export async function handleAnswer(
 }
 
 type Context = { params: Promise<{ sessionId: string; questionId: string }> }
-export async function PUT(request: Request, context: Context) {
+async function put(request: Request, context: Context) {
   const params = await context.params
   return handleAnswer(request, params.sessionId, params.questionId, await resolveCurrentAccess(), getIpOnboardingServices())
 }
+
+export const PUT = withRequestLog(put)

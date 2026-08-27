@@ -40,12 +40,22 @@ export function DailyCreationWorkspace({ publicationAccounts = [] }: { publicati
     setNotice("")
     await modelOperation.start({
       initialStage: initialStageFor(intent),
-      task: (signal) => fetch("/api/app/creation/auto", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ intent, fromRunId }),
-        signal,
-      }).then(readJson),
+      task: async (signal) => {
+        const operationKey = createIdempotencyKey()
+        const pool = await fetch("/api/app/creation/topics", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": `${operationKey}:topics` },
+          body: JSON.stringify({ intent, ...(fromRunId ? { fromRunId } : {}) }),
+          signal,
+        }).then(readJson)
+        if (!pool) throw new Error("选题池生成结果为空")
+        return fetch("/api/app/creation/scripts", {
+          method: "POST",
+          headers: { "content-type": "application/json", "idempotency-key": `${operationKey}:script` },
+          body: JSON.stringify({ runId: pool.runId, topicId: pool.recommendedTopicId, intent, ...(fromRunId ? { fromRunId } : {}) }),
+          signal,
+        }).then(readJson)
+      },
       onSuccess: (result) => {
         setDraft(result)
         setOperation(null)
@@ -80,7 +90,7 @@ export function DailyCreationWorkspace({ publicationAccounts = [] }: { publicati
       }).then(readJson)
       if (!result) throw new Error("保存结果为空")
       setDraft(result)
-      setNotice(result.saved ? "修改已保存，定稿前会重新检查" : "内容没有变化，无需创建新版本")
+      setNotice(result.saved ? "修改已保存，请人工确认事实与表达边界" : "内容没有变化，无需创建新版本")
     } catch (value) {
       const message = value instanceof Error ? value.message : "保存失败"
       setError(message)
@@ -94,7 +104,7 @@ export function DailyCreationWorkspace({ publicationAccounts = [] }: { publicati
   async function finalize({ segments }: { segments: ScriptSegment[] }) {
     setBusyAction("finalizing")
     setError("")
-    setNotice("正在检查并定稿…")
+    setNotice("正在确认定稿…")
     try {
       const result = await fetch(`/api/app/creation/runs/${draft.runId}/finalize`, {
         method: "POST",
@@ -168,6 +178,11 @@ export function DailyCreationWorkspace({ publicationAccounts = [] }: { publicati
     {(notice || error) && <p className={`workspace-notice ${error ? "workspace-notice-error" : ""}`} role={error ? "alert" : "status"}>{error || notice}</p>}
     <DailyCreationView draft={draft} regenerating={modelOperation.running} busyAction={busyAction} onSave={save} onFinalize={finalize} onDownload={download} onCopy={copy} onRegenerate={(intent) => void create(intent, draft.runId)} publicationAccounts={publicationAccounts} onSavePublication={savePublication} onLoadPublications={loadPublications} />
   </main>
+}
+
+function createIdempotencyKey() {
+  return globalThis.crypto?.randomUUID?.()
+    ?? `client-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
 function initialStageFor(intent: "initial" | "change_topic" | "change_expression"): ModelOperationStage {

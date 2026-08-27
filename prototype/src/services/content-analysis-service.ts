@@ -138,6 +138,18 @@ export class ContentAnalysisService {
     const candidate = await this.proposeCandidate(context, analysis.id)
     return { analysis, candidate }
   }
+
+  findApprovedResult(sourceAnalysisId: string) {
+    const source = this.repository.requireAnalysis(sourceAnalysisId)
+    const latest = this.repository.findLatestAnalysisForRevision(source.sampleId, source.revisionId)
+    if (!latest || latest.status !== "reviewed") throw new Error("APPROVED_ANALYSIS_RESULT_NOT_FOUND")
+    const candidateView = this.repository.getSampleWorkspace(source.sampleId).candidates
+      .find((item) => this.repository.listCandidateSourceAnalysisIds(item.id).includes(latest.id))
+    if (!candidateView) throw new Error("APPROVED_ANALYSIS_RESULT_NOT_FOUND")
+    const stored = this.repository.requireCandidate(candidateView.id)
+    const candidate = { id: stored.id, ...stored.payload, version: stored.version, status: "draft" as const }
+    return { analysis: latest, candidate }
+  }
 }
 
 function validateEvidence(payload: { nodes: Array<{ evidenceRefs: string[] }>; evidenceRefs: Array<{ id: string }> }) {

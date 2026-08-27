@@ -1,5 +1,6 @@
 import { z } from "zod"
 import {
+  contentPortraitSchema,
   industryCategorySchema,
   portraitDimensionSchema,
   type IpPortraitDraft,
@@ -21,12 +22,16 @@ const portraitGenerationInputSchema = z.object({
   })).min(8).max(10),
 }).strict()
 
-function sourceIds(draft: z.infer<typeof ipPortraitDraftSchema>): string[] {
+const portraitModelOutputSchema = z.object({
+  contentPortrait: contentPortraitSchema,
+})
+
+function sourceIds(contentPortrait: z.infer<typeof contentPortraitSchema>): string[] {
   return [
-    ...draft.contentPortrait.topicPillars.flatMap(item => item.sourceQuestionIds),
-    ...draft.contentPortrait.confirmedFacts.flatMap(item => item.sourceQuestionIds),
-    ...draft.contentPortrait.uncertainties.flatMap(item => item.relatedQuestionIds),
-    ...Object.values(draft.contentPortrait.sourceMap).flat(),
+    ...contentPortrait.topicPillars.flatMap(item => item.sourceQuestionIds),
+    ...contentPortrait.confirmedFacts.flatMap(item => item.sourceQuestionIds),
+    ...contentPortrait.uncertainties.flatMap(item => item.relatedQuestionIds),
+    ...Object.values(contentPortrait.sourceMap).flat(),
   ]
 }
 
@@ -35,49 +40,97 @@ export class IpPortraitService {
 
   async generatePreview(rawInput: PortraitGenerationInput): Promise<IpPortraitDraft> {
     const input = portraitGenerationInputSchema.parse(rawInput)
-    const draft = await this.llm.generateStructured(
+    const generated = await this.llm.generateStructured(
       "ip_portrait",
       input,
-      ipPortraitDraftSchema,
+      portraitModelOutputSchema,
     )
+    const contentPortrait = generated.contentPortrait
     const allowedQuestionIds = new Set(input.answers.map(answer => answer.questionId))
-    const hasInvalidSource = sourceIds(draft).some(questionId => !allowedQuestionIds.has(questionId))
+    const hasInvalidSource = sourceIds(contentPortrait)
+      .some(questionId => !allowedQuestionIds.has(questionId))
     if (
       hasInvalidSource
-      || draft.contentPortrait.questionSetVersion !== input.questionSetVersion
-      || draft.contentPortrait.industryCategory !== input.industryCategory
+      || contentPortrait.questionSetVersion !== input.questionSetVersion
+      || contentPortrait.industryCategory !== input.industryCategory
     ) {
       throw Object.assign(new Error("PORTRAIT_SOURCE_INVALID"), { code: "PORTRAIT_SOURCE_INVALID" })
     }
 
-    const displayName = input.displayName
-    const modelNames = [...new Set([draft.profile.displayName, draft.portrait.name].filter(Boolean))]
-    const replaceModelName = (value: string) => modelNames.reduce(
-      (current, modelName) => current.replaceAll(modelName, displayName),
-      value,
-    )
-    const headlineBody = draft.portrait.headline.replace(/^我理解的[^：:]+[：:]\s*/, "") || draft.portrait.title
-    const contentPortrait = draft.contentPortrait
-
-    return {
-      ...draft,
-      contentPortrait,
-      portrait: {
-        ...draft.portrait,
-        headline: `我理解的${displayName}：${headlineBody}`,
-        name: displayName,
-        account: replaceModelName(draft.portrait.account),
-      },
-      profile: {
-        ...draft.profile,
-        displayName,
-        industryCategory: input.industryCategory,
-        contentPortrait,
-      },
-      account: {
-        platform: input.primaryPlatform,
-        name: replaceModelName(draft.account.name),
-      },
-    }
+    return ipPortraitDraftSchema.parse(projectPortraitDraft(input, contentPortrait))
   }
+}
+
+function projectPortraitDraft(
+  input: PortraitGenerationInput,
+  contentPortrait: z.infer<typeof contentPortraitSchema>,
+) {
+  const displayName = input.displayName
+  const identity = atLeast(contentPortrait.identityPositioning, "真实经验内容分享者", 2)
+  const audience = atLeast(contentPortrait.targetAudience, "需要相关经验的人", 2)
+  const facts = contentPortrait.confirmedFacts.map(item => item.statement).filter(Boolean).slice(0, 8)
+  const credibility = unique([
+    ...contentPortrait.credibilitySources,
+    ...facts,
+  ])
+  const directions = contentPortrait.topicPillars.map(item => atLeast(item.title, "内容方向", 2)).slice(0, 5)
+  const boundaries = contentPortrait.boundaries.filter(item => item.trim().length >= 2).slice(0, 6)
+  const accountName = `${displayName}讲${directions[0] ?? "真实经验"}`
+  const source = `画像仅依据本次 ${input.answers.length} 条已确认建档回答整理，未补充外部事实。`
+  const authority = atLeast(credibility.join("；"), "当前依据已确认的建档回答形成内容判断。", 5)
+  const experience = atLeast(
+    unique([...contentPortrait.credibilitySources, ...contentPortrait.contentAssets, ...facts]).join("；"),
+    source,
+    10,
+  )
+  const safeBoundaries = boundaries.length > 0 ? boundaries : ["不补充回答中未确认的事实"]
+  const verifiedFacts = facts.length > 0 ? facts : [`已完成 ${input.answers.length} 条建档回答`]
+  const uncertainty = contentPortrait.uncertainties.map(item => item.statement).filter(Boolean).join("；")
+
+  return {
+    contentPortrait,
+    portrait: {
+      headline: `我理解的${displayName}：${identity}`,
+      name: displayName,
+      title: identity,
+      identity: atLeast(`${identity}，主要面向${audience}。`, source, 10),
+      authority,
+      audience,
+      boundaries: safeBoundaries,
+      directions,
+      source,
+      verifiedFacts,
+      uncertainFact: atLeast(uncertainty, "当前没有模型标记的待确认事项", 2),
+      account: `${platformLabel(input.primaryPlatform)}｜${accountName}`,
+    },
+    profile: {
+      displayName,
+      experience,
+      expertise: identity,
+      audience,
+      voiceStyle: atLeast(contentPortrait.presentationStyles.join("、"), "真实、清晰", 2),
+      boundaries: safeBoundaries.join("；"),
+      industryCategory: input.industryCategory,
+      contentPortrait,
+    },
+    account: { platform: input.primaryPlatform, name: accountName },
+  }
+}
+
+function unique(values: string[]) {
+  return [...new Set(values.map(value => value.trim()).filter(Boolean))]
+}
+
+function atLeast(value: string, fallback: string, minimum: number) {
+  return value.trim().length >= minimum ? value.trim() : fallback
+}
+
+function platformLabel(platform: PortraitGenerationInput["primaryPlatform"]) {
+  return {
+    wechat_channels: "视频号",
+    douyin: "抖音",
+    xiaohongshu: "小红书",
+    kuaishou: "快手",
+    other: "内容账号",
+  }[platform]
 }

@@ -1,0 +1,28 @@
+/var/log/content-agent/app-access.jsonl
+/var/log/content-agent/nginx-access.jsonl {
+    daily
+    rotate 14
+    maxage 14
+    maxsize 100M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    su root adm
+}
+
+/var/log/content-agent/app-error.jsonl
+/var/log/content-agent/nginx-exception.jsonl
+/var/log/content-agent/nginx-error.log {
+    daily
+    rotate 90
+    maxage 90
+    maxsize 100M
+    missingok
+    notifempty
+    compress
+    delaycompress
+    copytruncate
+    su root adm
+}

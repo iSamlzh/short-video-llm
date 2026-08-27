@@ -99,6 +99,23 @@ describe("database migrations", () => {
     expect(database.prepare("SELECT COUNT(*) count FROM schema_migrations WHERE version=14").get()).toEqual({ count: 1 })
   })
 
+  it("版本 18 为模型任务增加请求追踪编号", () => {
+    database = openDatabase(":memory:")
+    const columns = database.prepare("PRAGMA table_info(model_tasks)").all() as Array<{ name: string }>
+
+    expect(columns.map(column => column.name)).toContain("request_id")
+    expect(database.prepare("SELECT COUNT(*) count FROM schema_migrations WHERE version=18").get()).toEqual({ count: 1 })
+  })
+
+  it("版本 19 将平台模型任务和租户模型任务隔离计量", () => {
+    database = openDatabase(":memory:")
+    const columns = database.prepare("PRAGMA table_info(model_tasks)").all() as Array<{ name: string; notnull: number }>
+
+    expect(columns.map(column => column.name)).toEqual(expect.arrayContaining(["scope_type", "scope_id"]))
+    expect(columns.find(column => column.name === "tenant_id")?.notnull).toBe(0)
+    expect(database.prepare("SELECT COUNT(*) count FROM schema_migrations WHERE version=19").get()).toEqual({ count: 1 })
+  })
+
   it("应用版本 8 并建立爆款拆解与创作结构谱系", () => {
     database = openDatabase(":memory:")
     applyMigrations(database)
@@ -132,6 +149,21 @@ describe("database migrations", () => {
       );
       CREATE TABLE platform_content_analysis_versions (id TEXT PRIMARY KEY);
       CREATE TABLE platform_structure_candidates (id TEXT PRIMARY KEY);
+      CREATE TABLE users (id TEXT PRIMARY KEY);
+      CREATE TABLE tenants (id TEXT PRIMARY KEY);
+      CREATE TABLE memberships (
+        id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        user_id TEXT,
+        role_key TEXT,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL
+      );
+      CREATE TABLE membership_capabilities (membership_id TEXT, capability TEXT, PRIMARY KEY(membership_id,capability));
+      CREATE TABLE ip_profiles (
+        id TEXT PRIMARY KEY, tenant_id TEXT NOT NULL, display_name TEXT NOT NULL,
+        profile_json TEXT NOT NULL, version INTEGER NOT NULL, updated_at TEXT NOT NULL
+      );
       CREATE TABLE content_accounts (
         id TEXT PRIMARY KEY,
         tenant_id TEXT NOT NULL,
@@ -144,6 +176,7 @@ describe("database migrations", () => {
       CREATE TABLE creation_run_context (
         run_id TEXT PRIMARY KEY,
         tenant_id TEXT NOT NULL,
+        ip_profile_id TEXT NOT NULL,
         created_at TEXT NOT NULL
       );
     `)

@@ -9,7 +9,7 @@ const now = () => new Date().toISOString()
 const roleCapabilities: Record<string, Capability[]> = {
   owner: [
     "ip.view", "content.create", "content.edit", "content.lock",
-    "publication.record", "metrics.import", "review.generate", "review.view", "review.confirm", "team.manage",
+    "publication.record", "metrics.import", "review.generate", "review.view", "review.confirm", "team.manage", "ip.manage",
   ],
   operator: ["ip.view", "content.create", "content.edit", "publication.record"],
   reviewer: ["ip.view", "metrics.import", "review.generate", "review.view"],
@@ -69,6 +69,12 @@ export async function seedDemoData(database: Database.Database, password: string
       VALUES (?,?,?,?,'verified',1,'active','demo',?,?)`)
     for (const profile of profiles) {
       profileInsert.run(profile.id, "tenant-linjie", profile.name, JSON.stringify(profile.profile), createdAt, createdAt)
+      database.prepare(`INSERT OR IGNORE INTO ip_profile_versions
+        (id,tenant_id,ip_profile_id,version,display_name,profile_json,change_summary,created_by_user_id,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?)`).run(
+        `version-${profile.id}-1`, "tenant-linjie", profile.id, 1, profile.name,
+        JSON.stringify(profile.profile), "演示画像初始版本", "user-owner", createdAt,
+      )
     }
 
     const accountInsert = database.prepare(`INSERT OR IGNORE INTO content_accounts
@@ -314,6 +320,7 @@ export function clearDemoData(database: Database.Database, allowed: boolean) {
       DELETE FROM platform_content_samples WHERE data_origin = 'demo';
       DELETE FROM imported_content_metrics WHERE data_origin = 'demo';
       DELETE FROM sessions WHERE user_id IN (SELECT id FROM users WHERE data_origin = 'demo');
+      DELETE FROM model_tasks WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo');
       DELETE FROM user_current_context WHERE user_id IN (SELECT id FROM users WHERE data_origin = 'demo');
       DELETE FROM audit_logs WHERE actor_user_id IN (SELECT id FROM users WHERE data_origin = 'demo');
       DELETE FROM membership_account_scopes WHERE membership_id IN (SELECT id FROM memberships WHERE data_origin = 'demo');
@@ -322,6 +329,7 @@ export function clearDemoData(database: Database.Database, allowed: boolean) {
       DELETE FROM invitations WHERE data_origin = 'demo';
       DELETE FROM memberships WHERE data_origin = 'demo';
       DELETE FROM content_accounts WHERE data_origin = 'demo';
+      DELETE FROM ip_profile_versions WHERE tenant_id IN (SELECT id FROM tenants WHERE data_origin='demo');
       DELETE FROM ip_profiles WHERE data_origin = 'demo';
       DELETE FROM tenants WHERE data_origin = 'demo';
       DELETE FROM users WHERE data_origin = 'demo';

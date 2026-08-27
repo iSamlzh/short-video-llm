@@ -14,7 +14,16 @@ const statusByCode: Record<string, number> = {
   ONBOARDING_STATE_INVALID: 409,
   PORTRAIT_SOURCE_INVALID: 502,
   MODEL_SCHEMA_INVALID: 502,
-  LLM_TIMEOUT: 503,
+  IDEMPOTENCY_KEY_MISSING: 400,
+  IDEMPOTENCY_KEY_INVALID: 400,
+  MODEL_TASK_IN_PROGRESS: 409,
+  MODEL_TASK_ALREADY_SUCCEEDED: 409,
+  MODEL_TASK_PREVIOUSLY_FAILED: 409,
+  MODEL_GLOBAL_CONCURRENCY_LIMIT: 429,
+  MODEL_TENANT_CONCURRENCY_LIMIT: 429,
+  MODEL_DAILY_TASK_LIMIT: 429,
+  MODEL_DAILY_TOKEN_LIMIT: 429,
+  LLM_TIMEOUT: 504,
   PORTRAIT_SERVICE_UNAVAILABLE: 503,
   PORTRAIT_DRAFT_REQUIRED: 409,
   PORTRAIT_DRAFT_VERSION_CONFLICT: 409,
@@ -30,12 +39,12 @@ export function onboardingHttpContext(access: AccessContext | null):
 
 export function onboardingFailure(error: unknown, inputCode = "ONBOARDING_INPUT_INVALID"): Response {
   if (error instanceof ZodError) return failure(inputCode, 400)
-  const value = error as { code?: string; message?: string }
+  const value = error as { code?: string; message?: string; status?: number; retryable?: boolean }
   const rawCode = value.code ?? value.message ?? "INTERNAL_ERROR"
   const code = /^[A-Z][A-Z0-9_]+$/.test(rawCode) ? rawCode : "INTERNAL_ERROR"
-  return failure(code, statusByCode[code] ?? 500)
+  return failure(code, value.status ?? statusByCode[code] ?? 500, Boolean(value.retryable))
 }
 
-function failure(errorCode: string, status: number): Response {
-  return Response.json({ errorCode, retryable: status === 503 }, { status })
+function failure(errorCode: string, status: number, retryable = false): Response {
+  return Response.json({ errorCode, retryable: retryable || status === 502 || status === 503 || status === 504 }, { status })
 }

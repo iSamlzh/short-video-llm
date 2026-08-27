@@ -37,8 +37,24 @@ test("平台拆解启用的新结构进入团长创作且不泄露内部内容",
   await page.evaluate(() => fetch("/api/auth/logout", { method: "POST" }))
   await login(page, "owner@example.test")
   const creationResult = await page.evaluate(async () => {
-    const response = await fetch("/api/app/creation/auto", {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ intent: "initial" }),
+    const operationKey = crypto.randomUUID()
+    const currentResponse = await fetch("/api/app/creation/current")
+    const current = currentResponse.status === 204 ? null : await currentResponse.json()
+    const topicResponse = await fetch("/api/app/creation/topics", {
+      method: "POST", headers: { "content-type": "application/json", "idempotency-key": `${operationKey}:topics` },
+      body: JSON.stringify(current?.runId
+        ? { intent: "change_expression", fromRunId: current.runId }
+        : { intent: "initial" }),
+    })
+    const pool = await topicResponse.json()
+    if (!topicResponse.ok) return { ok: false, payload: pool }
+    const response = await fetch("/api/app/creation/scripts", {
+      method: "POST", headers: { "content-type": "application/json", "idempotency-key": `${operationKey}:script` },
+      body: JSON.stringify({
+        runId: pool.runId, topicId: pool.recommendedTopicId,
+        intent: current?.runId ? "change_expression" : "initial",
+        ...(current?.runId ? { fromRunId: current.runId } : {}),
+      }),
     })
     return { ok: response.ok, payload: await response.json() }
   })

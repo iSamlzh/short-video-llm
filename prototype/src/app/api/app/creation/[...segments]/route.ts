@@ -7,6 +7,7 @@ import { PrototypeRepository } from "@/lib/db/repository"
 import { OpenAiCompatibleAdapter } from "@/lib/llm/adapter"
 import { PrototypeFixtureLlmAdapter } from "@/lib/llm/fake"
 import { StructuredLlmClient } from "@/lib/llm/structured"
+import { withRequestLog } from "@/lib/observability/request-log"
 import { RunService } from "@/services/run-service"
 import { AutoCreationOrchestrator } from "@/services/auto-creation-orchestrator"
 import { CreationAppService } from "@/services/creation-app-service"
@@ -16,6 +17,9 @@ import { z } from "zod"
 import { scriptRevisionParagraphsSchema } from "@/domain/schemas"
 import { scriptSegmentsSchema } from "@/domain/creation-contracts"
 import { buildScriptDocx } from "@/services/script-export-service"
+import { modelTaskError } from "@/lib/llm/model-task-error"
+import { deprecationHeaders, requireIdempotencyKey } from "@/lib/http/idempotency-key"
+import { getModelTaskService } from "@/services/model-task-service-factory"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -29,6 +33,16 @@ const draftMutationSchema = z.object({
 const nextRoundSchema = z.object({
   sourceReviewId: z.string().trim().min(1),
   expectedMemoryVersion: z.number().int().positive(),
+}).strict()
+const topicScriptSchema = z.object({
+  runId: z.string().trim().min(1),
+  topicId: z.string().trim().min(1),
+  intent: z.enum(["initial", "change_topic", "change_expression"]).optional(),
+  fromRunId: z.string().trim().min(1).optional(),
+}).strict()
+const topicPoolSchema = z.object({
+  intent: z.enum(["initial", "change_topic", "change_expression"]).optional(),
+  fromRunId: z.string().trim().min(1).optional(),
 }).strict()
 
 function service() {
@@ -58,6 +72,7 @@ const modelErrorStatuses: Record<string, number> = {
   MODEL_SCHEMA_INVALID: 502,
   MODEL_CONNECTION_FAILED: 503,
   MODEL_SERVICE_UNAVAILABLE: 503,
+  MODEL_STREAM_INVALID: 502,
 }
 
 export function creationErrorResponse(error: unknown) {
@@ -80,11 +95,59 @@ async function dispatch(request: NextRequest, segments: string[]) {
     }
     if (request.method === "POST" && segments.join("/") === "auto") {
       const body = await request.json().catch(() => ({})) as { intent?: "initial" | "change_topic" | "change_expression"; fromRunId?: string }
-      return Response.json(await service().create(access, body), { status: 201 })
+      const result = await getModelTaskService().run({
+        tenantId: access.tenantId,
+        actorUserId: access.userId,
+        operation: `creation.auto.${body.intent ?? "initial"}`,
+        idempotencyKey: requireIdempotencyKey(request),
+        signal: request.signal,
+      }, () => service().create(access, body), (runId) => {
+        if (!runId) throw modelTaskError("MODEL_TASK_RESULT_NOT_FOUND", 409, false)
+        return service().getRun(access, runId)
+      })
+      return Response.json(result, {
+        status: 201,
+        headers: deprecationHeaders("/api/app/creation/topics + /api/app/creation/scripts"),
+      })
+    }
+    if (request.method === "POST" && segments.join("/") === "topics") {
+      const input = topicPoolSchema.parse(await request.json().catch(() => ({})))
+      const result = await getModelTaskService().run({
+        tenantId: access.tenantId,
+        actorUserId: access.userId,
+        operation: `creation.topics.${input.intent ?? "initial"}`,
+        idempotencyKey: requireIdempotencyKey(request),
+        signal: request.signal,
+      }, () => service().prepareTopicPool(access, input), (runId) => {
+        if (!runId) throw modelTaskError("MODEL_TASK_RESULT_NOT_FOUND", 409, false)
+        return service().getTopicPool(access, runId)
+      })
+      return Response.json(result, { status: 201 })
+    }
+    if (request.method === "POST" && segments.join("/") === "scripts") {
+      const input = topicScriptSchema.parse(await request.json().catch(() => null))
+      const result = await getModelTaskService().run({
+        tenantId: access.tenantId,
+        actorUserId: access.userId,
+        operation: "creation.script",
+        idempotencyKey: requireIdempotencyKey(request),
+        signal: request.signal,
+      }, () => service().createScriptFromTopic(access, input), () => service().createScriptFromTopic(access, input))
+      return Response.json(result, { status: 201 })
     }
     if (request.method === "POST" && segments.join("/") === "next-round") {
       const input = nextRoundSchema.parse(await request.json().catch(() => null))
-      return Response.json(await service().createNextRound(access, input), { status: 201 })
+      const result = await getModelTaskService().run({
+        tenantId: access.tenantId,
+        actorUserId: access.userId,
+        operation: "creation.topics.review_followup",
+        idempotencyKey: requireIdempotencyKey(request),
+        signal: request.signal,
+      }, () => service().createNextRound(access, input), (runId) => {
+        if (!runId) throw modelTaskError("MODEL_TASK_RESULT_NOT_FOUND", 409, false)
+        return service().getTopicPool(access, runId)
+      })
+      return Response.json(result, { status: 201 })
     }
     if (request.method === "PUT" && segments[0] === "runs" && segments[1] && segments[2] === "draft" && segments.length === 3) {
       return Response.json(service().saveDraft(access, segments[1], await draftMutationInput(request)))
@@ -117,6 +180,6 @@ function safeFilename(value: string) {
 }
 
 type RouteContext = { params: Promise<{ segments: string[] }> }
-export async function GET(request: NextRequest, context: RouteContext) { return dispatch(request, (await context.params).segments) }
-export async function POST(request: NextRequest, context: RouteContext) { return dispatch(request, (await context.params).segments) }
-export async function PUT(request: NextRequest, context: RouteContext) { return dispatch(request, (await context.params).segments) }
+export const GET = withRequestLog(async (request: NextRequest, context: RouteContext) => dispatch(request, (await context.params).segments))
+export const POST = withRequestLog(async (request: NextRequest, context: RouteContext) => dispatch(request, (await context.params).segments))
+export const PUT = withRequestLog(async (request: NextRequest, context: RouteContext) => dispatch(request, (await context.params).segments))

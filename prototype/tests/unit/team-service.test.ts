@@ -3,6 +3,9 @@ import type Database from "better-sqlite3"
 import { openDatabase } from "../../src/lib/db/database"
 import type { AccessContext } from "../../src/domain/access"
 import { TeamService } from "../../src/services/team-service"
+import { LocalIdentityProvider } from "../../src/lib/auth/local-identity-provider"
+import { IdentityRepository } from "../../src/lib/db/identity-repository"
+import { SessionRepository } from "../../src/lib/auth/session"
 
 let database: Database.Database | undefined
 
@@ -71,7 +74,7 @@ describe("team access service", () => {
       capabilities: ["team.manage", "content.create"],
     }
 
-    expect(() => service.updateAccess(delegatedManager, "membership-operator", {
+    expect(() => service.updateAccess(delegatedManager, "membership-owner", {
       roleKey: "operator",
       capabilities: ["team.manage", "content.lock"],
       ipIds: ["ip-linjie"],
@@ -93,5 +96,36 @@ describe("team access service", () => {
       ["account-other", "account-linjie-wechat"],
     ))
       .toEqual({ ipProfileId: "ip-linjie", contentAccountId: "account-linjie-wechat" })
+  })
+
+  it("creates a real scoped member with a one-time temporary password", async () => {
+    database = openDatabase(":memory:")
+    seedTeam(database)
+    const service = new TeamService(database)
+    const created = await service.createMember(ownerContext, {
+      email: "new-operator@example.test", displayName: "新运营", roleKey: "operator",
+      ipIds: ["ip-linjie"], contentAccountIds: ["account-linjie-wechat"],
+    })
+
+    const identity = await new LocalIdentityProvider(new IdentityRepository(database))
+      .authenticate("new-operator@example.test", created.temporaryPassword)
+    expect(identity.mustChangePassword).toBe(true)
+    expect(service.getMemberAccess(created.membershipId)).toMatchObject({
+      roleKey: "operator", ipIds: ["ip-linjie"], contentAccountIds: ["account-linjie-wechat"],
+    })
+    expect(database.prepare("SELECT action FROM audit_logs WHERE resource_id=?").get(created.membershipId))
+      .toEqual({ action: "team.member.created" })
+  })
+
+  it("revokes active sessions when a member is disabled", () => {
+    database = openDatabase(":memory:")
+    seedTeam(database)
+    const sessions = new SessionRepository(database)
+    const token = sessions.create("user-operator", "tenant")
+
+    new TeamService(database).setStatus(ownerContext, "membership-operator", "disabled")
+
+    expect(sessions.resolve(token)).toBeNull()
+    expect(database.prepare("SELECT status FROM memberships WHERE id='membership-operator'").get()).toEqual({ status: "disabled" })
   })
 })

@@ -5,6 +5,7 @@ type ContextInput = {
   tenantId: string
   actorUserId: string
   ipId: string
+  ipProfileVersion: number
   accountId: string | null
   businessDate: string
   tenantMemoryVersion?: number | null
@@ -17,6 +18,7 @@ type Scope = { tenantId: string; ipIds: string[]; contentAccountIds: string[] }
 type Row = {
   run_id: string; tenant_id: string; ip_profile_id: string; content_account_id: string | null;
   business_date: string; tenant_memory_version: number | null; structure_version_ids_json: string;
+  ip_profile_version: number | null;
   trigger_type: "manual" | "review_followup"; source_review_id: string | null
 }
 
@@ -25,13 +27,14 @@ export class CreationLineageRepository {
 
   attach(input: ContextInput) {
     this.database.prepare(`INSERT INTO creation_run_context
-      (run_id,tenant_id,actor_user_id,ip_profile_id,content_account_id,business_date,tenant_memory_version,
+      (run_id,tenant_id,actor_user_id,ip_profile_id,ip_profile_version,content_account_id,business_date,tenant_memory_version,
        structure_version_ids_json,trigger_type,source_review_id,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?)`).run(
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).run(
       input.runId,
       input.tenantId,
       input.actorUserId,
       input.ipId,
+      input.ipProfileVersion,
       input.accountId,
       input.businessDate,
       input.tenantMemoryVersion ?? null,
@@ -67,6 +70,7 @@ export class CreationLineageRepository {
       runId: row.run_id,
       tenantId: row.tenant_id,
       ipId: row.ip_profile_id,
+      ipProfileVersion: row.ip_profile_version,
       accountId: row.content_account_id,
       businessDate: row.business_date,
       tenantMemoryVersion: row.tenant_memory_version,

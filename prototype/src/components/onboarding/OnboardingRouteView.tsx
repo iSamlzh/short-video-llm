@@ -75,7 +75,7 @@ export function OnboardingRouteView() {
     if (!view) return
     setBusy(true); setStatus("")
     try {
-      const response = await fetch(`/api/app/ip-onboarding/sessions/${view.session.id}/portrait-preview`, jsonRequest("POST", { expectedVersion: view.session.version }))
+      const response = await fetch(`/api/app/ip-onboarding/sessions/${view.session.id}/portrait-preview`, jsonRequest("POST", { expectedVersion: view.session.version }, true))
       setView(await readResponse(response)); setPortraitStale(false)
     } catch (error) { await handleFailure(error) }
     finally { setBusy(false) }
@@ -144,8 +144,10 @@ export function OnboardingRouteView() {
   return <div className="document-page onboarding-start-view"><section className="onboarding-sheet"><h1>建档进度需要恢复</h1><button className="primary-button" onClick={loadCurrent}>重新读取最新进度</button></section></div>
 }
 
-function jsonRequest(method: string, body: unknown): RequestInit {
-  return { method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) }
+function jsonRequest(method: string, body: unknown, modelTask = false): RequestInit {
+  return { method, headers: {
+    "content-type": "application/json", ...(modelTask ? { "idempotency-key": crypto.randomUUID() } : {}),
+  }, body: JSON.stringify(body) }
 }
 
 async function readResponse(response: Response) {

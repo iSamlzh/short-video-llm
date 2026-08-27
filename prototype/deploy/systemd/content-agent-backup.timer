@@ -1,0 +1,11 @@
+[Unit]
+Description=每天执行团长内容增长 Agent 数据备份
+
+[Timer]
+OnCalendar=*-*-* 03:15:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=10m
+Unit=content-agent-backup.service
+
+[Install]
+WantedBy=timers.target

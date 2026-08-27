@@ -18,6 +18,7 @@ export class LocalIdentityProvider implements IdentityProvider {
     audience: ActorAudience
     platformRole?: "platform_operator" | "platform_admin"
     dataOrigin: "demo" | "formal"
+    mustChangePassword?: boolean
   }) {
     this.identities.create({
       ...input,
@@ -30,6 +31,6 @@ export class LocalIdentityProvider implements IdentityProvider {
     const user = this.identities.findByEmail(normalizeEmail(email))
     const valid = user?.status === "active" && await verifyPassword(password, user.password_hash)
     if (!user || !valid) throw new Error("INVALID_CREDENTIALS")
-    return { userId: user.id, audience: user.audience }
+    return { userId: user.id, audience: user.audience, mustChangePassword: Boolean(user.must_change_password) }
   }
 }

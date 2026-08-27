@@ -3,6 +3,7 @@ import { resolveCurrentAccess } from "@/lib/auth/request-access"
 import { onboardingFailure, onboardingHttpContext } from "@/services/ip-onboarding-http"
 import { getIpOnboardingServices, type IpOnboardingServices } from "@/services/ip-onboarding-service-factory"
 import { startOnboardingSessionInputSchema } from "@/services/ip-onboarding-session-service"
+import { withRequestLog } from "@/lib/observability/request-log"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -27,10 +28,13 @@ export async function handleSessions(request: Request, access: AccessContext | n
   }
 }
 
-export async function GET(request: Request) {
+async function get(request: Request) {
   return handleSessions(request, await resolveCurrentAccess(), getIpOnboardingServices())
 }
 
-export async function POST(request: Request) {
+async function post(request: Request) {
   return handleSessions(request, await resolveCurrentAccess(), getIpOnboardingServices())
 }
+
+export const GET = withRequestLog(get)
+export const POST = withRequestLog(post)

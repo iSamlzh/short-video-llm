@@ -64,4 +64,21 @@ describe("创作决策合同", () => {
     expect(result.recentDataStatus).toBe("none")
     expect(result).not.toHaveProperty("recentDataSummary")
   })
+
+  it("校正证据标签时保留模型给出的选题关联说明", () => {
+    const result = groundCreationDecisionBrief({
+      ...groundedBrief,
+      ipEvidenceRefs: [{
+        label: "模型改写过的标签",
+        sourceAnswerId: "answer-experience",
+        relevance: "这段一线经历能支撑当前选题中的判断过程。",
+      }],
+    }, [{ label: "七年社区团购经历", sourceAnswerId: "answer-experience", sourceType: "ip_answer" }], null)
+
+    expect(result.ipEvidenceRefs[0]).toEqual({
+      label: "七年社区团购经历",
+      sourceAnswerId: "answer-experience",
+      relevance: "这段一线经历能支撑当前选题中的判断过程。",
+    })
+  })
 })

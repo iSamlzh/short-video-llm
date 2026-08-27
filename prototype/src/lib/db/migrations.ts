@@ -55,7 +55,29 @@ const migrations = [
     version: 14,
     filename: "014_review_followup_lineage.sql",
   },
+  {
+    version: 15,
+    filename: "015_model_tasks.sql",
+  },
+  {
+    version: 16,
+    filename: "016_team_accounts.sql",
+  },
+  {
+    version: 17,
+    filename: "017_ip_account_management.sql",
+  },
+  {
+    version: 18,
+    filename: "018_model_task_request_trace.sql",
+  },
+  {
+    version: 19,
+    filename: "019_model_task_scopes.sql",
+  },
 ] as const
+
+export const LATEST_MIGRATION_VERSION = migrations.at(-1)!.version
 
 export function applyMigrations(database: Database.Database) {
   database.exec(`

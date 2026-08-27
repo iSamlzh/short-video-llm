@@ -81,13 +81,16 @@ function browserApi(): ContentBrainApi {
     return response.json() as Promise<T>
   }
   const json = (method: string, body: unknown): RequestInit => ({ method, headers: { "content-type": "application/json" }, body: JSON.stringify(body) })
+  const modelJson = (body: unknown): RequestInit => ({ method: "POST", headers: {
+    "content-type": "application/json", "idempotency-key": crypto.randomUUID(),
+  }, body: JSON.stringify(body) })
   return {
     createSample: (input) => request("/samples", json("POST", input)),
     importSamples: (file, rightsNote) => { const body = new FormData(); body.set("file", file); body.set("rightsNote", rightsNote); return request("/samples/imports", { method: "POST", body }) },
-    analyze: (id) => request(`/samples/${id}/analyze`, json("POST", {})), getSample: (id) => request(`/samples/${id}`),
-    saveAnalysis: (id, input) => request(`/analyses/${id}`, json("PUT", input)), approveAnalysis: (id, input) => request(`/analyses/${id}/approve`, json("POST", input)),
+    analyze: (id) => request(`/samples/${id}/analyze`, modelJson({})), getSample: (id) => request(`/samples/${id}`),
+    saveAnalysis: (id, input) => request(`/analyses/${id}`, json("PUT", input)), approveAnalysis: (id, input) => request(`/analyses/${id}/approve`, modelJson(input)),
     rejectAnalysis: (id, input) => request(`/analyses/${id}/reject`, json("POST", input)), saveCandidate: (id, input) => request(`/candidates/${id}`, json("PUT", input)),
-    previewCandidate: (id, input) => request(`/candidates/${id}/preview`, json("POST", input)), rejectCandidate: (id, input) => request(`/candidates/${id}/reject`, json("POST", input)),
+    previewCandidate: (id, input) => request(`/candidates/${id}/preview`, modelJson(input)), rejectCandidate: (id, input) => request(`/candidates/${id}/reject`, json("POST", input)),
     activateCandidate: (id, input) => request(`/candidates/${id}/activate`, json("POST", input)), listSamples: () => request("/samples"), listStructures: () => request("/structures"),
   }
 }

@@ -24,10 +24,22 @@ describe("approved AI-native page hierarchy", () => {
     render(<DailyCreationView draft={{
       ...demoProductData.draft,
       decisionBrief: {
+        recommendationSummary: "基于七年社区团购经历，今天讲清团长如何用长期判断赢得邻居信任。",
+        portraitFitSummary: "画像显示她有长期一线团购经验，表达重视真实取舍，适合用判断过程建立信任。",
         objective: "建立信任",
         whyToday: "受众正在决定是否长期相信一个团长的判断。",
         audienceProblem: "不知道怎样判断一个团长是否值得长期信任。",
-        ipEvidenceRefs: [{ label: "七年社区团购经历", sourceAnswerId: "answer-experience" }],
+        topicOpportunity: "从一次选品判断失误切入，给出值得长期信任的三个判断标准。",
+        ipEvidenceRefs: [{
+          label: "七年社区团购经历",
+          sourceAnswerId: "answer-experience",
+          relevance: "长期一线经历能让信任判断来自真实取舍，而不是泛泛讲道理。",
+        }],
+        structureChoice: {
+          structureId: "failure-turn-v1",
+          structureName: "踩坑转折结构",
+          reason: "先讲判断失误，再还原改进动作，适合把真实经历转成可信方法。",
+        },
         recentDataStatus: "none",
         repetitionRisk: "low",
         nextSignal: "发布后重点观察完播率和评论中的信任问题。",
@@ -36,14 +48,17 @@ describe("approved AI-native page hierarchy", () => {
 
     expect(screen.getByText("今天建议讲")).toBeVisible()
     expect(screen.getByText("建立信任")).toBeVisible()
-    expect(screen.getByText("受众正在决定是否长期相信一个团长的判断。")).toBeVisible()
+    expect(screen.getByText("基于七年社区团购经历，今天讲清团长如何用长期判断赢得邻居信任。")).toBeVisible()
+    expect(screen.getByText("画像显示她有长期一线团购经验，表达重视真实取舍，适合用判断过程建立信任。")).toBeVisible()
     expect(screen.getByText("不知道怎样判断一个团长是否值得长期信任。")).toBeVisible()
+    expect(screen.getByText("从一次选品判断失误切入，给出值得长期信任的三个判断标准。")).toBeVisible()
+    expect(screen.getByText("踩坑转折结构")).toBeVisible()
     expect(screen.getByText("发布后重点观察完播率和评论中的信任问题。")).toBeVisible()
     expect(screen.getByText("尚未使用历史表现")).toBeVisible()
     expect(screen.queryByText(/近期账号表现|已参考复盘/)).not.toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "真正难的不是找货，是让邻居愿意一直信你" })).toBeVisible()
     expect(screen.getByRole("button", { name: "确认定稿" })).toBeVisible()
-    expect(screen.getByText("定稿后可下载 DOCX，复制文本也会启用")).toBeVisible()
+    expect(screen.getByText("人工确认后定稿，即可下载 DOCX；复制文本也会启用")).toBeVisible()
     expect(screen.queryByRole("button", { name: "下载口播稿" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "复制文本" })).not.toBeInTheDocument()
     expect(screen.queryByText("选择今天的口播稿")).not.toBeInTheDocument()
@@ -54,10 +69,22 @@ describe("approved AI-native page hierarchy", () => {
     render(<DailyCreationView draft={{
       ...demoProductData.draft,
       decisionBrief: {
+        recommendationSummary: "用七年社区团购经历回答新团长的信任判断问题。",
+        portraitFitSummary: "画像显示她拥有长期一线经验，并且习惯从真实踩坑中总结判断方法。",
         objective: "建立信任",
         whyToday: "今天先回答信任问题。",
         audienceProblem: "不知道该相信谁。",
-        ipEvidenceRefs: [{ label: "七年社区团购经历", sourceAnswerId: "answer-experience" }],
+        topicOpportunity: "从一次真实踩坑切入，说明判断团长是否可信的方法。",
+        ipEvidenceRefs: [{
+          label: "七年社区团购经历",
+          sourceAnswerId: "answer-experience",
+          relevance: "这段经历能支撑具体的判断过程，而不是只给结论。",
+        }],
+        structureChoice: {
+          structureId: "failure-turn-v1",
+          structureName: "真实经历复盘结构",
+          reason: "先讲踩坑，再给出判断方法，适合建立可信度。",
+        },
         recentDataStatus: "none",
         repetitionRisk: "medium",
         nextSignal: "观察真实评论问题。",
@@ -67,7 +94,10 @@ describe("approved AI-native page hierarchy", () => {
     expect(screen.queryByRole("dialog", { name: "这次推荐依据" })).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "查看完整判断依据" }))
     expect(screen.getByRole("dialog", { name: "这次推荐依据" })).toBeVisible()
-    expect(screen.getByText("七年社区团购经历")).toBeVisible()
+    expect(screen.queryByText("七年社区团购经历")).not.toBeInTheDocument()
+    expect(screen.getAllByText("画像显示她拥有长期一线经验，并且习惯从真实踩坑中总结判断方法。").length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText("真实经历复盘结构").length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText("先讲踩坑，再给出判断方法，适合建立可信度。").length).toBeGreaterThanOrEqual(2)
     expect(screen.getByText("中等重复风险")).toBeVisible()
   })
 
@@ -153,11 +183,11 @@ describe("approved AI-native page hierarchy", () => {
     })
   })
 
-  it("allows a saved revision to run its check as part of finalization", () => {
+  it("首版允许用户人工确认后直接定稿", () => {
     render(<DailyCreationView draft={{ ...demoProductData.draft, status: "needs_qa" }} />)
 
-    expect(screen.getByRole("button", { name: "检查并定稿" })).toBeEnabled()
-    expect(screen.getByText("完成内容检查并定稿后，可下载 DOCX 和复制文本")).toBeVisible()
+    expect(screen.getByRole("button", { name: "确认定稿" })).toBeEnabled()
+    expect(screen.getByText("人工确认后定稿，即可下载 DOCX；复制文本也会启用")).toBeVisible()
   })
 
   it("makes download primary and keeps copy as a tertiary action after locking", async () => {
@@ -210,13 +240,18 @@ describe("approved AI-native page hierarchy", () => {
     expect(screen.getByText(/不会改动平台模板或通用策略/)).toBeVisible()
   })
 
-  it("explains a natural-language team delegation before confirming it", () => {
-    render(<TeamDelegationView delegation={demoProductData.delegation} />)
+  it("uses real team members and explicit data scopes instead of fixed demo delegation", () => {
+    render(<TeamDelegationView initialData={{
+      members: [{ membershipId: "m1", displayName: "当前团长", email: "owner@example.test", roleKey: "owner", status: "active", mustChangePassword: false, isCurrentUser: true, ipIds: ["ip1"], contentAccountIds: ["a1"], capabilities: ["team.manage"] }],
+      ips: [{ id: "ip1", display_name: "健康管理 IP" }],
+      accounts: [{ id: "a1", account_name: "健康生活号", platform: "视频号" }],
+      grantableCapabilities: ["team.manage"], audits: [],
+    }} />)
 
-    expect(screen.getByText("我已把你的安排整理成一份可执行的分工")).toBeVisible()
-    expect(screen.getByText(/让小周负责林姐视频号的日常选题/)).toBeVisible()
-    expect(screen.getByText("没有扩大到其他 IP 或账号")).toBeVisible()
-    expect(screen.getByRole("button", { name: "确认并邀请小周" })).toBeVisible()
+    expect(screen.getByText("让每个人只看到该负责的内容")).toBeVisible()
+    expect(screen.getByText(/可访问 1 个 IP、1 个内容账号/)).toBeVisible()
+    expect(screen.getByRole("button", { name: "新增成员" })).toBeVisible()
+    expect(screen.queryByText(/小周/)).not.toBeInTheDocument()
   })
 
   it("keeps the platform structure ledger separate from customer content", () => {

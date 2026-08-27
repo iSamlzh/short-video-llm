@@ -25,12 +25,12 @@ export function LoginForm({ defaultEmail = "", defaultPassword = "" }: {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
       })
-      const payload = await response.json().catch(() => ({})) as { message?: string; audience?: string }
+      const payload = await response.json().catch(() => ({})) as { message?: string; audience?: string; mustChangePassword?: boolean }
       if (!response.ok) {
         setError(payload.message ?? "账号或密码不正确")
         return
       }
-      router.push(payload.audience === "platform" ? "/platform/content-brain" : "/app/today")
+      router.push(payload.mustChangePassword ? "/change-password" : payload.audience === "platform" ? "/platform/content-brain" : "/app/today")
       router.refresh()
     } catch {
       setError("暂时无法连接登录服务，请稍后重试")

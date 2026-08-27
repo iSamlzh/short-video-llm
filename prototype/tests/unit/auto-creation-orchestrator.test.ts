@@ -19,7 +19,7 @@ const decisionBrief = {
 }
 
 describe("AutoCreationOrchestrator", () => {
-  it("returns one QA-passed draft awaiting confirmation without requiring manual selection", async () => {
+  it("returns one usable single draft awaiting manual confirmation without running QA", async () => {
     const directory = mkdtempSync(join(tmpdir(), "auto-creation-"))
     const repository = new PrototypeRepository(join(directory, "prototype.sqlite"))
     const adapter = new PrototypeFixtureLlmAdapter()
@@ -33,14 +33,14 @@ describe("AutoCreationOrchestrator", () => {
       boundaries: "不承诺收益，不虚构成功案例，不贬低其他平台",
     })
 
-    expect(result.run.state).toBe("WAITING_LOCK_CONFIRMATION")
+    expect(result.run.state).toBe("READY_FOR_QA")
     expect(result.topicSelection?.topicId).toBe("topic-1")
-    expect(result.scriptSelection?.scriptId).toBe("script-1")
-    expect(result.qualityReport?.hardGatePassed).toBe(true)
+    expect(result.scriptSelection?.scriptId).toBe(result.scriptBatch?.items[0].id)
+    expect(result.qualityReport).toBeNull()
     expect(result.lockedScript).toBeNull()
     expect(result.scriptBatch?.items.find((script) => script.id === result.scriptSelection?.scriptId)?.title)
       .toBe("真正难的不是找货，是让邻居愿意一直信你")
-    expect(adapter.calls.map((call) => call.operation)).toEqual(["auto_draft"])
+    expect(adapter.calls.map((call) => call.operation)).toEqual(["topics", "scripts"])
     repository.close()
   })
 
@@ -83,7 +83,7 @@ describe("AutoCreationOrchestrator", () => {
     })
     expect(result.topicBatch?.items.find((topic) => topic.id === "topic-2")?.decisionBrief?.recentDataSummary)
       .toContain("记忆 v1")
-    expect(adapter.calls.map((call) => call.operation)).toEqual(["topic_draft"])
+    expect(adapter.calls.map((call) => call.operation)).toEqual(["scripts"])
     repository.close()
   })
 })

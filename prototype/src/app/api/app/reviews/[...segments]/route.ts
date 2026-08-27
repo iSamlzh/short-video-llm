@@ -5,11 +5,15 @@ import { requireTenantCapability } from "@/lib/auth/guards"
 import { getGrowthLoopServices, type GrowthLoopServices } from "@/services/growth-loop-service-factory"
 import { growthLoopFailure, tenantHttpContext } from "@/services/growth-loop-http"
 import { z } from "zod"
+import { withRequestLog } from "@/lib/observability/request-log"
+import { requireIdempotencyKey } from "@/lib/http/idempotency-key"
+import type { ModelTaskService } from "@/services/model-task-service"
+import { getModelTaskService } from "@/services/model-task-service-factory"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
-type ReviewDeps = Pick<GrowthLoopServices, "reviews" | "memory">
+type ReviewDeps = Pick<GrowthLoopServices, "reviews" | "memory"> & { modelTasks?: ModelTaskService }
 const accountInputSchema = z.object({ contentAccountId: z.string().trim().min(1) }).strict()
 const memoryFieldsSchema = confirmMemoryInputSchema.omit({ reviewId: true }).strict()
 
@@ -33,7 +37,16 @@ export async function handleReviews(
     if (request.method === "POST" && segments.length === 1 && segments[0] === "generate") {
       requireTenantCapability(context, "review.generate")
       const input = accountInputSchema.parse(await request.json().catch(() => null))
-      const review = await deps.reviews.generateCurrent(context, input.contentAccountId)
+      const generate = () => deps.reviews.generateCurrent(context, input.contentAccountId)
+      const review = deps.modelTasks
+        ? await deps.modelTasks.run({
+          tenantId: context.tenantId,
+          actorUserId: context.userId,
+          operation: "review.generate",
+          idempotencyKey: requireIdempotencyKey(request),
+          signal: request.signal,
+        }, generate, generate)
+        : await generate()
       return Response.json(presentReview(review, context), { status: 201 })
     }
     if (request.method === "POST" && segments[0] && segments[1] === "confirm" && segments.length === 2) {
@@ -62,9 +75,14 @@ function presentReview(
 }
 
 type RouteContext = { params: Promise<{ segments: string[] }> }
-export async function GET(request: Request, route: RouteContext) {
+async function get(request: Request, route: RouteContext) {
   return handleReviews(request, (await route.params).segments, await resolveCurrentAccess(), getGrowthLoopServices())
 }
-export async function POST(request: Request, route: RouteContext) {
-  return handleReviews(request, (await route.params).segments, await resolveCurrentAccess(), getGrowthLoopServices())
+async function post(request: Request, route: RouteContext) {
+  return handleReviews(request, (await route.params).segments, await resolveCurrentAccess(), {
+    ...getGrowthLoopServices(), modelTasks: getModelTaskService(),
+  })
 }
+
+export const GET = withRequestLog(get)
+export const POST = withRequestLog(post)
