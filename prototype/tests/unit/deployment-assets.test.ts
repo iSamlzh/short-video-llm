@@ -53,4 +53,10 @@ describe("单机生产部署资产", () => {
     expect(smokeTest).toContain("--max-time 2")
     expect(smokeTest).toContain("应用在 30 秒内未通过存活检查")
   })
+
+  it("首次部署中断后重试时，不会把尚未初始化的数据库当成备份失败", () => {
+    const deploy = readFileSync("deploy/scripts/deploy.sh", "utf8")
+    expect(deploy).toContain('if [[ -f "${PRODUCTION_DATABASE}" ]]')
+    expect(deploy).toContain("正式数据库尚未初始化，跳过本次部署前备份")
+  })
 })

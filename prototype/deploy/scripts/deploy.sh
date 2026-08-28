@@ -24,8 +24,12 @@ install -d -o root -g "${SERVICE_GROUP}" -m 0750 "${RELEASE_DIRECTORY}"
 if [[ -L "${APPLICATION_ROOT}/current" ]]; then
   PRODUCTION_DATABASE="${PRODUCTION_DATABASE:?已有版本时必须显式提供 PRODUCTION_DATABASE 做部署前备份}"
   PREDEPLOY_BACKUP_DIRECTORY="${PREDEPLOY_BACKUP_DIRECTORY:?已有版本时必须显式提供 PREDEPLOY_BACKUP_DIRECTORY}"
-  bash "${APPLICATION_ROOT}/current/deploy/scripts/backup-sqlite.sh" \
-    "${PRODUCTION_DATABASE}" "${PREDEPLOY_BACKUP_DIRECTORY}"
+  if [[ -f "${PRODUCTION_DATABASE}" ]]; then
+    bash "${APPLICATION_ROOT}/current/deploy/scripts/backup-sqlite.sh" \
+      "${PRODUCTION_DATABASE}" "${PREDEPLOY_BACKUP_DIRECTORY}"
+  else
+    echo "正式数据库尚未初始化，跳过本次部署前备份。"
+  fi
 fi
 
 rsync -a \
