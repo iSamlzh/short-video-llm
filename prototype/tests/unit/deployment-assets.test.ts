@@ -46,4 +46,11 @@ describe("单机生产部署资产", () => {
     expect(sections[1]).toMatch(/maxage 90/)
     expect(policy).toContain("compress")
   })
+
+  it("发布健康检查允许应用冷启动，但等待时间有明确上限", () => {
+    const smokeTest = readFileSync("deploy/scripts/smoke-test.sh", "utf8")
+    expect(smokeTest).toContain("seq 1 30")
+    expect(smokeTest).toContain("--max-time 2")
+    expect(smokeTest).toContain("应用在 30 秒内未通过存活检查")
+  })
 })

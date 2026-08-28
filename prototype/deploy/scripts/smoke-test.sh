@@ -5,7 +5,19 @@ BASE_URL="${1:-https://127.0.0.1}"
 TEMP_DIRECTORY="$(mktemp -d)"
 trap 'rm -rf -- "${TEMP_DIRECTORY}"' EXIT
 
-curl --fail --silent --show-error --max-time 10 "${BASE_URL}/api/health/live" -o "${TEMP_DIRECTORY}/live.json"
+wait_for_application() {
+  local attempt
+  for attempt in $(seq 1 30); do
+    if curl --fail --silent --max-time 2 "${BASE_URL}/api/health/live" -o "${TEMP_DIRECTORY}/live.json"; then
+      return 0
+    fi
+    sleep 1
+  done
+  echo "应用在 30 秒内未通过存活检查" >&2
+  return 1
+}
+
+wait_for_application
 curl --fail --silent --show-error --max-time 10 "${BASE_URL}/api/health/ready" -o "${TEMP_DIRECTORY}/ready.json"
 curl --fail --silent --show-error --max-time 10 "${BASE_URL}/login" -o "${TEMP_DIRECTORY}/login.html"
 
