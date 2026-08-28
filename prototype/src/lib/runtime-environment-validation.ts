@@ -1,4 +1,4 @@
-import { isAbsolute, resolve } from "node:path"
+import { posix, resolve, win32 } from "node:path"
 import { resolveAppEnvironment, type RuntimeEnvironment } from "./runtime-features"
 
 export function validateRuntimeEnvironment(environment: RuntimeEnvironment, cwd = process.cwd()) {
@@ -48,7 +48,11 @@ function validateProductionDatabasePath(path: string | undefined, cwd: string, e
     errors.push("PRODUCTION_DB_PATH_REQUIRED")
     return
   }
-  if (!isAbsolute(path)) errors.push("PRODUCTION_DB_PATH_MUST_BE_ABSOLUTE")
+  // Deployment validation can run on a different OS from the target release.
+  // Accept either platform's absolute syntax while still rejecting relative paths.
+  if (!posix.isAbsolute(path) && !win32.isAbsolute(path)) {
+    errors.push("PRODUCTION_DB_PATH_MUST_BE_ABSOLUTE")
+  }
   const normalized = resolve(cwd, path).toLowerCase()
   if (/(^|[\\/_.-])(e2e|test|development|dev)([\\/_.-]|$)/.test(normalized)) {
     errors.push("PRODUCTION_DB_PATH_LOOKS_NON_PRODUCTION")

@@ -71,16 +71,21 @@ describe("运行环境能力边界", () => {
   })
 
   it("生产环境接受明确且隔离的安全配置", () => {
-    expect(validateRuntimeEnvironment({
-      APP_ENV: "production",
-      NODE_ENV: "production",
-      ENABLE_PROTOTYPE_API: "false",
-      PROTOTYPE_TEST_MODE: "false",
-      PLAYWRIGHT_TEST_MODE: "false",
-      PROTOTYPE_DEMO_CONTROLS: "false",
-      PROTOTYPE_ALLOW_DEMO_CLEAR: "false",
-      PROTOTYPE_DB_PATH: "C:\\srv\\content-agent\\data\\production.sqlite",
-    })).toEqual({ appEnvironment: "production" })
+    for (const databasePath of [
+      "C:\\srv\\content-agent\\data\\production.sqlite",
+      "/var/lib/content-agent/production.sqlite",
+    ]) {
+      expect(validateRuntimeEnvironment({
+        APP_ENV: "production",
+        NODE_ENV: "production",
+        ENABLE_PROTOTYPE_API: "false",
+        PROTOTYPE_TEST_MODE: "false",
+        PLAYWRIGHT_TEST_MODE: "false",
+        PROTOTYPE_DEMO_CONTROLS: "false",
+        PROTOTYPE_ALLOW_DEMO_CLEAR: "false",
+        PROTOTYPE_DB_PATH: databasePath,
+      })).toEqual({ appEnvironment: "production" })
+    }
   })
 
   it("E2E 强制双测试开关且禁止真实模型", () => {
