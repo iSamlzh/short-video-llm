@@ -2,7 +2,7 @@
 
 import type { ModelOperationStage, ModelOperationState } from "../../hooks/use-model-operation"
 
-type GenerationOperation = "initial" | "change_topic" | "change_expression"
+type GenerationOperation = "initial" | "change_topic" | "change_expression" | "manual_topics" | "manual_script"
 
 const stageLabels: Record<ModelOperationStage, string> = {
   preparing: "正在读取当前 IP 与账号上下文",
@@ -16,6 +16,8 @@ const operationLabels: Record<GenerationOperation, string> = {
   initial: "准备今天的内容",
   change_topic: "正在换一个选题，当前稿件会继续保留",
   change_expression: "正在换一种讲法，当前稿件会继续保留",
+  manual_topics: "正在整理三个可选方向",
+  manual_script: "正在按你选定的方向生成单篇口播稿",
 }
 
 type Props = {
@@ -44,6 +46,7 @@ export function GenerationProgress({ operation, state, detailsVisible, error, st
     <div className="generation-progress-actions">
       {state.cancellable && onCancel && <button type="button" onClick={onCancel}>取消本次生成</button>}
       {error && onRetry && <button type="button" onClick={onRetry}>{state.retryable ? "从失败处重试" : "重新发起本次创作"}</button>}
+      {error && onCancel && <button type="button" onClick={onCancel}>返回上一步</button>}
     </div>
   </section>
 }

@@ -76,6 +76,32 @@ describe("CreationAppService draft lifecycle", () => {
     expect(adapter.calls.map((call) => call.operation)).toEqual(["topics", "scripts"])
   })
 
+  it("手动内容约束生成三个方向，并在用户选择前保留原有可用稿件", async () => {
+    const owner = access.resolve("user-owner", "tenant")
+    if (owner.audience !== "tenant") throw new Error("TENANT_CONTEXT_REQUIRED")
+    const businessDate = "2026-08-24"
+    const existing = await service.create(owner, {}, businessDate)
+
+    const pool = await service.prepareTopicPool(owner, {
+      mode: "manual",
+      topicBrief: "我想讲新团长应该先选品还是先建群",
+    }, businessDate)
+
+    expect(pool.topics).toHaveLength(3)
+    expect((adapter.calls.at(-1)?.input as any).userTopicBrief).toBe("我想讲新团长应该先选品还是先建群")
+    expect(service.getCurrent(owner, businessDate)?.runId).toBe(existing.runId)
+
+    const selected = pool.topics[1]
+    const manualDraft = await service.createScriptFromTopic(owner, {
+      runId: pool.runId,
+      topicId: selected.id,
+    })
+
+    expect(manualDraft.runId).toBe(pool.runId)
+    expect(service.getCurrent(owner, businessDate)?.runId).toBe(pool.runId)
+    expect(repository.getCurrentTopicSelection(pool.runId)?.topicId).toBe(selected.id)
+  })
+
   it("saves a new immutable revision, reruns QA and locks that exact revision", async () => {
     const owner = access.resolve("user-owner", "tenant")
     if (owner.audience !== "tenant") throw new Error("TENANT_CONTEXT_REQUIRED")

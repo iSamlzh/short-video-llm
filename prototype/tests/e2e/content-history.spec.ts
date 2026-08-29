@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test"
 
+async function ensureDraft(page: import("@playwright/test").Page) {
+  const draft = page.getByText("今天建议讲")
+  const oneClick = page.getByRole("button", { name: "一键生成今日口播稿" })
+  await expect.poll(async () => await draft.isVisible() || await oneClick.isVisible()).toBe(true)
+  if (await oneClick.isVisible()) await oneClick.click()
+  await expect(draft).toBeVisible({ timeout: 20_000 })
+}
+
 test("内容记录按当前账号打开历史稿并展示不可变生成谱系", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
   await page.goto("/login")
@@ -7,7 +15,7 @@ test("内容记录按当前账号打开历史稿并展示不可变生成谱系",
   await page.getByLabel("密码").fill("demo-password")
   await page.getByRole("button", { name: "进入内容工作台" }).click()
   await page.waitForURL("**/app/today")
-  await expect(page.getByText("今天建议讲")).toBeVisible({ timeout: 20_000 })
+  await ensureDraft(page)
 
   await page.getByRole("link", { name: "内容记录" }).click()
   await expect(page).toHaveURL(/\/app\/content$/)

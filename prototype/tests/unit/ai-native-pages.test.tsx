@@ -103,8 +103,11 @@ describe("approved AI-native page hierarchy", () => {
 
   it("sends different intents for changing the topic and changing the expression", async () => {
     const regenerate = vi.fn()
-    render(<DailyCreationView draft={demoProductData.draft} onRegenerate={regenerate} />)
+    const manualCreate = vi.fn()
+    render(<DailyCreationView draft={demoProductData.draft} onRegenerate={regenerate} onManualCreate={manualCreate} />)
 
+    await userEvent.click(screen.getByRole("button", { name: "自己定选题" }))
+    expect(manualCreate).toHaveBeenCalledOnce()
     await userEvent.click(screen.getByRole("button", { name: "换一个选题" }))
     expect(regenerate).toHaveBeenLastCalledWith("change_topic")
     await userEvent.click(screen.getByRole("button", { name: "换一种讲法" }))

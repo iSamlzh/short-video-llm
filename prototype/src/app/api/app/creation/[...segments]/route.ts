@@ -43,6 +43,8 @@ const topicScriptSchema = z.object({
 const topicPoolSchema = z.object({
   intent: z.enum(["initial", "change_topic", "change_expression"]).optional(),
   fromRunId: z.string().trim().min(1).optional(),
+  mode: z.enum(["auto", "manual"]).optional(),
+  topicBrief: z.string().trim().min(2).max(500).optional(),
 }).strict()
 
 function service() {
@@ -117,7 +119,7 @@ async function dispatch(request: NextRequest, segments: string[]) {
       const result = await getModelTaskService().run({
         tenantId: access.tenantId,
         actorUserId: access.userId,
-        operation: `creation.topics.${input.intent ?? "initial"}`,
+        operation: `creation.topics.${input.mode === "manual" ? "manual" : input.intent ?? "initial"}`,
         idempotencyKey: requireIdempotencyKey(request),
         signal: request.signal,
       }, () => service().prepareTopicPool(access, input), (runId) => {

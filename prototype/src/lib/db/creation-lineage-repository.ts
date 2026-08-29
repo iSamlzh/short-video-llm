@@ -66,12 +66,16 @@ export class CreationLineageRepository {
   }
 
   current(tenantId: string, ipId: string, accountId: string | null, businessDate: string) {
-    const row = this.database.prepare(`SELECT * FROM creation_run_context
+    return this.listCurrentScope(tenantId, ipId, accountId, businessDate)[0] ?? null
+  }
+
+  listCurrentScope(tenantId: string, ipId: string, accountId: string | null, businessDate: string) {
+    const rows = this.database.prepare(`SELECT * FROM creation_run_context
       WHERE tenant_id = ? AND ip_profile_id = ?
         AND ((content_account_id = ?) OR (content_account_id IS NULL AND ? IS NULL))
-        AND business_date = ? ORDER BY created_at DESC, rowid DESC LIMIT 1`)
-      .get(tenantId, ipId, accountId, accountId, businessDate) as Row | undefined
-    return row ? this.map(row) : null
+        AND business_date = ? ORDER BY created_at DESC, rowid DESC`)
+      .all(tenantId, ipId, accountId, accountId, businessDate) as Row[]
+    return rows.map(row => this.map(row))
   }
 
   get(runId: string) {

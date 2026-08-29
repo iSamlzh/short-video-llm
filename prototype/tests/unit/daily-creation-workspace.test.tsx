@@ -58,7 +58,7 @@ describe("DailyCreationWorkspace 结构化导出", () => {
     expect(screen.queryByText("生成失败")).not.toBeInTheDocument()
   })
 
-  it("首次生成取消后进入可继续生成的中性状态", async () => {
+  it("没有当前稿件时先让用户选择一键生成或手动创作", async () => {
     global.fetch = vi.fn((input, init) => {
       if (String(input).endsWith("/current")) return Promise.resolve(new Response(null, { status: 204 }))
       return new Promise<Response>((_resolve, reject) => {
@@ -67,11 +67,84 @@ describe("DailyCreationWorkspace 结构化导出", () => {
     }) as typeof fetch
 
     render(<DailyCreationWorkspace />)
+    expect(await screen.findByRole("heading", { name: "今天想怎么开始？" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /一键生成今日口播稿/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /手动选择选题方向/ })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: /一键生成今日口播稿/ }))
     await userEvent.click(await screen.findByRole("button", { name: "取消本次生成" }))
 
-    expect(await screen.findByRole("heading", { name: "已取消本次生成" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "继续生成" })).toBeInTheDocument()
+    expect(await screen.findByRole("heading", { name: "今天想怎么开始？" })).toBeInTheDocument()
+    expect(screen.getByRole("status")).toHaveTextContent("已取消本次生成")
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
+  })
+
+  it("手动输入内容、选择方向后只为选中的方向生成一篇口播稿", async () => {
+    const requests: Array<{ url: string; body: any }> = []
+    const pool = {
+      runId: "run-manual",
+      recommendedTopicId: "topic-1",
+      topics: [
+        { id: "topic-1", title: "先选品还是先建群", angle: "从新团长的第一步选择切入" },
+        { id: "topic-2", title: "为什么我建议先找到十个真实需求", angle: "从真实需求而不是货盘数量切入" },
+        { id: "topic-3", title: "新团长第一周不要急着扩群", angle: "从常见的起步节奏误区切入" },
+      ],
+    }
+    global.fetch = vi.fn((input, init) => {
+      const url = String(input)
+      if (url.endsWith("/current")) return Promise.resolve(new Response(null, { status: 204 }))
+      const body = JSON.parse(String(init?.body ?? "{}"))
+      requests.push({ url, body })
+      if (url.endsWith("/topics")) return Promise.resolve(new Response(JSON.stringify(pool), {
+        status: 201, headers: { "content-type": "application/json" },
+      }))
+      return Promise.resolve(new Response(JSON.stringify({
+        ...demoProductData.draft,
+        runId: "run-manual",
+        title: "为什么我建议先找到十个真实需求",
+      }), { status: 201, headers: { "content-type": "application/json" } }))
+    }) as typeof fetch
+
+    render(<DailyCreationWorkspace />)
+    await userEvent.click(await screen.findByRole("button", { name: /手动选择选题方向/ }))
+    const brief = screen.getByRole("textbox", { name: /今天想讲的内容/ })
+    await userEvent.type(brief, "我想讲新团长应该先选品还是先建群")
+    await userEvent.click(screen.getByRole("button", { name: /生成 3 个选题方向/ }))
+
+    expect(await screen.findByRole("heading", { name: "今天具体拍哪一条？" })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("radio", { name: /为什么我建议先找到十个真实需求/ }))
+    await userEvent.click(screen.getByRole("button", { name: /按这个方向生成口播稿/ }))
+
+    expect(await screen.findByRole("heading", { name: "为什么我建议先找到十个真实需求" })).toBeInTheDocument()
+    expect(requests[0]).toMatchObject({
+      url: expect.stringContaining("/topics"),
+      body: { mode: "manual", topicBrief: "我想讲新团长应该先选品还是先建群" },
+    })
+    expect(requests[1]).toMatchObject({
+      url: expect.stringContaining("/scripts"),
+      body: { runId: "run-manual", topicId: "topic-2", intent: "initial" },
+    })
+  })
+
+  it("已有稿件进入手动流程后可以不调用模型直接返回原稿", async () => {
+    const currentDraft = { ...demoProductData.draft, title: "当前已经可用的口播稿" }
+    const fetchMock = vi.fn((input) => {
+      if (String(input).endsWith("/current")) return Promise.resolve(new Response(JSON.stringify(currentDraft), {
+        status: 200, headers: { "content-type": "application/json" },
+      }))
+      throw new Error("不应调用其他接口")
+    })
+    global.fetch = fetchMock as typeof fetch
+
+    render(<DailyCreationWorkspace />)
+    expect(await screen.findByRole("heading", { name: "当前已经可用的口播稿" })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "自己定选题" }))
+
+    expect(screen.getByRole("heading", { name: "自己确定今天讲什么" })).toBeInTheDocument()
+    expect(screen.queryByRole("heading", { name: "当前已经可用的口播稿" })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "返回当前稿件" }))
+
+    expect(screen.getByRole("heading", { name: "当前已经可用的口播稿" })).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
   })
 
   it("口播稿生成失败后从选题检查点重跑，不重复生成选题", async () => {
@@ -98,6 +171,7 @@ describe("DailyCreationWorkspace 结构化导出", () => {
     }) as typeof fetch
 
     render(<DailyCreationWorkspace />)
+    await userEvent.click(await screen.findByRole("button", { name: /一键生成今日口播稿/ }))
     await userEvent.click(await screen.findByRole("button", { name: "重新发起本次创作" }))
 
     expect(await screen.findByRole("heading", { name: demoProductData.draft.title })).toBeInTheDocument()
@@ -131,6 +205,7 @@ describe("DailyCreationWorkspace 结构化导出", () => {
     }) as typeof fetch
 
     render(<DailyCreationWorkspace />)
+    await userEvent.click(await screen.findByRole("button", { name: /一键生成今日口播稿/ }))
     await userEvent.click(await screen.findByRole("button", { name: "从失败处重试" }))
 
     expect(await screen.findByRole("heading", { name: demoProductData.draft.title })).toBeInTheDocument()

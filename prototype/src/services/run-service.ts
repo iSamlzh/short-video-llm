@@ -117,7 +117,12 @@ export class RunService {
     }
   }
 
-  async generateTopics(runId: string, inputVersion: number, tenantMemory?: ConfirmedCreationMemory) {
+  async generateTopics(
+    runId: string,
+    inputVersion: number,
+    tenantMemory?: ConfirmedCreationMemory,
+    options: { userTopicBrief?: string } = {},
+  ) {
     const run = this.repository.requireVersion(runId, inputVersion)
     const structureContext = this.resolveStructureContext(run.ipProfile)
     const evidenceCatalog = buildCreationEvidenceCatalog(run.ipProfile, tenantMemory)
@@ -132,6 +137,7 @@ export class RunService {
         evidenceCatalog,
         presetVersion: prototypePreset.version,
         ...(tenantMemory ? { tenantMemory } : {}),
+        ...(options.userTopicBrief ? { userTopicBrief: options.userTopicBrief } : {}),
       }, topicBatchModelOutputSchema)
       const groundedItems = items.map((item) => buildGroundedTopic(
         item,

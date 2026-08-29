@@ -25,6 +25,14 @@ async function login(page: import("@playwright/test").Page, email: string) {
   await page.waitForURL(email.startsWith("platform") ? "**/platform/content-brain" : "**/app/today")
 }
 
+async function ensureDraft(page: import("@playwright/test").Page) {
+  const draft = page.getByText("今天建议讲")
+  const oneClick = page.getByRole("button", { name: "一键生成今日口播稿" })
+  await expect.poll(async () => await draft.isVisible() || await oneClick.isVisible()).toBe(true)
+  if (await oneClick.isVisible()) await oneClick.click()
+  await expect(draft).toBeVisible({ timeout: 20_000 })
+}
+
 async function answerUntilReview(page: import("@playwright/test").Page) {
   for (let index = 0; index < 10; index += 1) {
     if (await page.getByRole("heading", { name: "先核对这些内容依据" }).isVisible()) return
@@ -54,7 +62,7 @@ async function captureOnboarding(page: import("@playwright/test").Page, name: st
 test("tenant default path produces one usable draft and keeps internal brain private", async ({ page }) => {
   await page.setViewportSize({ width: 1487, height: 1058 })
   await login(page, "owner@example.test")
-  await expect(page.getByText("今天建议讲")).toBeVisible({ timeout: 20_000 })
+  await ensureDraft(page)
   await expect(page.getByRole("button", { name: "确认定稿" })).toBeVisible()
   await expect(page.getByText("首版质量门禁未启用，请在定稿前人工确认事实与表达边界")).toBeVisible()
   await expect(page.getByText("为什么今天推荐这篇")).toBeVisible()
@@ -114,6 +122,7 @@ test("tenant default path produces one usable draft and keeps internal brain pri
 
 test("换选题可取消，迟到响应不会覆盖当前稿件", async ({ page }) => {
   await login(page, "owner@example.test")
+  await ensureDraft(page)
   const currentHeading = page.locator(".creation-decision h1")
   await expect(currentHeading).toBeVisible({ timeout: 20_000 })
   const originalTitle = await currentHeading.innerText()
@@ -155,14 +164,14 @@ test("换选题可取消，迟到响应不会覆盖当前稿件", async ({ page 
 test("负责人切换 IP 与账号后正文同步刷新且选择可持久化", async ({ page }) => {
   test.setTimeout(90_000)
   await login(page, "owner@example.test")
-  await expect(page.getByText("今天建议讲")).toBeVisible({ timeout: 20_000 })
+  await ensureDraft(page)
 
   const switcher = page.getByRole("button", { name: /切换当前 IP 和账号/ })
   await expect(switcher).toHaveAccessibleName(/当前 林姐，视频号｜林姐说团购/)
   await switcher.click()
   await page.getByRole("button", { name: "切换到 IP：王姐" }).click()
   await expect(switcher).toHaveAccessibleName(/当前 王姐，抖音｜王姐本地生活/)
-  await expect(page.getByText("今天建议讲")).toBeVisible({ timeout: 20_000 })
+  await ensureDraft(page)
 
   const wangContext = await page.evaluate(async () => {
     const response = await fetch("/api/app/context")
@@ -190,6 +199,7 @@ test("负责人切换 IP 与账号后正文同步刷新且选择可持久化", a
 
 test("运营员工只能看到负责人授权的 IP 与账号", async ({ page }) => {
   await login(page, "operator@example.test")
+  await ensureDraft(page)
   const switcher = page.getByRole("button", { name: /切换当前 IP 和账号/ })
   await switcher.click()
   await expect(page.getByRole("button", { name: "切换到 IP：林姐" })).toBeVisible()
@@ -200,6 +210,7 @@ test("运营员工只能看到负责人授权的 IP 与账号", async ({ page })
 
 test("delegation and platform content brain are usable in their own scopes", async ({ page }) => {
   await login(page, "owner@example.test")
+  await ensureDraft(page)
   await page.goto("/app/team")
   await page.getByRole("button", { name: "新增成员" }).click()
   const form = page.getByRole("heading", { name: "新增运营成员" }).locator("..")
@@ -224,7 +235,7 @@ test("delegation and platform content brain are usable in their own scopes", asy
 
 test("退出入口清除当前会话并返回登录页", async ({ page }) => {
   await login(page, "owner@example.test")
-  await expect(page.getByText("今天建议讲")).toBeVisible()
+  await ensureDraft(page)
   await page.getByRole("button", { name: "退出" }).click()
 
   await expect(page).toHaveURL(/\/login$/)
@@ -261,7 +272,7 @@ test("首次登录从 IP 初始化开始并在确认后进入今日创作", asyn
   await page.getByRole("button", { name: "这个理解准确，开始创作" }).click()
 
   await expect(page).toHaveURL(/\/app\/today$/)
-  await expect(page.getByText("今天建议讲")).toBeVisible({ timeout: 20_000 })
+  await ensureDraft(page)
   await expect(page.getByRole("button", { name: "确认定稿" })).toBeVisible()
   await expect(page.getByText(/林姐/)).toHaveCount(0)
   await captureOnboarding(page, "06-today")

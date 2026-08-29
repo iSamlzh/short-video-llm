@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import {
-  Check, CheckCircle, Copy, DownloadSimple, Repeat, ShuffleAngular,
+  Check, CheckCircle, Copy, DownloadSimple, PencilSimple, Repeat, ShuffleAngular,
 } from "@phosphor-icons/react"
 import { PublicationReceipt, type PublicationAccount, type PublicationRecord } from "./PublicationReceipt"
 import { CreationDecisionBrief } from "./CreationDecisionBrief"
@@ -15,6 +15,7 @@ type DailyCreationViewProps = {
   draft: any
   regenerating?: boolean
   onRegenerate?: (intent: RegenerationIntent) => void
+  onManualCreate?: () => void
   onSave?: (segments: ScriptSegment[]) => Promise<void>
   onFinalize?: (input: { segments: ScriptSegment[] }) => Promise<void>
   onDownload?: () => void | Promise<void>
@@ -28,7 +29,7 @@ type DailyCreationViewProps = {
 }
 
 export function DailyCreationView({
-  draft, regenerating = false, onRegenerate, onSave, onFinalize, onDownload, onCopy,
+  draft, regenerating = false, onRegenerate, onManualCreate, onSave, onFinalize, onDownload, onCopy,
   busyAction = null, publicationAccounts = [], onSavePublication, onLoadPublications,
 }: DailyCreationViewProps) {
   const [segments, setSegments] = useState<ScriptSegment[]>(() => draftSegments(draft))
@@ -82,6 +83,8 @@ export function DailyCreationView({
         <h1>{draft.title}</h1>
         {locked && <p className="finalized-status"><CheckCircle size={18} weight="fill" />{formatFinalizedAt(draft.finalizedAt)}</p>}
         <div className="creation-adjustments">
+          <button type="button" disabled={regenerating} onClick={onManualCreate}><PencilSimple size={18} />自己定选题</button>
+          <span aria-hidden="true" />
           <button type="button" disabled={regenerating} onClick={() => onRegenerate?.("change_topic")}><Repeat size={18} />换一个选题</button>
           <span aria-hidden="true" />
           <button type="button" disabled={regenerating} onClick={() => onRegenerate?.("change_expression")}><ShuffleAngular size={18} />换一种讲法</button>

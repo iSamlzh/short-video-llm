@@ -17,6 +17,14 @@ async function login(page: Page, email: string) {
   await page.waitForURL("**/app/today")
 }
 
+async function ensureDraft(page: Page) {
+  const draft = page.getByText("今天建议讲")
+  const oneClick = page.getByRole("button", { name: "一键生成今日口播稿" })
+  await expect.poll(async () => await draft.isVisible() || await oneClick.isVisible()).toBe(true)
+  if (await oneClick.isVisible()) await oneClick.click()
+  await expect(draft).toBeVisible({ timeout: 20_000 })
+}
+
 async function answerCurrent(page: Page, index: number) {
   const question = page.locator(".question-step")
   await expect(question).toBeVisible()
@@ -97,7 +105,7 @@ test("逐题建档可恢复、画像失败可重试且修改原回答会使草�
   await expect(page.getByRole("heading", { name: /我理解的恢复姐/ })).toBeVisible()
   await page.getByRole("button", { name: "这个理解准确，开始创作" }).click()
   await expect(page).toHaveURL(/\/app\/today$/)
-  await expect(page.getByText("今天建议讲")).toBeVisible({ timeout: 20_000 })
+  await ensureDraft(page)
   await captureMobile(page, "06-today")
 
   await page.goto("/logout")
@@ -105,5 +113,5 @@ test("逐题建档可恢复、画像失败可重试且修改原回答会使草�
   await page.waitForURL("**/login")
   await login(page, "operator@example.test")
   await expect(page).toHaveURL(/\/app\/today$/)
-  await expect(page.getByText("今天建议讲")).toBeVisible()
+  await ensureDraft(page)
 })

@@ -28,16 +28,23 @@ export class CreationAppService {
 
   getCurrent(context: TenantAccessContext, businessDate = chinaBusinessDate()) {
     const current = this.currentContext(context)
-    const lineage = this.lineage.current(context.tenantId, current.ipId, current.accountId, businessDate)
-    if (!lineage) return null
-    const view = this.runs.getRunView(lineage.runId)
-    if (!view.scriptSelection) return null
-    return this.presentWithLineage(
-      view,
-      this.memoryFor(current, lineage.tenantMemoryVersion),
-      lineage.structureVersionIds,
-      { triggerType: lineage.triggerType, sourceReviewId: lineage.sourceReviewId },
-    )
+    const candidates = this.lineage.listCurrentScope(context.tenantId, current.ipId, current.accountId, businessDate)
+    for (const lineage of candidates) {
+      let view
+      try {
+        view = this.runs.getRunView(lineage.runId)
+      } catch {
+        continue
+      }
+      if (!view.scriptSelection) continue
+      return this.presentWithLineage(
+        view,
+        this.memoryFor(current, lineage.tenantMemoryVersion),
+        lineage.structureVersionIds,
+        { triggerType: lineage.triggerType, sourceReviewId: lineage.sourceReviewId },
+      )
+    }
+    return null
   }
 
   async ensureTopicPool(context: TenantAccessContext, businessDate = chinaBusinessDate()) {
@@ -68,9 +75,35 @@ export class CreationAppService {
 
   async prepareTopicPool(
     context: TenantAccessContext,
-    options: { intent?: "initial" | "change_topic" | "change_expression"; fromRunId?: string },
+    options: {
+      intent?: "initial" | "change_topic" | "change_expression"
+      fromRunId?: string
+      mode?: "auto" | "manual"
+      topicBrief?: string
+    },
     businessDate = chinaBusinessDate(),
   ) {
+    if (options.mode === "manual") {
+      requireTenantCapability(context, "content.create")
+      const current = this.currentContext(context)
+      const tenantMemory = this.currentMemory(current)
+      const run = this.runs.createRun(current.profile)
+      const topics = await this.runs.generateTopics(run.id, run.inputVersion, tenantMemory ?? undefined, {
+        userTopicBrief: options.topicBrief,
+      })
+      this.lineage.attach({
+        runId: run.id,
+        tenantId: context.tenantId,
+        actorUserId: context.userId,
+        ipId: current.ipId,
+        ipProfileVersion: current.profileVersion,
+        accountId: current.accountId,
+        businessDate,
+        tenantMemoryVersion: tenantMemory?.version ?? null,
+        structureVersionIds: this.runs.getStructureVersionIds(current.profile),
+      })
+      return this.presentTopicPool(run.id, topics.items)
+    }
     if (!options.intent || options.intent === "initial") return this.ensureTopicPool(context, businessDate)
     requireTenantCapability(context, "content.create")
     if (!options.fromRunId || !this.lineage.canAccess(options.fromRunId, context)) throw new Error("PREVIOUS_RUN_NOT_FOUND")

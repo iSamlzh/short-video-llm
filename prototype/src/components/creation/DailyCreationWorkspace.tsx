@@ -6,9 +6,11 @@ import { GenerationProgress } from "./GenerationProgress"
 import type { PublicationAccount, PublicationRecord } from "./PublicationReceipt"
 import { normalizeScriptSegments, spokenSegmentText, type ScriptSegment } from "../../domain/creation-contracts"
 import { useModelOperation, type ModelOperationStage } from "../../hooks/use-model-operation"
+import { CreationStartPanel, ManualTopicPlanner, type ManualTopicPool } from "./ManualTopicPlanner"
 
 type ApiError = { errorCode?: string; message?: string; retryable?: boolean }
 type CreationIntent = "initial" | "change_topic" | "change_expression"
+type CreationOperation = CreationIntent | "manual_topics" | "manual_script"
 type TopicPoolResult = { runId: string; recommendedTopicId: string }
 type PendingTopicCheckpoint = {
   intent: CreationIntent
@@ -34,16 +36,18 @@ export function DailyCreationWorkspace({ publicationAccounts = [] }: { publicati
   const [draft, setDraft] = useState<any>(null)
   const [error, setError] = useState("")
   const [loadingCurrent, setLoadingCurrent] = useState(true)
-  const [operation, setOperation] = useState<"initial" | "change_topic" | "change_expression" | null>("initial")
+  const [operation, setOperation] = useState<CreationOperation | null>(null)
   const [busyAction, setBusyAction] = useState<"saving" | "finalizing" | null>(null)
   const [notice, setNotice] = useState("")
-  const [cancelledInitial, setCancelledInitial] = useState(false)
+  const [manualOpen, setManualOpen] = useState(false)
+  const [manualTopicPool, setManualTopicPool] = useState<ManualTopicPool | null>(null)
   const pendingTopicCheckpointRef = useRef<PendingTopicCheckpoint | null>(null)
   const modelOperation = useModelOperation()
 
   const create = useCallback(async (intent: CreationIntent = "initial", fromRunId?: string) => {
     setOperation(intent)
-    setCancelledInitial(false)
+    setManualOpen(false)
+    setManualTopicPool(null)
     setError("")
     setNotice("")
     pendingTopicCheckpointRef.current = null
@@ -88,7 +92,6 @@ export function DailyCreationWorkspace({ publicationAccounts = [] }: { publicati
       if (!active) return
       setLoadingCurrent(false)
       if (current) { setDraft(current); setOperation(null); return }
-      return create("initial")
     }).catch((value) => {
       if (!active) return
       setError(value instanceof Error ? value.message : "读取失败")
@@ -96,6 +99,54 @@ export function DailyCreationWorkspace({ publicationAccounts = [] }: { publicati
     })
     return () => { active = false }
   }, [create])
+
+  async function generateManualTopics(topicBrief: string) {
+    setOperation("manual_topics")
+    setError("")
+    setNotice("")
+    await modelOperation.start({
+      initialStage: "selecting",
+      task: async (signal) => fetch("/api/app/creation/topics", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": `${createIdempotencyKey()}:manual-topics` },
+        body: JSON.stringify({ mode: "manual", ...(topicBrief ? { topicBrief } : {}) }),
+        signal,
+      }).then(readJson) as Promise<ManualTopicPool>,
+      onSuccess: (pool) => {
+        setManualTopicPool(pool)
+        setOperation(null)
+      },
+    })
+  }
+
+  async function generateManualScript(runId: string, topicId: string) {
+    setOperation("manual_script")
+    setError("")
+    setNotice("")
+    await modelOperation.start({
+      initialStage: "writing",
+      task: async (signal) => fetch("/api/app/creation/scripts", {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": `${createIdempotencyKey()}:manual-script` },
+        body: JSON.stringify({ runId, topicId, intent: "initial" }),
+        signal,
+      }).then(readJson),
+      onSuccess: (result) => {
+        setDraft(result)
+        setManualOpen(false)
+        setManualTopicPool(null)
+        setOperation(null)
+      },
+    })
+  }
+
+  function closeManualPlanner() {
+    modelOperation.cancel()
+    setManualOpen(false)
+    setManualTopicPool(null)
+    setOperation(null)
+    setError("")
+  }
 
   async function save(segments: ScriptSegment[]) {
     setBusyAction("saving")
@@ -183,19 +234,41 @@ export function DailyCreationWorkspace({ publicationAccounts = [] }: { publicati
   }
 
   function cancelGeneration() {
+    const cancelledOperation = operation
     modelOperation.cancel()
-    if (draft) setOperation(null)
-    else setCancelledInitial(true)
+    setOperation(null)
+    if (cancelledOperation === "manual_topics" || cancelledOperation === "manual_script") return
+    if (!draft) setNotice("已取消本次生成，你可以重新选择创作方式")
   }
 
   if (loadingCurrent && !draft) return <main className="agent-working" aria-live="polite"><p className="eyebrow">正在读取今日创作</p><h1 className="text-balance">先确认是否已有可继续使用的稿件。</h1><p className="text-pretty">如果没有，Agent 会直接开始生成今天的选题和口播稿。</p></main>
-  if (cancelledInitial && !draft) return <main className="agent-working"><p className="eyebrow">生成已停止</p><h1 className="text-balance">已取消本次生成</h1><p className="text-pretty">IP 与账号上下文都已保留，需要时可从同一步继续。</p><button className="primary-button" type="button" onClick={() => void create("initial")}>继续生成</button></main>
   if (modelOperation.state && !draft && operation) return <main className="agent-working"><GenerationProgress operation={operation} state={modelOperation.state} detailsVisible={modelOperation.detailsVisible} error={modelOperation.error} standalone onCancel={cancelGeneration} onRetry={() => void modelOperation.retry()} /></main>
   if (error && !draft) return <main className="agent-error"><p className="eyebrow">这次没有生成成功</p><h1>{error}</h1><p>已保留当前 IP 与账号上下文，可直接重试；不会产生半成品。</p><button className="primary-button" onClick={() => void create("initial")}>重新生成</button></main>
+  if (!draft) return <main>
+    {notice && <p className="workspace-notice" role="status">{notice}</p>}
+    {manualOpen
+      ? <ManualTopicPlanner
+        pool={manualTopicPool}
+        onGenerateTopics={(topicBrief) => void generateManualTopics(topicBrief)}
+        onGenerateScript={(runId, topicId) => void generateManualScript(runId, topicId)}
+        onReset={() => setManualTopicPool(null)}
+        onCancel={closeManualPlanner}
+        hasExistingDraft={false}
+      />
+      : <CreationStartPanel onAuto={() => void create("initial")} onManual={() => setManualOpen(true)} />}
+  </main>
   return <main>
     {modelOperation.state && operation && <GenerationProgress operation={operation} state={modelOperation.state} detailsVisible={modelOperation.detailsVisible} error={modelOperation.error} onCancel={cancelGeneration} onRetry={() => void modelOperation.retry()} />}
     {(notice || error) && <p className={`workspace-notice ${error ? "workspace-notice-error" : ""}`} role={error ? "alert" : "status"}>{error || notice}</p>}
-    <DailyCreationView draft={draft} regenerating={modelOperation.running} busyAction={busyAction} onSave={save} onFinalize={finalize} onDownload={download} onCopy={copy} onRegenerate={(intent) => void create(intent, draft.runId)} publicationAccounts={publicationAccounts} onSavePublication={savePublication} onLoadPublications={loadPublications} />
+    {manualOpen && !modelOperation.state && <ManualTopicPlanner
+      pool={manualTopicPool}
+      onGenerateTopics={(topicBrief) => void generateManualTopics(topicBrief)}
+      onGenerateScript={(runId, topicId) => void generateManualScript(runId, topicId)}
+      onReset={() => setManualTopicPool(null)}
+      onCancel={closeManualPlanner}
+      hasExistingDraft
+    />}
+    {(!manualOpen || modelOperation.state) && <DailyCreationView draft={draft} regenerating={modelOperation.running || manualOpen} busyAction={busyAction} onSave={save} onFinalize={finalize} onDownload={download} onCopy={copy} onManualCreate={() => { setManualOpen(true); setManualTopicPool(null) }} onRegenerate={(intent) => void create(intent, draft.runId)} publicationAccounts={publicationAccounts} onSavePublication={savePublication} onLoadPublications={loadPublications} />}
   </main>
 }
 

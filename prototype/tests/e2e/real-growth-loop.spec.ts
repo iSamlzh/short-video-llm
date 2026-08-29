@@ -18,8 +18,16 @@ async function login(page: Page, email: string) {
   await page.waitForURL(email.startsWith("platform") ? "**/platform/content-brain" : "**/app/today")
 }
 
+async function ensureDraft(page: Page) {
+  const draft = page.getByText("今天建议讲")
+  const oneClick = page.getByRole("button", { name: "一键生成今日口播稿" })
+  await expect.poll(async () => await draft.isVisible() || await oneClick.isVisible()).toBe(true)
+  if (await oneClick.isVisible()) await oneClick.click()
+  await expect(draft).toBeVisible({ timeout: 20_000 })
+}
+
 async function ensureLocked(page: Page) {
-  await expect(page.getByText("今天建议讲")).toBeVisible({ timeout: 20_000 })
+  await ensureDraft(page)
   const record = page.getByRole("button", { name: "记录已发布" })
   if (!await record.isVisible()) {
     await page.getByRole("button", { name: "确认定稿" }).click()
