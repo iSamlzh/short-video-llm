@@ -50,10 +50,34 @@ export const topicDirectionCandidateSchema = z.object({
   decisionBrief: creationDecisionBriefSchema,
 })
 export const topicBatchSchema = z.array(topicDirectionCandidateSchema).min(3).max(5)
+
+const topicDecisionModelOutputSchema = z.object({
+  objective: z.enum(["建立信任", "用户教育", "产品认知", "咨询转化"]),
+  whyToday: z.string().trim().min(5),
+  audienceProblem: z.string().trim().min(5),
+  topicOpportunity: z.string().trim().min(5).optional(),
+  ipEvidenceRefs: z.array(z.object({
+    label: z.string().trim().min(1),
+    sourceAnswerId: z.string().trim().min(1),
+    relevance: z.string().trim().min(5).optional(),
+  })).min(1).max(3),
+  nextSignal: z.string().trim().min(5),
+})
+
+const topicDirectionModelOutputSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(4),
+  angle: z.string().min(10),
+  audienceTension: z.string().min(5),
+  structureId: z.string().min(1),
+  riskNotes: z.array(z.string()).default([]),
+  decisionBrief: topicDecisionModelOutputSchema,
+})
+
 export const topicBatchModelOutputSchema = z.preprocess(
   (input) => Array.isArray(input) ? { topics: input } : input,
-  z.object({ topics: topicBatchSchema }),
-).transform((value) => value.topics)
+  z.object({ topics: z.array(topicDirectionModelOutputSchema).min(3).max(5) }),
+).transform((value) => value.topics.slice(0, 3))
 
 export const scriptCandidateSchema = z.object({
   id: z.string().min(1),
@@ -129,6 +153,7 @@ export const contentReviewSchema = z.object({
 })
 
 export type TopicDirectionCandidate = z.infer<typeof topicDirectionCandidateSchema>
+export type TopicDirectionModelOutput = z.infer<typeof topicDirectionModelOutputSchema>
 export type ScriptCandidate = z.infer<typeof scriptCandidateSchema>
 export type QualityReport = z.infer<typeof qualityReportSchema>
 export type MetricSnapshot = z.infer<typeof metricSnapshotSchema>

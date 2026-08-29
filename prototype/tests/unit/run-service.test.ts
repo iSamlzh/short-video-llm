@@ -51,6 +51,31 @@ describe("RunService topics", () => {
     expect(service.getRun(run.id).state).toBe("WAITING_TOPIC_SELECTION")
   })
 
+  it("模型沿用旧字段或多返回一个方向时由服务端收敛并补齐推荐依据", async () => {
+    adapter.enqueue({ json: [...topics, { ...topics[0], id: "topic-4", title: "第四个多余选题方向" }].map(topic => ({
+      ...topic,
+      ipFitEvidence: [{ sourceAnswerId: "profile:experience" }],
+      decisionBrief: { ...topic.decisionBrief, repetitionRisk: "低" },
+    })) })
+    const run = service.createRun(minimumIpInput)
+
+    const result = await service.generateTopics(run.id, run.inputVersion)
+
+    expect(result.items).toHaveLength(3)
+    expect(result.items[0]).toMatchObject({
+      ipFitEvidence: [expect.any(String)],
+      decisionBrief: {
+        recentDataStatus: "none",
+        repetitionRisk: "low",
+        portraitFitSummary: expect.any(String),
+        recommendationSummary: expect.any(String),
+      },
+    })
+    expect(adapter.calls).toHaveLength(1)
+    expect(adapter.calls[0].systemPrompt).toContain("严格输出 3 个")
+    expect(adapter.calls[0].systemPrompt).not.toContain("ipFitEvidence")
+  })
+
   it("keeps exactly one current topic selection", async () => {
     adapter.enqueue({ json: topics })
     const run = service.createRun(minimumIpInput)

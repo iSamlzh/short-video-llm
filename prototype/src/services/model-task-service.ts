@@ -62,7 +62,15 @@ export class ModelTaskService {
 
     const taskId = begun.task.id
     linkRequestToTask(taskId)
-    const timeoutMs = positiveInteger(this.environment.LLM_TIMEOUT_SECONDS, 60) * 1000
+    const primaryTimeoutSeconds = positiveInteger(
+      this.environment.LLM_PRIMARY_TIMEOUT_SECONDS,
+      positiveInteger(this.environment.LLM_TIMEOUT_SECONDS, 60),
+    )
+    const repairTimeoutSeconds = positiveInteger(this.environment.LLM_REPAIR_TIMEOUT_SECONDS, 60)
+    const timeoutMs = positiveInteger(
+      this.environment.LLM_TASK_TIMEOUT_SECONDS,
+      primaryTimeoutSeconds + repairTimeoutSeconds + 10,
+    ) * 1000
     if (input.signal?.aborted) {
       this.repository.fail(taskId, "cancelled", "MODEL_TASK_CANCELLED")
       throw modelTaskError("MODEL_TASK_CANCELLED", 499, false)

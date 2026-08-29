@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto"
-import { contentReviewSchema, qualityReportSchema, scriptCandidateSchema, scriptRevisionParagraphsSchema, singleScriptModelOutputSchema, topicBatchModelOutputSchema, topicBatchSchema, type ScriptCandidate, type TopicDirectionCandidate } from "../domain/schemas"
+import { contentReviewSchema, qualityReportSchema, scriptCandidateSchema, scriptRevisionParagraphsSchema, singleScriptModelOutputSchema, topicBatchModelOutputSchema, topicBatchSchema, topicDirectionCandidateSchema, type ScriptCandidate, type TopicDirectionCandidate, type TopicDirectionModelOutput } from "../domain/schemas"
 import { transition } from "../domain/state-machine"
 import type { IpProfile } from "../domain/models"
 import type { ConfirmedCreationMemory } from "../domain/growth-loop"
@@ -31,14 +31,22 @@ const prototypeTemplatePackage: TemplatePackage = {
   riskRules: ["不得虚构案例或承诺收益"],
 }
 
-function buildGroundedDecisionBrief(
-  item: TopicDirectionCandidate,
+function buildGroundedTopic(
+  item: TopicDirectionModelOutput,
   evidenceCatalog: CreationEvidenceCatalogItem[],
   structures: ModelStructure[],
   memory?: ConfirmedCreationMemory,
-) {
-  const grounded = groundCreationDecisionBrief(item.decisionBrief, evidenceCatalog, memory)
+): TopicDirectionCandidate {
+  const fallback = createFallbackCreationDecisionBrief(evidenceCatalog, memory)
+  const grounded = groundCreationDecisionBrief({
+    ...fallback,
+    ...item.decisionBrief,
+    recentDataStatus: memory ? "available" : "none",
+    repetitionRisk: memory?.avoid.length ? "medium" : "low",
+    ...(!memory ? { recentDataSummary: undefined } : {}),
+  }, evidenceCatalog, memory)
   const structure = structures.find((candidate) => candidate.structureId === item.structureId) ?? structures[0]
+  if (!structure) throw new Error("CONTENT_STRUCTURE_UNAVAILABLE")
   const topicOpportunity = grounded.topicOpportunity
     ?? `${item.angle}，直接回应“${item.audienceTension}”这个具体顾虑。`
   const structureReason = grounded.structureChoice?.structureId === structure.structureId
@@ -49,7 +57,7 @@ function buildGroundedDecisionBrief(
     ?? grounded.ipEvidenceRefs.map((reference) => reference.relevance).filter(Boolean).join("；"))
     || "画像显示该 IP 具备与当前选题相关的真实经历，适合输出有事实基础的判断。"
 
-  return creationDecisionBriefSchema.parse({
+  const decisionBrief = creationDecisionBriefSchema.parse({
     ...grounded,
     portraitFitSummary,
     recommendationSummary: grounded.recommendationSummary
@@ -65,6 +73,15 @@ function buildGroundedDecisionBrief(
       structureName: structure.structureName,
       reason: structureReason,
     },
+  })
+  const ipFitEvidence = [...new Set(decisionBrief.ipEvidenceRefs.map((reference) => (
+    reference.relevance ?? reference.label
+  )))].slice(0, 3)
+  return topicDirectionCandidateSchema.parse({
+    ...item,
+    structureId: structure.structureId,
+    ipFitEvidence,
+    decisionBrief,
   })
 }
 
@@ -116,10 +133,12 @@ export class RunService {
         presetVersion: prototypePreset.version,
         ...(tenantMemory ? { tenantMemory } : {}),
       }, topicBatchModelOutputSchema)
-      const groundedItems = items.map((item) => ({
-        ...item,
-        decisionBrief: buildGroundedDecisionBrief(item, evidenceCatalog, structureContext.modelStructures, tenantMemory),
-      }))
+      const groundedItems = items.map((item) => buildGroundedTopic(
+        item,
+        evidenceCatalog,
+        structureContext.modelStructures,
+        tenantMemory,
+      ))
       const batch = this.repository.saveTopicBatch(runId, inputVersion, groundedItems, `${runId}:topics:${inputVersion}`)
       this.repository.setState(runId, transition("GENERATING_TOPICS", "TOPICS_GENERATED"))
       return batch
@@ -141,9 +160,8 @@ export class RunService {
     const run = this.repository.requireVersion(runId, inputVersion)
     const structureContext = this.resolveStructureContext(run.ipProfile)
     const evidenceCatalog = buildCreationEvidenceCatalog(run.ipProfile, tenantMemory)
-    const topics = topicBatchSchema.parse(topicsInput.map((item) => ({
-      ...item,
-      decisionBrief: buildGroundedDecisionBrief(
+    const topics = topicBatchSchema.parse(topicsInput.map((item) => (
+      buildGroundedTopic(
         {
           ...item,
           decisionBrief: item.decisionBrief ?? createFallbackCreationDecisionBrief(evidenceCatalog, tenantMemory),
@@ -151,8 +169,8 @@ export class RunService {
         evidenceCatalog,
         structureContext.modelStructures,
         tenantMemory,
-      ),
-    })))
+      )
+    )))
     if (!topics.some((item) => item.id === selectedTopicId)) throw new Error("TOPIC_SELECTION_INVALID")
     this.repository.setState(runId, transition(run.state, "GENERATE_TOPICS"))
     try {

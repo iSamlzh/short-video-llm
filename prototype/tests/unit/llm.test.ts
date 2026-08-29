@@ -107,7 +107,7 @@ describe("structured model client", () => {
     })
     expect(result).toEqual(validTopicBatch)
     expect(adapter.calls.map(call => call.operation)).toEqual(["topics", "repair"])
-    expect(adapter.calls[1].systemPrompt).toContain("decisionBrief 必须包含")
+    expect(adapter.calls[1].systemPrompt).toContain("decisionBrief 只包含")
     expect(adapter.calls[1].systemPrompt).toContain("当前任务只修复上一份输出")
   })
 
@@ -205,7 +205,7 @@ describe("structured model client", () => {
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it("首次生成和结构修复共享同一个总超时预算", async () => {
+  it("首次生成和结构修复使用独立阶段超时预算", async () => {
     const timeouts: number[] = []
     let calls = 0
     const adapter = {
@@ -220,10 +220,18 @@ describe("structured model client", () => {
       },
     }
 
-    await generateStructured({ adapter, operation: "topics", input: {}, schema: topicBatchSchema, timeoutMs: 200 })
+    await generateStructured({
+      adapter,
+      operation: "topics",
+      input: {},
+      schema: topicBatchSchema,
+      timeoutMs: 200,
+      repairTimeoutMs: 150,
+    })
 
     expect(timeouts).toHaveLength(2)
-    expect(timeouts[1]).toBeLessThan(timeouts[0])
+    expect(timeouts[0]).toBe(200)
+    expect(timeouts[1]).toBe(150)
   })
 
   it("模型调用日志只记录操作、耗时和结果，不记录 Prompt 或 API Key", async () => {
@@ -232,8 +240,13 @@ describe("structured model client", () => {
 
     await client.generateStructured("topics", { apiKey: "secret-key", private: "sensitive prompt" }, topicBatchSchema, "array")
 
-    expect(JSON.parse(String(info.mock.calls[0]?.[0]))).toMatchObject({
+    const records = info.mock.calls.map(call => JSON.parse(String(call[0])))
+    expect(records.find(record => record.event === "model_operation")).toMatchObject({
       event: "model_operation", operation: "topics", outcome: "success", durationMs: expect.any(Number),
+    })
+    expect(records.find(record => record.event === "model_stage")).toMatchObject({
+      event: "model_stage", operation: "topics", stage: "initial", outcome: "received",
+      durationMs: expect.any(Number), responseChars: expect.any(Number),
     })
     const serialized = JSON.stringify(info.mock.calls)
     expect(serialized).not.toContain("secret-key")

@@ -26,6 +26,9 @@ type GenerateOptions<T> = {
   input: unknown
   schema: z.ZodType<T>
   timeoutMs: number
+  repairTimeoutMs?: number
+  deadlineAt?: number
+  recordUsage?: (model: string, usage?: TokenUsage) => void
   jsonRoot?: "object" | "array"
   signal?: AbortSignal
 }
@@ -42,28 +45,29 @@ function combineUsage(first?: TokenUsage, repaired?: TokenUsage): TokenUsage | u
 }
 
 export async function generateStructuredResult<T>(options: GenerateOptions<T>): Promise<StructuredLlmResult<T>> {
-  const deadlineAt = Date.now() + options.timeoutMs
-  const first = await options.adapter.generate({
-    operation: options.operation,
-    systemPrompt: prompts[options.operation],
-    input: options.input,
-    timeoutMs: remainingTimeout(deadlineAt),
-    jsonRoot: options.jsonRoot,
-    signal: options.signal,
-  })
+  const first = await runModelStage(options.operation, "initial", () => options.adapter.generate({
+      operation: options.operation,
+      systemPrompt: prompts[options.operation],
+      input: options.input,
+      timeoutMs: boundedTimeout(options.timeoutMs, options.deadlineAt),
+      jsonRoot: options.jsonRoot,
+      signal: options.signal,
+    }))
+  options.recordUsage?.(first.model, first.usage)
   const checked = validate(options.schema, first.text)
   if (checked.success) return { data: checked.data, model: first.model, usage: first.usage }
 
   logSchemaFailure(options.operation, "initial", first.text, checked.issues, first.finishReason)
 
-  const repaired = await options.adapter.generate({
-    operation: "repair",
-    systemPrompt: `${prompts[options.operation]}\n\n当前任务只修复上一份输出。必须严格遵守上面的完整输出契约，保留原有有效内容，补齐缺失字段，纠正字段类型并删除额外字段；只返回修复后的 JSON，不要解释。`,
-    input: { original: first.text, issues: checked.issues.map(issue => ({ path: issue.path, code: issue.code, message: issue.message })) },
-    timeoutMs: remainingTimeout(deadlineAt),
-    jsonRoot: options.jsonRoot,
-    signal: options.signal,
-  })
+  const repaired = await runModelStage(options.operation, "repair", () => options.adapter.generate({
+      operation: "repair",
+      systemPrompt: `${prompts[options.operation]}\n\n当前任务只修复上一份输出。必须严格遵守上面的完整输出契约，保留原有有效内容，补齐缺失字段，纠正字段类型并删除额外字段；只返回修复后的 JSON，不要解释。`,
+      input: { original: first.text, issues: checked.issues.map(issue => ({ path: issue.path, code: issue.code, message: issue.message })) },
+      timeoutMs: boundedTimeout(options.repairTimeoutMs ?? options.timeoutMs, options.deadlineAt),
+      jsonRoot: options.jsonRoot,
+      signal: options.signal,
+    }))
+  options.recordUsage?.(repaired.model, repaired.usage)
   const repairedChecked = validate(options.schema, repaired.text)
   if (repairedChecked.success) {
     return { data: repairedChecked.data, model: repaired.model, usage: combineUsage(first.usage, repaired.usage) }
@@ -103,19 +107,22 @@ export class StructuredLlmClient {
     jsonRoot: "object" | "array",
   ) {
     const context = currentModelExecutionContext()
-    const configuredTimeoutMs = Number(process.env.LLM_TIMEOUT_SECONDS ?? 60) * 1000
-    const timeoutMs = context ? Math.min(configuredTimeoutMs, context.deadlineAt - Date.now()) : configuredTimeoutMs
+    const legacyTimeoutMs = positiveConfiguredSeconds(process.env.LLM_TIMEOUT_SECONDS, 60) * 1000
+    const primaryTimeoutMs = positiveConfiguredSeconds(process.env.LLM_PRIMARY_TIMEOUT_SECONDS, legacyTimeoutMs / 1000) * 1000
+    const repairTimeoutMs = positiveConfiguredSeconds(process.env.LLM_REPAIR_TIMEOUT_SECONDS, 60) * 1000
     return this.withOperationLog(operation, async () => {
       const result = await generateStructuredResult({
         adapter: this.adapter,
         operation,
         input,
         schema,
-        timeoutMs: positiveTimeout(timeoutMs),
+        timeoutMs: primaryTimeoutMs,
+        repairTimeoutMs,
+        deadlineAt: context?.deadlineAt,
+        recordUsage: context?.recordUsage,
         jsonRoot,
         signal: context?.signal,
       })
-      context?.recordUsage(result.model, result.usage)
       return result
     })
   }
@@ -165,8 +172,10 @@ export class StructuredLlmClient {
   }
 }
 
-function remainingTimeout(deadlineAt: number) {
-  return positiveTimeout(deadlineAt - Date.now())
+function boundedTimeout(configuredTimeoutMs: number, deadlineAt?: number) {
+  return positiveTimeout(deadlineAt
+    ? Math.min(configuredTimeoutMs, deadlineAt - Date.now())
+    : configuredTimeoutMs)
 }
 
 function positiveTimeout(value: number) {
@@ -174,6 +183,48 @@ function positiveTimeout(value: number) {
     throw Object.assign(new Error("模型调用超时"), { code: "LLM_TIMEOUT", status: 504, retryable: true })
   }
   return Math.max(1, Math.floor(value))
+}
+
+function positiveConfiguredSeconds(value: string | undefined, fallback: number) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
+}
+
+async function runModelStage<T extends { model: string; text: string; usage?: TokenUsage }>(
+  operation: Exclude<LlmOperation, "repair">,
+  stage: "initial" | "repair",
+  call: () => Promise<T>,
+) {
+  const startedAt = Date.now()
+  const context = currentModelExecutionContext()
+  try {
+    const result = await call()
+    structuredLog("info", "model_stage", {
+      requestId: currentRequestLogContext()?.requestId,
+      taskId: context?.taskId,
+      operation,
+      stage,
+      model: result.model,
+      totalTokens: result.usage?.totalTokens,
+      responseChars: result.text.length,
+      durationMs: Date.now() - startedAt,
+      outcome: "received",
+    })
+    return result
+  } catch (error) {
+    const value = error as { code?: string; transportCode?: string }
+    structuredLog("error", "model_stage", {
+      requestId: currentRequestLogContext()?.requestId,
+      taskId: context?.taskId,
+      operation,
+      stage,
+      durationMs: Date.now() - startedAt,
+      outcome: "failure",
+      errorCode: value.code ?? "MODEL_STAGE_FAILED",
+      ...(value.transportCode ? { transportCode: value.transportCode } : {}),
+    })
+    throw error
+  }
 }
 
 function logSchemaFailure(
