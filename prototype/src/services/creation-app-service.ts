@@ -120,6 +120,10 @@ export class CreationAppService {
     } else if (run.state !== "READY_FOR_SCRIPTS" || view.topicSelection?.topicId !== input.topicId) {
       throw new Error("TOPIC_POOL_NOT_READY")
     }
+    this.lineage.assignStructures(
+      input.runId,
+      this.runs.getSelectedStructureLineage(input.runId, lineage.structureVersionIds),
+    )
     const current = this.currentContext(context)
     const memory = this.memoryFor(current, lineage.tenantMemoryVersion)
     let adjustment
@@ -169,6 +173,7 @@ export class CreationAppService {
     }
     const tenantMemory = this.currentMemory(current)
     const result = await this.orchestrator.createUsableDraft(current.profile, adjustment, tenantMemory ?? undefined)
+    const selectedStructures = this.runs.getSelectedStructureLineage(result.run.id, result.structureVersionIds)
     this.lineage.attach({
       runId: result.run.id,
       tenantId: context.tenantId,
@@ -179,6 +184,7 @@ export class CreationAppService {
       businessDate,
       tenantMemoryVersion: tenantMemory?.version ?? null,
       structureVersionIds: result.structureVersionIds,
+      ...selectedStructures,
     })
     return this.presentWithLineage(result, tenantMemory, result.structureVersionIds)
   }

@@ -58,6 +58,10 @@ export const scriptSegmentSchema = z.object({
   kind: scriptSegmentKindSchema,
   heading: z.string().trim().min(2).max(20).optional(),
   text: z.string().trim().min(1),
+  origin: z.enum(["structure_node", "model_generated", "user_added", "production", "legacy"]).optional(),
+  sourceTemplateVersionId: z.string().trim().min(1).optional(),
+  sourceNodeKey: z.string().trim().min(1).optional(),
+  sourceSegmentIds: z.array(z.string().trim().min(1)).max(20).optional(),
 })
 export const scriptSegmentsSchema = z.array(scriptSegmentSchema).min(1).max(40)
 
@@ -153,7 +157,9 @@ export function scriptToSegments(script: {
   body: string
   callToAction: string
   segments?: unknown
-}, structureNodes: Array<{ kind?: string; instruction?: string }> = []): ScriptSegment[] {
+}, structureNodes: Array<{ nodeKey?: string; kind?: string; instruction?: string }> = [], options: {
+  sourceTemplateVersionId?: string
+} = {}): ScriptSegment[] {
   const structured = scriptSegmentsSchema.safeParse(script.segments)
   if (structured.success) return structured.data
   const spokenTexts = [
@@ -169,17 +175,29 @@ export function scriptToSegments(script: {
       ?? fallbackSpokenHeading(index + 1, spokenTexts.length)),
     "行动引导",
   ]
-  const spoken = spokenTexts.map((text, index) => ({
-    id: `${script.id}-spoken-${index + 1}`,
-    kind: "spoken" as const,
-    heading: headings[index],
-    text,
-  }))
+  const spoken = spokenTexts.map((text, index) => {
+    const nodeIndex = index === spokenTexts.length - 1
+      ? Math.max(0, structureNodes.length - 1)
+      : Math.min(index, Math.max(0, structureNodes.length - 1))
+    const node = structureNodes[nodeIndex]
+    return {
+      id: `${script.id}-spoken-${index + 1}`,
+      kind: "spoken" as const,
+      heading: headings[index],
+      text,
+      origin: node && options.sourceTemplateVersionId ? "structure_node" as const : "legacy" as const,
+      ...(node?.nodeKey && options.sourceTemplateVersionId ? {
+        sourceTemplateVersionId: options.sourceTemplateVersionId,
+        sourceNodeKey: node.nodeKey,
+      } : {}),
+    }
+  })
   const production = DEFAULT_SHOOTING_TIPS.map((text, index) => ({
     id: `${script.id}-shot-${index + 1}`,
     kind: "shot_instruction" as const,
     heading: "拍摄提示",
     text,
+    origin: "production" as const,
   }))
   return scriptSegmentsSchema.parse([...spoken, ...production])
 }

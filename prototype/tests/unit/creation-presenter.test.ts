@@ -117,9 +117,9 @@ describe("presentCreationDraft", () => {
     })
 
     expect(draft.segments.slice(0, 3)).toEqual([
-      { id: "legacy-script-spoken-1", kind: "spoken", heading: "开场钩子", text: "历史开头。" },
-      { id: "legacy-script-spoken-2", kind: "spoken", heading: "核心内容", text: "这是历史稿中仍需正常显示的完整正文内容。" },
-      { id: "legacy-script-spoken-3", kind: "spoken", heading: "行动引导", text: "历史结尾。" },
+      { id: "legacy-script-spoken-1", kind: "spoken", heading: "开场钩子", text: "历史开头。", origin: "legacy" },
+      { id: "legacy-script-spoken-2", kind: "spoken", heading: "核心内容", text: "这是历史稿中仍需正常显示的完整正文内容。", origin: "legacy" },
+      { id: "legacy-script-spoken-3", kind: "spoken", heading: "行动引导", text: "历史结尾。", origin: "legacy" },
     ])
   })
 })

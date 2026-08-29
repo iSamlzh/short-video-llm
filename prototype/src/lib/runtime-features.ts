@@ -23,6 +23,8 @@ export type RuntimeEnvironment = {
   CONTENT_ANALYSIS_INLINE_WORKER?: string
   CONTENT_ANALYSIS_WORKER_CONCURRENCY?: string
   AGENT_JOB_STALE_SECONDS?: string
+  STRUCTURE_OBSERVATION_HASH_SALT?: string
+  STRUCTURE_EVOLUTION_CANDIDATES_ENABLED?: string
 }
 
 export type RuntimeFeatures = {

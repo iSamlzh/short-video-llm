@@ -40,6 +40,7 @@ export const structureCandidateSchema = z.object({
     goals: list(shortText, 12),
   }).strict(),
   nodes: z.array(z.object({
+    nodeKey: z.string().trim().min(1).max(100).optional(),
     kind: shortText,
     instruction: z.string().trim().min(2).max(1_000),
     required: z.boolean(),
@@ -73,6 +74,34 @@ export const structurePreviewSchema = z.object({
   }).strict()).max(20),
 }).strict()
 
+export const structureEvolutionProposalSchema = z.object({
+  decision: z.enum(["upgrade_existing", "no_change"]),
+  changeType: z.enum([
+    "applicability_adjustment", "node_instruction_update", "quality_rule_update",
+    "risk_rule_update", "variant_create", "no_change",
+  ]),
+  targetTemplateId: z.string().trim().min(1).max(200),
+  baseTemplateVersionId: z.string().trim().min(1).max(200),
+  summary: z.string().trim().min(10).max(2_000),
+  evidenceRefs: z.array(z.string().trim().min(1).max(200)).min(1).max(100),
+  evidenceLimits: z.string().trim().min(10).max(2_000),
+  proposedTemplate: z.object({
+    name: z.string().trim().min(2).max(200),
+    applicability: z.object({
+      ipTags: list(shortText, 12), audiences: list(shortText, 12), goals: list(shortText, 12),
+    }).strict(),
+    nodes: z.array(z.object({
+      nodeKey: z.string().trim().min(1).max(100),
+      kind: shortText,
+      instruction: z.string().trim().min(2).max(1_000),
+      required: z.boolean(),
+    }).strict()).min(1).max(12),
+    qualityRules: list(z.string().trim().min(2).max(500)),
+    riskRules: list(z.string().trim().min(2).max(500)),
+  }).strict(),
+  confidence: z.enum(["exploratory", "standard"]),
+}).strict()
+
 export const createContentSampleSchema = z.object({
   title: shortText,
   sourcePlatform: z.string().trim().min(1).max(100),
@@ -88,3 +117,4 @@ export const createContentSampleSchema = z.object({
 export type CreateContentSampleInput = z.infer<typeof createContentSampleSchema>
 export type StructureCandidateInput = z.infer<typeof structureCandidateSchema>
 export type StructurePreview = z.infer<typeof structurePreviewSchema>
+export type StructureEvolutionProposal = z.infer<typeof structureEvolutionProposalSchema>

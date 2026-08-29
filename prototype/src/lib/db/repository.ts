@@ -200,12 +200,44 @@ export class PrototypeRepository {
   lockSelectedScript(runId: string, scriptSelectionVersion: number) {
     const script = this.getSelectedScript(runId)
     if (!script) throw new Error("SCRIPT_SELECTION_REQUIRED")
-    const version = this.nextVersion("locked_scripts", runId)
-    const sha256 = createHash("sha256").update(JSON.stringify(script)).digest("hex")
-    const createdAt = new Date().toISOString()
-    this.database.prepare("INSERT INTO locked_scripts (run_id,version,schema_version,sha256,payload_json,created_at,script_selection_version) VALUES (?,?,?,?,?,?,?)")
-      .run(runId, version, SCHEMA_VERSION, sha256, JSON.stringify(script), createdAt, scriptSelectionVersion)
-    return { version, sha256, script: structuredClone(script), scriptSelectionVersion, createdAt }
+    return this.database.transaction(() => {
+      const version = this.nextVersion("locked_scripts", runId)
+      const sha256 = createHash("sha256").update(JSON.stringify(script)).digest("hex")
+      const createdAt = new Date().toISOString()
+      this.database.prepare("INSERT INTO locked_scripts (run_id,version,schema_version,sha256,payload_json,created_at,script_selection_version) VALUES (?,?,?,?,?,?,?)")
+        .run(runId, version, SCHEMA_VERSION, sha256, JSON.stringify(script), createdAt, scriptSelectionVersion)
+
+      const context = this.database.prepare(`SELECT tenant_id,ip_profile_id,content_account_id,
+        structure_version_ids_json,primary_structure_version_id,supporting_structure_version_ids_json
+        FROM creation_run_context WHERE run_id=?`).get(runId) as {
+          tenant_id: string; ip_profile_id: string; content_account_id: string | null;
+          structure_version_ids_json: string; primary_structure_version_id: string | null;
+          supporting_structure_version_ids_json: string;
+        } | undefined
+      if (context) {
+        const usageId = randomUUID()
+        const primary = context.primary_structure_version_id
+        const supporting = parseStringArray(context.supporting_structure_version_ids_json)
+        this.database.prepare(`INSERT INTO structure_usage_records
+          (id,run_id,locked_script_version,tenant_id,ip_profile_id,content_account_id,
+           primary_structure_version_id,supporting_structure_version_ids_json,attribution_status,created_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?)`).run(
+          usageId, runId, version, context.tenant_id, context.ip_profile_id, context.content_account_id,
+          primary, JSON.stringify(supporting), primary ? "attributed" : "unattributed", createdAt,
+        )
+        if (primary && Array.isArray(script.segments)) {
+          script.segments.forEach((segment, position) => {
+            if (segment.sourceTemplateVersionId !== primary || !segment.sourceNodeKey) return
+            this.database.prepare(`INSERT INTO structure_usage_nodes
+              (id,usage_id,template_version_id,node_key,segment_id,segment_kind,position,created_at)
+              VALUES (?,?,?,?,?,?,?,?)`).run(
+              randomUUID(), usageId, primary, segment.sourceNodeKey, segment.id, segment.kind, position, createdAt,
+            )
+          })
+        }
+      }
+      return { version, sha256, script: structuredClone(script), scriptSelectionVersion, createdAt }
+    })()
   }
 
   getLatestLockedScript(runId: string) {
@@ -290,5 +322,14 @@ export class PrototypeRepository {
   private saveCommand(key: string, runId: string, command: string, result: unknown) {
     this.database.prepare("INSERT INTO commands (idempotency_key,run_id,command,result_json,created_at) VALUES (?,?,?,?,?)")
       .run(key, runId, command, JSON.stringify(result), new Date().toISOString())
+  }
+}
+
+function parseStringArray(value: string) {
+  try {
+    const parsed = JSON.parse(value)
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []
+  } catch {
+    return []
   }
 }

@@ -83,6 +83,18 @@ const migrations = [
     version: 21,
     filename: "021_complete_activated_content_samples.sql",
   },
+  {
+    version: 22,
+    filename: "022_structure_usage_lineage.sql",
+  },
+  {
+    version: 23,
+    filename: "023_structure_observation_outbox.sql",
+  },
+  {
+    version: 24,
+    filename: "024_structure_evaluation_evolution.sql",
+  },
 ] as const
 
 export const LATEST_MIGRATION_VERSION = migrations.at(-1)!.version

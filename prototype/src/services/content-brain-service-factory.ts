@@ -8,6 +8,8 @@ import { ContentAnalysisJobService } from "./content-analysis-job-service"
 import { ContentBrainWorkflowService } from "./content-brain-workflow-service"
 import { ContentSampleService } from "./content-sample-service"
 import { ModelTaskService } from "./model-task-service"
+import { StructureEvaluationService } from "./structure-evaluation-service"
+import { StructureEvolutionService } from "./structure-evolution-service"
 
 export type ContentBrainServices = ReturnType<typeof createContentBrainServices>
 
@@ -30,5 +32,7 @@ function createContentBrainServices() {
     analysis,
     analysisJobs: new ContentAnalysisJobService(database, analysis, new ModelTaskService(database)),
     workflow: new ContentBrainWorkflowService(database, llm, repository),
+    evaluations: new StructureEvaluationService(database),
+    evolution: new StructureEvolutionService(database, llm),
   }
 }

@@ -26,7 +26,7 @@ export type CandidatePayload = {
   targetTemplateId: string | null
   name: string
   applicability: { ipTags: string[]; audiences: string[]; goals: string[] }
-  nodes: Array<{ kind: string; instruction: string; required: boolean }>
+  nodes: Array<{ nodeKey?: string; kind: string; instruction: string; required: boolean }>
   qualityRules: string[]
   riskRules: string[]
   similarities: string[]
@@ -57,6 +57,11 @@ export type CandidateRecord = {
   createdAt?: string
   createdBy?: string
   sourceAnalysisIds?: string[]
+  sampleId?: string
+  sourceType?: "sample_breakdown" | "outcome_evolution"
+  sourceReferenceId?: string | null
+  baseTemplateVersionId?: string | null
+  changeType?: string | null
   activation?: {
     templateId: string
     templateVersionId: string
@@ -80,11 +85,65 @@ export type ActiveStructure = {
   version: number
   name: string
   applicability: { ipTags: string[]; audiences: string[]; goals: string[] }
-  nodes: Array<{ kind: string; instruction: string; required: boolean }>
+  nodes: Array<{ nodeKey?: string; kind: string; instruction: string; required: boolean }>
   qualityRules: string[]
   riskRules: string[]
   isGeneral: boolean
   sourceCount: number
+}
+
+export type StructureEvaluation = {
+  id: string
+  templateId: string
+  templateVersionId: string
+  version: number
+  windowStart: string | null
+  windowEnd: string | null
+  publicationCount: number
+  scopeCount: number
+  eligiblePublicationCount: number
+  aggregate: {
+    metrics?: Record<string, {
+      sampleCount: number
+      currentMedian: number | null
+      absoluteDeltaMedian: number | null
+      relativeDeltaMedian: number | null
+      positiveCount: number
+      negativeCount: number
+    }>
+    nodeCoverage?: Record<string, number>
+    evidenceTierCounts?: { fact?: number; tentative?: number; confirmed?: number }
+    evidenceLimits?: string[]
+  }
+  confidence: "facts_only" | "exploratory" | "standard"
+  algorithmVersion: number
+  policyVersion: number
+  status: "building" | "current" | "superseded" | "failed"
+  createdAt: string
+}
+
+export type StructureObservationEvidence = {
+  id: string
+  platform: string
+  contextBucket: Record<string, unknown>
+  evidenceTier: "fact" | "tentative" | "confirmed"
+  nodeKeys: string[]
+  metrics: Record<string, unknown>
+  metricDelta: Record<string, unknown>
+  dataQuality: Record<string, unknown>
+  capturedAt: string
+  status: string
+}
+
+export type StructureEvaluationDetail = {
+  evaluation: StructureEvaluation
+  evidence: StructureObservationEvidence[]
+}
+
+export type EvolutionProposalResult = {
+  proposal: { decision: "upgrade" | "no_change"; summary: string; evidenceLimits: string }
+  candidate: CandidateRecord | null
+  model: string
 }
 
 export type AgentJob = {
@@ -126,4 +185,8 @@ export type ContentBrainApi = {
   activateCandidate(candidateId: string, input: { expectedVersion: number; reason: string }): Promise<unknown>
   listSamples(): Promise<SampleSummary[]>
   listStructures(): Promise<ActiveStructure[]>
+  listEvaluations(): Promise<StructureEvaluation[]>
+  getEvaluation(evaluationId: string): Promise<StructureEvaluationDetail>
+  evaluateStructure(templateVersionId: string): Promise<StructureEvaluation>
+  proposeEvolution(evaluationId: string): Promise<EvolutionProposalResult>
 }

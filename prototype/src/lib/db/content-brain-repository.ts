@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto"
 import type Database from "better-sqlite3"
-import type { ContentAnalysis, SampleStatus, TemplatePackage } from "../../domain/content-brain"
+import { normalizeStructureNodes, type ContentAnalysis, type SampleStatus, type TemplatePackage } from "../../domain/content-brain"
 import type { StructureCandidateInput, StructurePreview } from "../../domain/content-brain-schemas"
 import type { TokenUsage } from "../llm/adapter"
 
@@ -128,7 +128,8 @@ export class ContentBrainRepository {
       (SELECT a.id FROM platform_content_analysis_versions a WHERE a.sample_id=s.id ORDER BY a.version DESC LIMIT 1) analysis_id,
       (SELECT c.id FROM platform_structure_candidates c WHERE c.sample_id=s.id ORDER BY c.created_at DESC,c.rowid DESC LIMIT 1) candidate_id
       FROM platform_content_samples s
-      WHERE (? IS NULL OR s.workflow_status=?) ORDER BY s.updated_at DESC,s.id DESC`)
+      WHERE s.source_platform!='internal_evolution'
+        AND (? IS NULL OR s.workflow_status=?) ORDER BY s.updated_at DESC,s.id DESC`)
       .all(status ?? null, status ?? null) as Array<{
         id: string; title: string; source_platform: string; workflow_status: SampleStatus;
         current_revision_version: number; data_origin: "demo" | "formal"; updated_at: string;
@@ -303,7 +304,8 @@ export class ContentBrainRepository {
     id: string; analysisId: string; sampleId: string; payload: StructureCandidateInput;
     dataOrigin: "demo" | "formal"; actorUserId: string; createdAt: string;
   }) {
-    const candidateKey = `${input.sampleId}:${input.payload.decision}:${input.payload.targetTemplateId ?? input.payload.name}`
+    const payload = { ...input.payload, nodes: normalizeStructureNodes(input.payload.nodes) }
+    const candidateKey = `${input.sampleId}:${payload.decision}:${payload.targetTemplateId ?? payload.name}`
     const next = this.database.prepare(`SELECT COALESCE(MAX(version),0)+1 version
       FROM platform_structure_candidates WHERE candidate_key=?`).get(candidateKey) as { version: number }
     this.database.transaction(() => {
@@ -311,20 +313,68 @@ export class ContentBrainRepository {
         (id,candidate_key,sample_id,version,decision,target_template_id,payload_json,status,data_origin,
          created_by_user_id,created_at,updated_at)
         VALUES (?,?,?,?,?,?,?,'draft',?,?,?,?)`).run(
-        input.id, candidateKey, input.sampleId, next.version, input.payload.decision,
-        input.payload.targetTemplateId, JSON.stringify(input.payload), input.dataOrigin,
+        input.id, candidateKey, input.sampleId, next.version, payload.decision,
+        payload.targetTemplateId, JSON.stringify(payload), input.dataOrigin,
         input.actorUserId, input.createdAt, input.createdAt,
       )
       this.database.prepare(`INSERT INTO platform_candidate_source_links
         (candidate_id,analysis_id,created_at) VALUES (?,?,?)`).run(input.id, input.analysisId, input.createdAt)
     })()
-    return { id: input.id, ...input.payload, version: next.version, status: "draft" as const }
+    return { id: input.id, ...payload, version: next.version, status: "draft" as const }
   }
 
   listCandidateSourceAnalysisIds(candidateId: string) {
     return (this.database.prepare(`SELECT analysis_id FROM platform_candidate_source_links
       WHERE candidate_id=? ORDER BY analysis_id`).all(candidateId) as Array<{ analysis_id: string }>)
       .map((row) => row.analysis_id)
+  }
+
+  appendEvolutionCandidate(input: {
+    id: string
+    evaluationId: string
+    baseTemplateVersionId: string
+    changeType: string
+    evidenceRefs: string[]
+    payload: StructureCandidateInput
+    actorUserId: string
+    createdAt: string
+  }) {
+    const linked = this.database.prepare(`SELECT candidate_id FROM platform_candidate_evaluation_links
+      WHERE evaluation_id=?`).get(input.evaluationId) as { candidate_id: string } | undefined
+    if (linked) return this.requireCandidate(linked.candidate_id)
+    const sampleId = "platform-evolution-system-source"
+    const payload = { ...input.payload, nodes: normalizeStructureNodes(input.payload.nodes) }
+    const candidateKey = `evolution:${input.baseTemplateVersionId}:${input.evaluationId}`
+    this.database.transaction(() => {
+      const exists = this.database.prepare("SELECT 1 FROM platform_content_samples WHERE id=?").get(sampleId)
+      if (!exists) {
+        this.createSample({
+          id: sampleId,
+          title: "平台结构进化系统来源",
+          sourcePlatform: "internal_evolution",
+          transcript: "该系统记录仅用于承载匿名结构评估生成的进化候选，不包含任何租户原稿或用户身份信息。",
+          rightsNote: "平台内部系统记录",
+          dataOrigin: "formal",
+          actorUserId: input.actorUserId,
+          createdAt: input.createdAt,
+        })
+        this.updateSampleStatus(sampleId, "completed", input.createdAt)
+      }
+      this.database.prepare(`INSERT INTO platform_structure_candidates
+        (id,candidate_key,sample_id,version,decision,target_template_id,payload_json,status,data_origin,
+         created_by_user_id,created_at,updated_at,source_type,source_reference_id,base_template_version_id,change_type)
+        VALUES (?,?,?,?,?,?,?,'draft','formal',?,?,?,'outcome_evolution',?,?,?)`).run(
+        input.id, candidateKey, sampleId, 1, payload.decision, payload.targetTemplateId, JSON.stringify(payload),
+        input.actorUserId, input.createdAt, input.createdAt, input.evaluationId,
+        input.baseTemplateVersionId, input.changeType,
+      )
+      this.database.prepare(`INSERT INTO platform_candidate_evaluation_links
+        (candidate_id,evaluation_id,created_at) VALUES (?,?,?)`).run(input.id, input.evaluationId, input.createdAt)
+      const evidence = this.database.prepare(`INSERT INTO platform_candidate_observation_evidence
+        (candidate_id,observation_id,created_at) VALUES (?,?,?)`)
+      input.evidenceRefs.forEach((observationId) => evidence.run(input.id, observationId, input.createdAt))
+    })()
+    return this.requireCandidate(input.id)
   }
 
   private findCandidateActivation(candidateId: string) {
@@ -352,13 +402,19 @@ export class ContentBrainRepository {
     const row = this.database.prepare("SELECT * FROM platform_structure_candidates WHERE id=?").get(candidateId) as {
       id: string; candidate_key: string; sample_id: string; version: number; decision: StructureCandidateInput["decision"];
       target_template_id: string | null; payload_json: string; status: "draft" | "preview_ready" | "activation_required" | "active" | "inactive" | "rejected";
-      data_origin: "demo" | "formal"; review_note: string | null
+      data_origin: "demo" | "formal"; review_note: string | null;
+      source_type: "sample_breakdown" | "outcome_evolution"; source_reference_id: string | null;
+      base_template_version_id: string | null; change_type: string | null; generated_by_model_task_id: string | null
     } | undefined
     if (!row) throw new Error("STRUCTURE_CANDIDATE_NOT_FOUND")
+    const payload = JSON.parse(row.payload_json) as StructureCandidateInput
     return {
       id: row.id, candidateKey: row.candidate_key, sampleId: row.sample_id, version: row.version, decision: row.decision,
-      targetTemplateId: row.target_template_id, payload: JSON.parse(row.payload_json) as StructureCandidateInput,
+      targetTemplateId: row.target_template_id, payload: { ...payload, nodes: normalizeStructureNodes(payload.nodes) },
       status: row.status, dataOrigin: row.data_origin, reviewNote: row.review_note,
+      sourceType: row.source_type, sourceReferenceId: row.source_reference_id,
+      baseTemplateVersionId: row.base_template_version_id, changeType: row.change_type,
+      generatedByModelTaskId: row.generated_by_model_task_id,
     }
   }
 
@@ -380,6 +436,7 @@ export class ContentBrainRepository {
     actorUserId: string; createdAt: string;
   }) {
     const current = this.requireCandidate(input.candidateId)
+    const payload = { ...input.payload, nodes: normalizeStructureNodes(input.payload.nodes) }
     if (current.version !== input.expectedVersion) throw new Error("CANDIDATE_VERSION_CONFLICT")
     if (current.status !== "draft") throw new Error("CANDIDATE_NOT_EDITABLE")
     const version = current.version + 1
@@ -388,18 +445,26 @@ export class ContentBrainRepository {
         .run(input.createdAt, current.id)
       this.database.prepare(`INSERT INTO platform_structure_candidates
         (id,candidate_key,sample_id,version,decision,target_template_id,payload_json,status,data_origin,
-         created_by_user_id,created_at,updated_at)
-        VALUES (?,?,?,?,?,?,?,'draft',?,?,?,?)`).run(
-        input.id, current.candidateKey, current.sampleId, version, input.payload.decision,
-        input.payload.targetTemplateId, JSON.stringify(input.payload), current.dataOrigin,
-        input.actorUserId, input.createdAt, input.createdAt,
+          created_by_user_id,created_at,updated_at,source_type,source_reference_id,base_template_version_id,change_type,
+          generated_by_model_task_id)
+        VALUES (?,?,?,?,?,?,?,'draft',?,?,?,?,?,?,?,?,?)`).run(
+        input.id, current.candidateKey, current.sampleId, version, payload.decision,
+        payload.targetTemplateId, JSON.stringify(payload), current.dataOrigin,
+        input.actorUserId, input.createdAt, input.createdAt, current.sourceType, current.sourceReferenceId,
+        current.baseTemplateVersionId, current.changeType, current.generatedByModelTaskId,
       )
       this.database.prepare(`INSERT INTO platform_candidate_source_links (candidate_id,analysis_id,created_at)
         SELECT ?,analysis_id,? FROM platform_candidate_source_links WHERE candidate_id=?`).run(
         input.id, input.createdAt, current.id,
       )
+      if (current.sourceType === "outcome_evolution") {
+        this.database.prepare(`UPDATE platform_candidate_evaluation_links SET candidate_id=?,created_at=?
+          WHERE candidate_id=?`).run(input.id, input.createdAt, current.id)
+        this.database.prepare(`UPDATE platform_candidate_observation_evidence SET candidate_id=?,created_at=?
+          WHERE candidate_id=?`).run(input.id, input.createdAt, current.id)
+      }
     })()
-    return { id: input.id, ...input.payload, version, status: "draft" as const }
+    return { id: input.id, ...payload, version, status: "draft" as const }
   }
 
   savePreview(input: {
@@ -437,7 +502,7 @@ export class ContentBrainRepository {
       FROM platform_template_versions v WHERE v.status='active' ORDER BY v.is_general,v.name,v.id`).all() as Array<Row & { source_count: number }>
     return rows.map((row) => {
       const payload = JSON.parse(row.payload_json) as Partial<TemplatePackage> & {
-        nodes?: Array<string | { kind: string; instruction: string; required: boolean }>
+        nodes?: Array<string | { nodeKey?: string; kind: string; instruction: string; required: boolean }>
       }
       return {
         templateVersionId: row.id,
@@ -445,8 +510,8 @@ export class ContentBrainRepository {
         version: row.version,
         name: row.name,
         applicability: payload.applicability ?? { ipTags: [], audiences: [], goals: [] },
-        nodes: (payload.nodes ?? []).map((node) => typeof node === "string"
-          ? { kind: "section", instruction: node, required: true } : node),
+        nodes: normalizeStructureNodes((payload.nodes ?? []).map((node) => typeof node === "string"
+          ? { kind: "section", instruction: node, required: true } : node)),
         qualityRules: payload.qualityRules ?? [],
         riskRules: payload.riskRules ?? [],
         isGeneral: Boolean(row.is_general),

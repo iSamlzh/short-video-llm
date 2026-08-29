@@ -5,6 +5,7 @@ import { ContentBrainWorkspace } from "../../src/components/content-brain/Conten
 import { AnalysisReviewDocument } from "../../src/components/content-brain/AnalysisReviewDocument"
 import { StructureDecisionDocument } from "../../src/components/content-brain/StructureDecisionDocument"
 import { StructureLedger } from "../../src/components/content-brain/StructureLedger"
+import { StructureEvolutionWorkspace } from "../../src/components/content-brain/StructureEvolutionWorkspace"
 
 describe("AI 原生爆款拆解工作区", () => {
   it("以新增爆款样本开始而不是空白模板", () => {
@@ -234,6 +235,57 @@ describe("AI 原生爆款拆解工作区", () => {
     await userEvent.click(screen.getByRole("button", { name: "结构库" }))
     expect(screen.queryByRole("button", { name: "新增爆款样本" })).not.toBeInTheDocument()
   })
+
+  it("结构进化先展示证据等级和结论边界，不把事实积累包装成优化建议", async () => {
+    const api = fixtureApi()
+    render(<StructureEvolutionWorkspace
+      structures={[activeStructureFixture]}
+      evaluations={[factsOnlyEvaluation]}
+      evolutionEnabled
+      api={api as any}
+      onEvaluated={vi.fn()}
+      onOpenCandidate={vi.fn()}
+    />)
+
+    expect(screen.getByText("事实积累")).toBeVisible()
+    expect(screen.getByText(/当前只展示事实，不推断结构改进方向/)).toBeVisible()
+    expect(screen.getByText("证据未达到候选门槛")).toBeVisible()
+    expect(screen.queryByRole("button", { name: /生成改进候选/ })).not.toBeInTheDocument()
+  })
+
+  it("标准证据可展开匿名记录并生成候选进入人工复核", async () => {
+    const api = fixtureApi()
+    const onOpenCandidate = vi.fn()
+    api.getEvaluation.mockResolvedValue({
+      evaluation: standardEvaluation,
+      evidence: [{
+        id: "observation-1", platform: "视频号", contextBucket: { industry: "本地生活" },
+        evidenceTier: "confirmed", nodeKeys: ["hook-1"], metrics: { views: 12000 },
+        metricDelta: { views: { relativeDelta: 0.22 } }, dataQuality: { baselinePeerCount: 8 },
+        capturedAt: "2026-08-29T10:00:00.000Z", status: "active",
+      }],
+    })
+    api.proposeEvolution.mockResolvedValue({
+      proposal: { decision: "upgrade", summary: "收紧开场指令", evidenceLimits: "仅适用于当前证据范围" },
+      candidate: { ...candidateFixture, sampleId: "platform-evolution-system-source" }, model: "fixture",
+    })
+    render(<StructureEvolutionWorkspace
+      structures={[activeStructureFixture]}
+      evaluations={[standardEvaluation]}
+      evolutionEnabled
+      api={api as any}
+      onEvaluated={vi.fn()}
+      onOpenCandidate={onOpenCandidate}
+    />)
+
+    await userEvent.click(screen.getByRole("button", { name: "查看证据" }))
+    expect(await screen.findByRole("table", { name: "结构评估指标" })).toBeVisible()
+    await userEvent.click(screen.getByText("稳定观察"))
+    expect(screen.getByText(/账号基线 8 条同类作品/)).toBeVisible()
+    await userEvent.click(screen.getByRole("button", { name: /生成改进候选/ }))
+    expect(api.proposeEvolution).toHaveBeenCalledWith("evaluation-standard")
+    expect(onOpenCandidate).toHaveBeenCalledWith("platform-evolution-system-source")
+  })
 })
 
 function fixtureApi() {
@@ -249,7 +301,33 @@ function fixtureApi() {
     previewCandidate: vi.fn().mockResolvedValue(previewFixture), rejectCandidate: vi.fn().mockResolvedValue({}),
     activateCandidate: vi.fn().mockResolvedValue({ id: "version-1" }),
     listSamples: vi.fn().mockResolvedValue([]), listStructures: vi.fn().mockResolvedValue([]),
+    listEvaluations: vi.fn().mockResolvedValue([]), getEvaluation: vi.fn(),
+    evaluateStructure: vi.fn(), proposeEvolution: vi.fn(),
   }
+}
+
+const activeStructureFixture = {
+  templateVersionId: "trust-v1", templateId: "trust", version: 1, name: "真实冲突到责任原则",
+  applicability: { ipTags: ["团长"], audiences: ["本地经营者"], goals: ["建立信任"] },
+  nodes: [{ nodeKey: "hook-1", kind: "开场", instruction: "用可核验冲突开场", required: true }],
+  qualityRules: ["必须包含具体处理动作"], riskRules: ["不得承诺收益"], isGeneral: false, sourceCount: 4,
+}
+
+const factsOnlyEvaluation = {
+  id: "evaluation-facts", templateId: "trust", templateVersionId: "trust-v1", version: 1,
+  windowStart: null, windowEnd: null, publicationCount: 3, scopeCount: 1, eligiblePublicationCount: 1,
+  aggregate: { metrics: {}, nodeCoverage: { "hook-1": 3 }, evidenceLimits: ["不能证明单个节点的因果效果。"] },
+  confidence: "facts_only" as const, algorithmVersion: 1, policyVersion: 1, status: "current" as const,
+  createdAt: "2026-08-29T10:00:00.000Z",
+}
+
+const standardEvaluation = {
+  ...factsOnlyEvaluation, id: "evaluation-standard", publicationCount: 12, scopeCount: 3,
+  eligiblePublicationCount: 10, confidence: "standard" as const,
+  aggregate: {
+    metrics: { views: { sampleCount: 10, currentMedian: 12000, absoluteDeltaMedian: 2000, relativeDeltaMedian: .2, positiveCount: 8, negativeCount: 2 } },
+    nodeCoverage: { "hook-1": 12 }, evidenceLimits: ["不能证明单个节点的因果效果。"],
+  },
 }
 
 const runningJobFixture = {

@@ -9,6 +9,7 @@ import { prototypePreset } from "../presets"
 import { simulateMetrics, type SimulationScenario } from "../lib/simulation/metric-simulator"
 import type { TemplatePackage } from "../domain/content-brain"
 import { buildCreationEvidenceCatalog, createFallbackCreationDecisionBrief, creationDecisionBriefSchema, estimateSpokenDuration, groundCreationDecisionBrief, scriptSegmentsSchema, scriptToSegments, type CreationEvidenceCatalogItem, type ScriptSegment } from "../domain/creation-contracts"
+import { normalizeStructureNodes } from "../domain/content-brain"
 
 export type TemplateRetrievalQuery = { ipTags: string[]; audience: string; goal: string }
 type StructureProvider = (query: TemplateRetrievalQuery) => TemplatePackage[]
@@ -198,8 +199,8 @@ export class RunService {
     const topic = this.repository.getTopicBatch(runId, selection.batchVersion)?.items.find(item => item.id === selection.topicId)
     if (!topic) throw new Error("TOPIC_SELECTION_STALE")
     const structureContext = this.resolveStructureContext(run.ipProfile)
-    const selectedStructure = structureContext.modelStructures.find((item) => item.structureId === topic.structureId)
-      ?? structureContext.modelStructures[0]
+    const selectedStructureIndex = Math.max(0, structureContext.modelStructures.findIndex((item) => item.structureId === topic.structureId))
+    const selectedStructure = structureContext.modelStructures[selectedStructureIndex]
     this.repository.setState(runId, transition(run.state, "GENERATE_SCRIPTS"))
     try {
       const generated = await this.llm.generateStructured("scripts", {
@@ -215,7 +216,7 @@ export class RunService {
         hook: generated.hook,
         body: generated.body,
         callToAction: generated.callToAction,
-      }, selectedStructure.nodes)
+      }, selectedStructure.nodes, { sourceTemplateVersionId: structureContext.structureVersionIds[selectedStructureIndex] })
       const estimatedSeconds = Math.max(15, Math.min(300, estimateSpokenDuration(segments).estimatedSeconds))
       const item = scriptCandidateSchema.parse({
         ...generated,
@@ -271,7 +272,7 @@ export class RunService {
 
     const currentSegments = scriptToSegments(currentScript)
     const legacyParagraphs = typeof input[0] === "string" ? scriptRevisionParagraphsSchema.parse(input) : null
-    const segments = legacyParagraphs
+    const submittedSegments = legacyParagraphs
       ? [
         ...scriptToSegments({
         ...currentScript,
@@ -283,6 +284,27 @@ export class RunService {
         ...currentSegments.filter((segment) => segment.kind !== "spoken"),
       ]
       : scriptSegmentsSchema.parse(input)
+    const currentById = new Map(currentSegments.map((segment) => [segment.id, segment]))
+    const currentSpoken = currentSegments.filter((segment) => segment.kind === "spoken")
+    let spokenIndex = 0
+    const segments = submittedSegments.map((segment) => {
+      const source = currentById.get(segment.id)
+        ?? (segment.kind === "spoken" && legacyParagraphs ? currentSpoken[spokenIndex++] : undefined)
+      if (!source) {
+        const { sourceTemplateVersionId: _template, sourceNodeKey: _node, sourceSegmentIds: _sources, ...safe } = segment
+        return { ...safe, origin: "user_added" as const }
+      }
+      return {
+        ...segment,
+        origin: source.origin ?? "legacy" as const,
+        ...(source.sourceTemplateVersionId ? { sourceTemplateVersionId: source.sourceTemplateVersionId } : {}),
+        ...(source.sourceNodeKey ? { sourceNodeKey: source.sourceNodeKey } : {}),
+        ...(source.sourceSegmentIds?.length ? { sourceSegmentIds: source.sourceSegmentIds } : {}),
+        ...(segment.id !== source.id ? {
+          sourceSegmentIds: [...new Set([...(source.sourceSegmentIds ?? []), source.id])],
+        } : {}),
+      }
+    })
     const spoken = segments.filter((segment) => segment.kind === "spoken")
     if (spoken.length < 3) throw new Error("SCRIPT_SPOKEN_SEGMENTS_INVALID")
 
@@ -381,6 +403,24 @@ export class RunService {
     return this.resolveStructureContext(profile).structureVersionIds
   }
 
+  getSelectedStructureLineage(runId: string, structureVersionIds?: string[]) {
+    const run = this.repository.requireRun(runId)
+    const selection = this.repository.getCurrentTopicSelection(runId)
+    const topic = selection
+      ? this.repository.getTopicBatch(runId, selection.batchVersion)?.items.find((item) => item.id === selection.topicId)
+      : null
+    const versionIds = structureVersionIds ?? this.getStructureVersionIds(run.ipProfile)
+    const match = topic?.structureId.match(/^structure-(\d+)$/)
+    const selectedIndex = match ? Number(match[1]) - 1 : -1
+    const primaryStructureVersionId = selectedIndex >= 0 ? versionIds[selectedIndex] ?? null : null
+    return {
+      primaryStructureVersionId,
+      supportingStructureVersionIds: primaryStructureVersionId
+        ? versionIds.filter((id) => id !== primaryStructureVersionId)
+        : versionIds,
+    }
+  }
+
   private resolveStructureContext(profile: IpProfile) {
     const packages = this.structureProvider({
       ipTags: [profile.expertise],
@@ -395,7 +435,7 @@ export class RunService {
       modelStructures: packages.map((item, index) => ({
         structureId: `structure-${index + 1}`,
         structureName: `推荐表达结构 ${index + 1}`,
-        nodes: item.nodes,
+        nodes: normalizeStructureNodes(item.nodes),
         qualityRules: item.qualityRules,
         riskRules: item.riskRules,
       })),

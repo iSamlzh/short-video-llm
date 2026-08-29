@@ -34,6 +34,11 @@ test("平台拆解启用的新结构进入团长创作且不泄露内部内容",
   const activated = await (await activationResponse).json() as { id: string }
   expect(activated.id).toBeTruthy()
 
+  await page.getByRole("button", { name: "结构进化" }).click()
+  await expect(page.getByRole("heading", { name: "结构进化" })).toBeVisible()
+  await expect(page.getByText("租户原稿与身份不进入平台证据")).toBeVisible()
+  await expect(page.getByText("当前结构还没有评估版本")).toBeVisible()
+
   await page.evaluate(() => fetch("/api/auth/logout", { method: "POST" }))
   await login(page, "owner@example.test")
   const creationResult = await page.evaluate(async () => {

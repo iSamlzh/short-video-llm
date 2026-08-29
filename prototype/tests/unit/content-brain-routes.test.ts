@@ -50,6 +50,10 @@ describe("平台内容大脑私有路由", () => {
     ["POST", ["candidates", "candidate-1", "activate"], { expectedVersion: 1, reason: "试生成通过" }, "workflow.activateCandidate"],
     ["POST", ["versions", "version-1", "deactivate"], { reason: "质量复核" }, "workflow.deactivateVersion"],
     ["POST", ["versions", "version-1", "rollback"], { reason: "恢复稳定版本" }, "workflow.rollbackVersion"],
+    ["POST", ["structures", "version-1", "evaluate"], {}, "evaluations.evaluate"],
+    ["GET", ["evaluations"], undefined, "evaluations.listCurrent"],
+    ["GET", ["evaluations", "evaluation-1"], undefined, "evaluations.get"],
+    ["POST", ["evaluations", "evaluation-1", "propose"], {}, "evolution.propose"],
     ["GET", ["structures"], undefined, "repository.listActivePackages"],
   ] as const)("%s /%s 调用 %s", async (method, segments, body, callPath) => {
     const deps = routeDeps()
@@ -127,6 +131,11 @@ function routeDeps() {
       listSamples: vi.fn(() => []), getSampleWorkspace: vi.fn(() => ({ id: "sample-1" })),
       listActivePackages: vi.fn(() => []),
     },
+    evaluations: {
+      evaluate: vi.fn(() => ({ id: "evaluation-1" })), listCurrent: vi.fn(() => []),
+      get: vi.fn(() => ({ id: "evaluation-1" })), evidence: vi.fn(() => []),
+    },
+    evolution: { propose: vi.fn(() => ({ proposal: { decision: "no_change" }, candidate: null })) },
   } as any
 }
 

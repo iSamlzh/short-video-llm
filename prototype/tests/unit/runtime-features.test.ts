@@ -92,6 +92,7 @@ describe("运行环境能力边界", () => {
         PROTOTYPE_DEMO_CONTROLS: "false",
         PROTOTYPE_ALLOW_DEMO_CLEAR: "false",
         PROTOTYPE_DB_PATH: databasePath,
+        STRUCTURE_OBSERVATION_HASH_SALT: "production-structure-observation-secret-2026",
       })).toEqual({ appEnvironment: "production" })
     }
   })

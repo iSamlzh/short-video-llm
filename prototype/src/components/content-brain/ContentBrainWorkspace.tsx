@@ -1,26 +1,30 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { ArrowClockwise, BookOpen, FilePlus, Files, SealCheck } from "@phosphor-icons/react"
+import { ArrowClockwise, BookOpen, FilePlus, Files, SealCheck, TrendUp } from "@phosphor-icons/react"
 import { AnalysisReviewDocument } from "./AnalysisReviewDocument"
 import { AgentQueueSummary, AgentTaskDocument, latestJobForResource } from "./AgentTaskDocument"
 import { SampleIntakeDocument } from "./SampleIntakeDocument"
 import { StructureDecisionDocument } from "./StructureDecisionDocument"
 import { StructureLedger } from "./StructureLedger"
-import type { ActiveStructure, AgentJob, ContentBrainApi, SampleSummary, SampleWorkspace } from "./types"
+import { StructureEvolutionWorkspace } from "./StructureEvolutionWorkspace"
+import type { ActiveStructure, AgentJob, ContentBrainApi, SampleSummary, SampleWorkspace, StructureEvaluation } from "./types"
 
 const defaultBrowserApi = browserApi()
 
-export function ContentBrainWorkspace({ initialSamples, initialStructures, initialJobs = [], canActivate, api = defaultBrowserApi }: {
+export function ContentBrainWorkspace({ initialSamples, initialStructures, initialEvaluations = [], initialJobs = [], canActivate, evolutionEnabled = false, api = defaultBrowserApi }: {
   initialSamples: SampleSummary[]
   initialStructures: ActiveStructure[]
+  initialEvaluations?: StructureEvaluation[]
   initialJobs?: AgentJob[]
   canActivate: boolean
+  evolutionEnabled?: boolean
   api?: ContentBrainApi
 }) {
-  const [view, setView] = useState<"samples" | "structures" | "review">("samples")
+  const [view, setView] = useState<"samples" | "structures" | "evolution" | "review">("samples")
   const [samples, setSamples] = useState(initialSamples)
   const [structures, setStructures] = useState(initialStructures)
+  const [evaluations, setEvaluations] = useState(initialEvaluations)
   const [jobs, setJobs] = useState(initialJobs)
   const [workspace, setWorkspace] = useState<SampleWorkspace | null>(null)
   const [intake, setIntake] = useState(false)
@@ -37,10 +41,11 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
   }
   async function refresh(current = workspace) {
     if (current) setWorkspace(await api.getSample(current.sample.id))
-    const [nextSamples, nextStructures, nextJobs] = await Promise.all([api.listSamples(), api.listStructures(), api.listTasks()])
+    const [nextSamples, nextStructures, nextJobs, nextEvaluations] = await Promise.all([api.listSamples(), api.listStructures(), api.listTasks(), api.listEvaluations()])
     setSamples(nextSamples)
     setStructures(nextStructures)
     setJobs(nextJobs)
+    setEvaluations(nextEvaluations)
   }
   async function acceptReviewUpdate(next?: SampleWorkspace) {
     if (!next) return refresh()
@@ -118,6 +123,7 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
     <nav className="brain-task-navigation" aria-label="内容大脑任务">
       <button aria-current={view === "samples" ? "page" : undefined} onClick={() => { setView("samples"); setWorkspace(null); setNotice("") }}><Files size={19} />爆款样本</button>
       <button aria-current={view === "structures" ? "page" : undefined} onClick={() => setView("structures")}><BookOpen size={19} />结构库</button>
+      <button aria-current={view === "evolution" ? "page" : undefined} onClick={() => setView("evolution")}><TrendUp size={19} />结构进化</button>
       <button aria-current={view === "review" ? "page" : undefined} onClick={() => { setView("review"); setNotice("") }}><SealCheck size={19} />待复核</button>
       {!intake && view === "samples" && <button className="brain-new-sample" onClick={() => { setIntake(true); setView("samples") }}><FilePlus size={19} />新增爆款样本</button>}
     </nav>
@@ -130,6 +136,11 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
       if (duplicate) setError("该内容已存在，已打开原有拆解任务。")
     }} />}
     {!loading && !intake && view === "structures" && <StructureLedger structures={structures} />}
+    {!loading && !intake && view === "evolution" && <StructureEvolutionWorkspace
+      structures={structures} evaluations={evaluations} evolutionEnabled={evolutionEnabled} api={api}
+      onEvaluated={(next) => setEvaluations((current) => [next, ...current.filter((item) => item.templateVersionId !== next.templateVersionId)])}
+      onOpenCandidate={openSample}
+    />}
     {!loading && !intake && view === "review" && workspace && (candidate
       ? <StructureDecisionDocument candidate={candidate} api={api} canActivate={canActivate} onUpdated={() => refresh()} onActivated={finishActivation} />
       : workspace.analyses.length
@@ -184,5 +195,8 @@ function browserApi(): ContentBrainApi {
     rejectAnalysis: (id, input) => request(`/analyses/${id}/reject`, json("POST", input)), saveCandidate: (id, input) => request(`/candidates/${id}`, json("PUT", input)),
     previewCandidate: (id, input) => request(`/candidates/${id}/preview`, modelJson(input)), rejectCandidate: (id, input) => request(`/candidates/${id}/reject`, json("POST", input)),
     activateCandidate: (id, input) => request(`/candidates/${id}/activate`, json("POST", input)), listSamples: () => request("/samples"), listStructures: () => request("/structures"),
+    listEvaluations: () => request("/evaluations"), getEvaluation: (id) => request(`/evaluations/${id}`),
+    evaluateStructure: (id) => request(`/structures/${id}/evaluate`, modelJson({})),
+    proposeEvolution: (id) => request(`/evaluations/${id}/propose`, modelJson({})),
   }
 }

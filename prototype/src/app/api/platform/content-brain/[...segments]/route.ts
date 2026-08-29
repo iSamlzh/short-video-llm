@@ -123,6 +123,28 @@ export async function handleContentBrain(
       const input = reasonSchema.parse(await request.json())
       return Response.json(deps.workflow.rollbackVersion(context, segments[1], input.reason))
     }
+    if (request.method === "POST" && segments.length === 3 && segments[0] === "structures" && segments[2] === "evaluate") {
+      emptySchema.parse(await request.json())
+      requireIdempotencyKey(request)
+      return Response.json(deps.evaluations.evaluate(segments[1]))
+    }
+    if (request.method === "GET" && segments.length === 1 && segments[0] === "evaluations") {
+      return Response.json(deps.evaluations.listCurrent())
+    }
+    if (request.method === "GET" && segments.length === 2 && segments[0] === "evaluations") {
+      return Response.json({
+        evaluation: deps.evaluations.get(segments[1]),
+        evidence: deps.evaluations.evidence(segments[1]),
+      })
+    }
+    if (request.method === "POST" && segments.length === 3 && segments[0] === "evaluations" && segments[2] === "propose") {
+      emptySchema.parse(await request.json())
+      const result = deps.modelTasks ? await deps.modelTasks.run({
+        scopeType: "platform", actorUserId: context.userId, operation: "content_brain.structure_evolution",
+        idempotencyKey: requireIdempotencyKey(request), signal: request.signal,
+      }, () => deps.evolution.propose(context, segments[1])) : await deps.evolution.propose(context, segments[1])
+      return Response.json(result)
+    }
     if (request.method === "GET" && segments.length === 1 && segments[0] === "structures") {
       return Response.json(deps.repository.listActivePackages())
     }

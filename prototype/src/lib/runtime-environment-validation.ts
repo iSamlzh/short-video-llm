@@ -13,6 +13,9 @@ export function validateRuntimeEnvironment(environment: RuntimeEnvironment, cwd 
     if (environment.PROTOTYPE_DEMO_CONTROLS === "true") errors.push("DEMO_CONTROLS_FORBIDDEN")
     if (environment.PROTOTYPE_ALLOW_DEMO_CLEAR === "true") errors.push("DEMO_CLEAR_FORBIDDEN")
     if (environment.CONTENT_ANALYSIS_INLINE_WORKER === "true") errors.push("INLINE_CONTENT_WORKER_FORBIDDEN")
+    if (!environment.STRUCTURE_OBSERVATION_HASH_SALT || environment.STRUCTURE_OBSERVATION_HASH_SALT.length < 32) {
+      errors.push("STRUCTURE_OBSERVATION_HASH_SALT_REQUIRED")
+    }
     validateProductionDatabasePath(environment.PROTOTYPE_DB_PATH, cwd, errors)
   }
 

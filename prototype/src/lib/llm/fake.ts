@@ -186,6 +186,24 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
       qualityChecks: [{ rule: "包含具体处理动作", passed: true }],
       riskChecks: [{ rule: "不得承诺收益", passed: true }],
     }
+    const currentTemplate = input.currentTemplate ?? {}
+    const structureEvolution = {
+      decision: "upgrade_existing",
+      changeType: "quality_rule_update",
+      targetTemplateId: String(currentTemplate.templateId ?? "template-trust"),
+      baseTemplateVersionId: String(currentTemplate.templateVersionId ?? "template-trust-v1"),
+      summary: "聚合观察显示当前结构可以保留，并补充一条更明确的可用性规则。",
+      evidenceRefs: [String(input.allowedEvidenceIds?.[0] ?? "observation-fixture")],
+      evidenceLimits: "当前证据只能说明完整结构组合的账号内相关表现，不能证明单个节点因果。",
+      proposedTemplate: {
+        name: String(currentTemplate.name ?? "真实场景—认知转折—行动方法"),
+        applicability: currentTemplate.applicability ?? { ipTags: [], audiences: [], goals: [] },
+        nodes: currentTemplate.nodes ?? [{ nodeKey: "hook-1", kind: "hook", instruction: "真实冲突开场", required: true }],
+        qualityRules: [...(currentTemplate.qualityRules ?? []), "结尾给出可执行的下一步判断"],
+        riskRules: currentTemplate.riskRules ?? ["不得承诺收益"],
+      },
+      confidence: input.evaluation?.confidence === "standard" ? "standard" : "exploratory",
+    }
     const payload = request.operation === "ip_portrait" ? ipPortrait : request.operation === "topics" ? topics : request.operation === "scripts" ? script : request.operation === "qa" ? qualityReport : request.operation === "review" ? {
       summary: "本轮模拟结果用于验证从创作到复盘的完整交互。",
       keep: ["真实经历与选题方向保持一致"], improve: ["下一稿可让开头更快进入受众矛盾"],
@@ -203,8 +221,9 @@ export class PrototypeFixtureLlmAdapter implements LlmAdapter {
       evidenceLimits: "当前数据只表达账号内相关性，不能证明平台分发或选题因果。",
     } : request.operation === "content_analysis" ? contentAnalysis
       : request.operation === "structure_candidate" ? structureCandidate
-        : request.operation === "structure_preview" ? structurePreview
-          : (() => { throw new Error(`UNEXPECTED_FIXTURE_OPERATION:${request.operation}`) })()
+        : request.operation === "structure_evolution" ? structureEvolution
+          : request.operation === "structure_preview" ? structurePreview
+            : (() => { throw new Error(`UNEXPECTED_FIXTURE_OPERATION:${request.operation}`) })()
     return { text: JSON.stringify(payload), model: "prototype-e2e-fixture" }
   }
 }

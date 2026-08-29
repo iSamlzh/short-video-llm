@@ -54,4 +54,27 @@ describe("结构化口播段落", () => {
       "行动引导",
     ])
   })
+
+  it("把结构版本和稳定节点键写入口播分段血缘", () => {
+    const segments = scriptToSegments({
+      id: "script-lineage",
+      hook: "很多人第一步就做反了。",
+      body: "我用一个真实经历讲清楚原因。",
+      callToAction: "留言说说你的问题。",
+    }, [
+      { nodeKey: "conflict-hook", kind: "hook", instruction: "冲突开场" },
+      { nodeKey: "case-proof", kind: "case", instruction: "真实案例" },
+      { nodeKey: "action-close", kind: "cta", instruction: "行动收束" },
+    ], { sourceTemplateVersionId: "template-version-7" })
+
+    expect(segments.filter((item) => item.kind === "spoken").map((item) => ({
+      template: item.sourceTemplateVersionId,
+      node: item.sourceNodeKey,
+      origin: item.origin,
+    }))).toEqual([
+      { template: "template-version-7", node: "conflict-hook", origin: "structure_node" },
+      { template: "template-version-7", node: "case-proof", origin: "structure_node" },
+      { template: "template-version-7", node: "action-close", origin: "structure_node" },
+    ])
+  })
 })

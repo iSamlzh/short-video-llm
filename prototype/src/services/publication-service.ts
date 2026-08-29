@@ -10,6 +10,8 @@ import type { GrowthScope, Publication } from "../domain/growth-loop"
 import { requireTenantCapability } from "../lib/auth/guards"
 import { normalizeVideoUrl } from "../lib/content-identity"
 import { PublicationRepository } from "../lib/db/publication-repository"
+import { DomainOutboxRepository } from "../lib/db/domain-outbox-repository"
+import { StructureObservationProjector } from "./structure-observation-projector"
 
 export class PublicationService {
   constructor(
@@ -95,8 +97,32 @@ export class PublicationService {
     requireTenantCapability(context, publication.source === "system" ? "publication.record" : "metrics.import", {
       ipId: scope.ipId, contentAccountId: scope.contentAccountId,
     })
-    const disabled = this.publications.disable(scope, publicationId)
+    const now = new Date().toISOString()
+    const disabled = this.database.transaction(() => {
+      const result = this.publications.disable(scope, publicationId)
+      const matches = this.database.prepare(`SELECT id FROM publication_match_versions
+        WHERE publication_id=? AND is_current=1 AND status='matched'`).all(publicationId) as Array<{ id: string }>
+      const outbox = new DomainOutboxRepository(this.database)
+      matches.forEach((match) => outbox.enqueue({
+        eventType: "structure.match_retracted",
+        aggregateType: "publication_match",
+        aggregateId: match.id,
+        dedupeKey: `structure.match_retracted:${match.id}:publication-disabled`,
+        payload: { matchId: match.id, reason: "publication_disabled" },
+        now,
+      }))
+      return result
+    })()
     this.audit(context, "publication.disabled", disabled, { reason: reason.trim().slice(0, 200) })
+    try {
+      new StructureObservationProjector(this.database).processPending()
+    } catch (error) {
+      console.warn(JSON.stringify({
+        timestamp: new Date().toISOString(), level: "warn",
+        event: "structure_observation_retraction_deferred",
+        errorCode: (error as Error).message || "UNKNOWN_ERROR",
+      }))
+    }
     return disabled
   }
 

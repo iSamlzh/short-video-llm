@@ -2,6 +2,7 @@ import type Database from "better-sqlite3"
 import type {
   GrowthScope, MatchMethod, MatchStatus, MetricImportResult, MetricImportRow, PublicationMatch,
 } from "../../domain/growth-loop"
+import { DomainOutboxRepository } from "./domain-outbox-repository"
 
 type BatchRow = {
   id: string
@@ -240,18 +241,42 @@ export class MetricsRepository {
     method: MatchMethod; status: MatchStatus; explanation: string; version: number;
     confirmedByUserId?: string; confirmedAt?: string; createdAt: string
   }) {
-    this.database.prepare("UPDATE publication_match_versions SET is_current=0 WHERE snapshot_id=? AND is_current=1")
-      .run(input.snapshot.id)
-    this.database.prepare(`INSERT INTO publication_match_versions
-      (id,tenant_id,ip_profile_id,content_account_id,snapshot_id,publication_id,candidate_ids_json,
-       method,status,explanation,version,is_current,confirmed_by_user_id,confirmed_at,created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`).run(
-      input.id, input.snapshot.tenantId, input.snapshot.ipId, input.snapshot.contentAccountId,
-      input.snapshot.id, input.publicationId, JSON.stringify(input.candidateIds), input.method,
-      input.status, input.explanation, input.version, input.confirmedByUserId ?? null,
-      input.confirmedAt ?? null, input.createdAt,
-    )
-    return this.requireCurrentMatch(input.id)
+    return this.database.transaction(() => {
+      const previous = this.currentMatchForSnapshot(input.snapshot.id)
+      this.database.prepare("UPDATE publication_match_versions SET is_current=0 WHERE snapshot_id=? AND is_current=1")
+        .run(input.snapshot.id)
+      this.database.prepare(`INSERT INTO publication_match_versions
+        (id,tenant_id,ip_profile_id,content_account_id,snapshot_id,publication_id,candidate_ids_json,
+         method,status,explanation,version,is_current,confirmed_by_user_id,confirmed_at,created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,1,?,?,?)`).run(
+        input.id, input.snapshot.tenantId, input.snapshot.ipId, input.snapshot.contentAccountId,
+        input.snapshot.id, input.publicationId, JSON.stringify(input.candidateIds), input.method,
+        input.status, input.explanation, input.version, input.confirmedByUserId ?? null,
+        input.confirmedAt ?? null, input.createdAt,
+      )
+      const outbox = new DomainOutboxRepository(this.database)
+      if (previous?.status === "matched" && previous.publicationId) {
+        outbox.enqueue({
+          eventType: "structure.match_retracted",
+          aggregateType: "publication_match",
+          aggregateId: previous.id,
+          dedupeKey: `structure.match_retracted:${previous.id}`,
+          payload: { matchId: previous.id },
+          now: input.createdAt,
+        })
+      }
+      if (input.status === "matched" && input.publicationId) {
+        outbox.enqueue({
+          eventType: "structure.match_upserted",
+          aggregateType: "publication_match",
+          aggregateId: input.id,
+          dedupeKey: `structure.match_upserted:${input.id}`,
+          payload: { matchId: input.id },
+          now: input.createdAt,
+        })
+      }
+      return this.requireCurrentMatch(input.id)
+    })()
   }
 
   updateMatchProgress(batchId: string, input: { status: "matched" | "review_ready"; candidates: number; unmatched: number }) {

@@ -58,7 +58,9 @@ export class ContentBrainWorkflowService {
         expectedVersion: input.expectedVersion, reason: input.reason.trim(),
         actorUserId: context.userId, createdAt,
       })
-      this.repository.updateSampleStatus(candidate.sampleId, "reviewed", createdAt)
+      if (candidate.sourceType === "sample_breakdown") {
+        this.repository.updateSampleStatus(candidate.sampleId, "reviewed", createdAt)
+      }
       return rejected
     })
     return persist()

@@ -7,6 +7,7 @@ import { normalizeContentTitle, normalizeVideoUrl } from "../lib/content-identit
 import { MetricsRepository, type MetricSnapshot } from "../lib/db/metrics-repository"
 import { PublicationRepository } from "../lib/db/publication-repository"
 import { PublicationService } from "./publication-service"
+import { StructureObservationProjector } from "./structure-observation-projector"
 
 type MatchDecision = {
   status: MatchStatus
@@ -109,7 +110,9 @@ export class PublicationMatcher {
       this.metrics.updateMatchProgress(batchId, { status: "matched", ...counts })
       return this.metrics.updateMatchProgress(batchId, { status: "review_ready", ...counts })
     })
-    return persist()
+    const result = persist()
+    this.projectStructureObservations()
+    return result
   }
 
   confirmCandidate(
@@ -139,7 +142,9 @@ export class PublicationMatcher {
       }, now)
       return match
     })
-    return append()
+    const result = append()
+    this.projectStructureObservations()
+    return result
   }
 
   rejectCandidateAndCreateExternal(context: TenantAccessContext, matchId: string, expectedVersion: number) {
@@ -167,12 +172,27 @@ export class PublicationMatcher {
       }, now)
       return match
     })
-    return append()
+    const result = append()
+    this.projectStructureObservations()
+    return result
   }
 
   private requireMatchAccess(context: TenantAccessContext, match: { tenantId: string; ipId: string; contentAccountId: string }) {
     if (match.tenantId !== context.tenantId) throw new Error("MATCH_NOT_FOUND")
     requireTenantCapability(context, "metrics.import", { ipId: match.ipId, contentAccountId: match.contentAccountId })
+  }
+
+  private projectStructureObservations() {
+    try {
+      new StructureObservationProjector(this.database).processPending()
+    } catch (error) {
+      console.warn(JSON.stringify({
+        timestamp: new Date().toISOString(),
+        level: "warn",
+        event: "structure_observation_projection_deferred",
+        errorCode: (error as Error).message || "UNKNOWN_ERROR",
+      }))
+    }
   }
 
   private audit(context: TenantAccessContext, action: string, resourceId: string, detail: Record<string, unknown>, now: string) {
