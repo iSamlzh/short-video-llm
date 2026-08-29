@@ -54,9 +54,11 @@ export async function generateStructuredResult<T>(options: GenerateOptions<T>): 
   const checked = validate(options.schema, first.text)
   if (checked.success) return { data: checked.data, model: first.model, usage: first.usage }
 
+  logSchemaFailure(options.operation, "initial", first.text, checked.issues, first.finishReason)
+
   const repaired = await options.adapter.generate({
     operation: "repair",
-    systemPrompt: "只修复 JSON 结构，使其满足字段约束；不要添加解释。",
+    systemPrompt: `${prompts[options.operation]}\n\n当前任务只修复上一份输出。必须严格遵守上面的完整输出契约，保留原有有效内容，补齐缺失字段，纠正字段类型并删除额外字段；只返回修复后的 JSON，不要解释。`,
     input: { original: first.text, issues: checked.issues.map(issue => ({ path: issue.path, code: issue.code, message: issue.message })) },
     timeoutMs: remainingTimeout(deadlineAt),
     jsonRoot: options.jsonRoot,
@@ -66,6 +68,7 @@ export async function generateStructuredResult<T>(options: GenerateOptions<T>): 
   if (repairedChecked.success) {
     return { data: repairedChecked.data, model: repaired.model, usage: combineUsage(first.usage, repaired.usage) }
   }
+  logSchemaFailure(options.operation, "repair", repaired.text, repairedChecked.issues, repaired.finishReason)
   throw Object.assign(new Error("模型结构化输出修复失败"), { code: "MODEL_SCHEMA_INVALID", status: 502, retryable: true })
 }
 
@@ -171,4 +174,27 @@ function positiveTimeout(value: number) {
     throw Object.assign(new Error("模型调用超时"), { code: "LLM_TIMEOUT", status: 504, retryable: true })
   }
   return Math.max(1, Math.floor(value))
+}
+
+function logSchemaFailure(
+  operation: Exclude<LlmOperation, "repair">,
+  stage: "initial" | "repair",
+  text: string,
+  issues: Array<{ path: PropertyKey[]; code: string }>,
+  finishReason?: string,
+) {
+  const paths = [...new Set(issues.map((issue) => issue.path.length ? issue.path.join(".") : "$"))]
+    .slice(0, 12)
+    .join(",")
+  const context = currentModelExecutionContext()
+  structuredLog("warn", "model_schema_validation_failed", {
+    requestId: currentRequestLogContext()?.requestId,
+    taskId: context?.taskId,
+    operation,
+    stage,
+    responseChars: text.length,
+    issueCount: issues.length,
+    issuePaths: paths,
+    finishReason,
+  })
 }

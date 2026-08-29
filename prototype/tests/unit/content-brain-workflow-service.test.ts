@@ -6,6 +6,7 @@ import { ContentBrainRepository } from "../../src/lib/db/content-brain-repositor
 import { FakeLlmAdapter } from "../../src/lib/llm/fake"
 import { StructuredLlmClient } from "../../src/lib/llm/structured"
 import { ContentBrainWorkflowService } from "../../src/services/content-brain-workflow-service"
+import { structurePreviewPrompt } from "../../src/prompts/content-brain"
 
 describe("ContentBrainWorkflowService", () => {
   let database: Database.Database
@@ -39,6 +40,9 @@ describe("ContentBrainWorkflowService", () => {
     expect(preview.payload.script).toContain("真实售后冲突")
     expect(tenantTableCounts(database)).toEqual(before)
     expect(repository.requireCandidate(candidateId).status).toBe("activation_required")
+    expect(adapter.calls[0].systemPrompt).toBe(structurePreviewPrompt)
+    expect(adapter.calls[0].systemPrompt).toContain('"nodeMappings"')
+    expect(adapter.calls[0].systemPrompt).toContain("passed 必须是 JSON 布尔值")
   })
 
   it("未完成试生成不能启用，运营人员也不能越权启用", () => {

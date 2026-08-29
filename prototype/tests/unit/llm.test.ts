@@ -107,14 +107,24 @@ describe("structured model client", () => {
     })
     expect(result).toEqual(validTopicBatch)
     expect(adapter.calls.map(call => call.operation)).toEqual(["topics", "repair"])
+    expect(adapter.calls[1].systemPrompt).toContain("decisionBrief 必须包含")
+    expect(adapter.calls[1].systemPrompt).toContain("当前任务只修复上一份输出")
   })
 
   it("stops after one failed repair", async () => {
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined)
     const adapter = new FakeLlmAdapter([{ text: "bad" }, { text: "still bad" }])
     await expect(generateStructured({
       adapter, operation: "topics", input: {}, schema: topicBatchSchema, timeoutMs: 100,
     })).rejects.toMatchObject({ code: "MODEL_SCHEMA_INVALID" })
     expect(adapter.calls).toHaveLength(2)
+    const records = info.mock.calls.map(call => JSON.parse(String(call[0])))
+    expect(records.filter(record => record.event === "model_schema_validation_failed")).toEqual([
+      expect.objectContaining({ operation: "topics", stage: "initial", responseChars: 3, issuePaths: "$" }),
+      expect.objectContaining({ operation: "topics", stage: "repair", responseChars: 9, issuePaths: "$" }),
+    ])
+    expect(JSON.stringify(records)).not.toContain("still bad")
+    info.mockRestore()
   })
 
   it("保留最终模型并合并首次与修复调用的 Token Usage", async () => {

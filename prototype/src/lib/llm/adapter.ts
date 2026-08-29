@@ -8,7 +8,7 @@ export interface LlmRequest {
   jsonRoot?: "object" | "array"
   signal?: AbortSignal
 }
-export interface LlmResponse { text: string; model: string; usage?: TokenUsage }
+export interface LlmResponse { text: string; model: string; usage?: TokenUsage; finishReason?: string }
 export interface LlmAdapter { generate(request: LlmRequest): Promise<LlmResponse> }
 type OpenAiCompatibleConfig = { baseUrl?: string; apiKey?: string; model?: string; streaming?: boolean; maxOutputTokens?: number }
 
@@ -86,13 +86,18 @@ type OpenAiUsage = { prompt_tokens?: number; completion_tokens?: number; total_t
 
 async function readJsonResponse(response: Response, fallbackModel: string): Promise<LlmResponse> {
   const body = await response.json() as {
-    choices?: Array<{ message?: { content?: string } }>
+    choices?: Array<{ message?: { content?: string }; finish_reason?: string | null }>
     model?: string
     usage?: OpenAiUsage
   }
   const text = body.choices?.[0]?.message?.content
   if (!text) throw Object.assign(new Error("模型没有返回内容"), { code: "LLM_EMPTY_RESPONSE", retryable: true })
-  return { text, model: body.model ?? fallbackModel, usage: mapUsage(body.usage) }
+  return {
+    text,
+    model: body.model ?? fallbackModel,
+    usage: mapUsage(body.usage),
+    finishReason: body.choices?.[0]?.finish_reason ?? undefined,
+  }
 }
 
 async function readStreamingResponse(response: Response, fallbackModel: string): Promise<LlmResponse> {
@@ -103,14 +108,16 @@ async function readStreamingResponse(response: Response, fallbackModel: string):
   let text = ""
   let model = fallbackModel
   let usage: OpenAiUsage | undefined
+  let finishReason: string | undefined
   let pendingData = ""
   const applyEvent = (event: {
     model?: string
-    choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>
+    choices?: Array<{ delta?: { content?: string }; message?: { content?: string }; finish_reason?: string | null }>
     usage?: OpenAiUsage
   }) => {
     model = event.model ?? model
     text += event.choices?.[0]?.delta?.content ?? event.choices?.[0]?.message?.content ?? ""
+    finishReason = event.choices?.[0]?.finish_reason ?? finishReason
     usage = event.usage ?? usage
   }
   for (const line of payload.split(/\r?\n/)) {
@@ -134,7 +141,7 @@ async function readStreamingResponse(response: Response, fallbackModel: string):
   }
   if (pendingData) throw invalidStreamError()
   if (!text) throw Object.assign(new Error("模型没有返回内容"), { code: "LLM_EMPTY_RESPONSE", retryable: true })
-  return { text, model, usage: mapUsage(usage) }
+  return { text, model, usage: mapUsage(usage), finishReason }
 }
 
 function invalidStreamError() {
