@@ -151,15 +151,21 @@ export class ContentBrainRepository {
         id: row.id, version: row.version, status: row.status, payload: JSON.parse(row.payload_json) as ContentAnalysis,
         model: row.model, promptVersion: row.prompt_version, reviewNote: row.review_note, createdAt: row.created_at,
       }))
-    const candidates = (this.database.prepare(`SELECT id,version,status,payload_json,review_note,created_at
-      FROM platform_structure_candidates WHERE sample_id=? ORDER BY created_at,version`).all(sampleId) as Array<{
-        id: string; version: number; status: string; payload_json: string; review_note: string | null; created_at: string;
-      }>).map((row) => ({
-        id: row.id, version: row.version, status: row.status,
-        payload: JSON.parse(row.payload_json) as StructureCandidateInput,
-        reviewNote: row.review_note, createdAt: row.created_at,
-        preview: this.latestPreview(row.id, row.version),
-      }))
+    const candidates = (this.database.prepare(`SELECT c.id,c.version,c.status,c.payload_json,c.review_note,c.created_at,
+      c.created_by_user_id,u.display_name created_by_name
+      FROM platform_structure_candidates c LEFT JOIN users u ON u.id=c.created_by_user_id
+      WHERE c.sample_id=? ORDER BY c.created_at,c.version`).all(sampleId) as Array<{
+      id: string; version: number; status: string; payload_json: string; review_note: string | null; created_at: string;
+      created_by_user_id: string; created_by_name: string | null;
+    }>).map((row) => ({
+      id: row.id, version: row.version, status: row.status,
+      payload: JSON.parse(row.payload_json) as StructureCandidateInput,
+      reviewNote: row.review_note, createdAt: row.created_at,
+      createdBy: row.created_by_name ?? row.created_by_user_id,
+      sourceAnalysisIds: this.listCandidateSourceAnalysisIds(row.id),
+      activation: this.findCandidateActivation(row.id),
+      preview: this.latestPreview(row.id, row.version),
+    }))
     return { sample, revisions: this.listSampleRevisions(sampleId), analyses, candidates }
   }
 
@@ -319,6 +325,27 @@ export class ContentBrainRepository {
     return (this.database.prepare(`SELECT analysis_id FROM platform_candidate_source_links
       WHERE candidate_id=? ORDER BY analysis_id`).all(candidateId) as Array<{ analysis_id: string }>)
       .map((row) => row.analysis_id)
+  }
+
+  private findCandidateActivation(candidateId: string) {
+    const row = this.database.prepare(`SELECT e.template_id,e.template_version_id,e.reason,e.actor_user_id,e.created_at,
+      v.version,u.display_name actor_name
+      FROM platform_template_activation_events e
+      JOIN platform_template_versions v ON v.id=e.template_version_id
+      LEFT JOIN users u ON u.id=e.actor_user_id
+      WHERE e.candidate_id=? AND e.action='activate'
+      ORDER BY e.created_at DESC,e.rowid DESC LIMIT 1`).get(candidateId) as {
+        template_id: string; template_version_id: string; reason: string; actor_user_id: string;
+        created_at: string; version: number; actor_name: string | null;
+      } | undefined
+    return row ? {
+      templateId: row.template_id,
+      templateVersionId: row.template_version_id,
+      templateVersion: row.version,
+      reason: row.reason,
+      activatedBy: row.actor_name ?? row.actor_user_id,
+      activatedAt: row.created_at,
+    } : null
   }
 
   requireCandidate(candidateId: string) {

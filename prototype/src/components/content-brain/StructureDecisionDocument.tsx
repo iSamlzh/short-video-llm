@@ -56,6 +56,8 @@ export function StructureDecisionDocument({ candidate, api, canActivate, onUpdat
     finally { setPending(null) }
   }
 
+  if (candidate.status === "active") return <ActivatedDecisionDocument candidate={{ ...candidate, payload, preview }} />
+
   return <article className="brain-decision-document">
     <header className="brain-document-heading"><div><span className="brain-kicker">Agent 建议</span><h1>{decisions[payload.decision]}</h1><p>{payload.name}</p></div><span className="brain-confidence">置信度 {confidence(payload.confidence)}</span></header>
     <section className="brain-decision-reason"><h2>为什么这样判断</h2><p>{payload.differences.join("；") || "与当前结构库存在可复用关系，需要人工结合试生成结果确认。"}</p></section>
@@ -88,6 +90,66 @@ export function StructureDecisionDocument({ candidate, api, canActivate, onUpdat
       <footer><button className="brain-button-secondary" onClick={() => setConfirming(false)}>暂不启用</button><button className="brain-button-primary" disabled={reason.trim().length < 2 || pending !== null} onClick={activate}>{pending === "activate" ? "正在启用" : "确认启用"}</button></footer>
     </section></div>}
   </article>
+}
+
+function ActivatedDecisionDocument({ candidate }: { candidate: CandidateRecord }) {
+  const { payload, preview, activation } = candidate
+  return <article className="brain-decision-document brain-activated-decision">
+    <header className="brain-document-heading">
+      <div><span className="brain-kicker">已启用决策</span><h1>{decisions[payload.decision]}</h1><p>{payload.name}</p></div>
+      <div className="brain-decision-badges"><span className="brain-active-badge">已启用{activation ? ` · v${activation.templateVersion}` : ""}</span><span className="brain-confidence">置信度 {confidence(payload.confidence)}</span></div>
+    </header>
+
+    <section className="brain-activation-record">
+      <h2>启用凭证</h2>
+      <dl>
+        <div><dt>结构版本</dt><dd>{activation ? `v${activation.templateVersion}` : `候选 v${candidate.version}`}</dd></div>
+        <div><dt>启用时间</dt><dd>{activation ? formatDateTime(activation.activatedAt) : "历史记录待补齐"}</dd></div>
+        <div><dt>启用人</dt><dd>{activation?.activatedBy ?? "平台管理员"}</dd></div>
+        <div><dt>启用依据</dt><dd>{activation?.reason || "未填写"}</dd></div>
+        <div><dt>来源拆解</dt><dd>{candidate.sourceAnalysisIds?.length ?? 0} 个已复核版本，可追溯到当前爆款样本</dd></div>
+      </dl>
+    </section>
+
+    <section className="brain-decision-reason">
+      <h2>决策依据</h2>
+      <p>{payload.differences.join("；") || "该样本形成了可复用结构，并已通过人工复核与试生成。"}</p>
+      {payload.similarities.length > 0 && <div className="brain-decision-relation"><strong>与现有结构的共同点</strong><p>{payload.similarities.join("；")}</p></div>}
+      {payload.targetTemplateId && <div className="brain-decision-relation"><strong>关联结构</strong><p>{payload.targetTemplateId}</p></div>}
+    </section>
+
+    <section className="brain-applicability-record">
+      <h2>适用范围</h2>
+      <div><TagGroup title="IP 特征" items={payload.applicability.ipTags} /><TagGroup title="目标受众" items={payload.applicability.audiences} /><TagGroup title="内容目标" items={payload.applicability.goals} /></div>
+    </section>
+
+    <section className="brain-structure-flow brain-readonly-structure"><h2>已固化结构</h2>{payload.nodes.map((node, index) => <div key={`${node.kind}-${index}`}><span>{node.kind}</span><ArrowRight size={18} /><p>{node.instruction}<small>{node.required ? "必填" : "选填"}</small></p></div>)}</section>
+
+    <section className="brain-rules-grid"><div><h2>质量要求</h2>{payload.qualityRules.map((item) => <p key={item}><Check size={17} />{item}</p>)}</div><div><h2>风险边界</h2>{payload.riskRules.map((item) => <p key={item}><ShieldCheck size={17} />{item}</p>)}</div></section>
+
+    {preview && <section className="brain-preview-document">
+      <header><Flask size={24} /><div><h2>启用前试生成记录</h2><p>{preview.payload.topic}</p></div></header>
+      <blockquote>{preview.payload.script}</blockquote>
+      <div className="brain-mapping-list">{preview.payload.nodeMappings.map((item) => <p key={`${item.node}-${item.excerpt}`}><strong>{item.node}</strong><span>{item.excerpt}</span></p>)}</div>
+      <div className="brain-preview-checks"><CheckGroup title="质量检查" items={preview.payload.qualityChecks} /><CheckGroup title="风险检查" items={preview.payload.riskChecks} /></div>
+    </section>}
+    <p className="brain-immutable-note"><ShieldCheck size={18} />该启用版本为只读记录。如需调整，请从新样本生成新候选版本，不覆盖本次决策。</p>
+  </article>
+}
+
+function TagGroup({ title, items }: { title: string; items: string[] }) {
+  return <section><h3>{title}</h3><p>{items.length ? items.map((item) => <span key={item}>{item}</span>) : <span>通用</span>}</p></section>
+}
+
+function CheckGroup({ title, items }: { title: string; items: Array<{ rule: string; passed: boolean }> }) {
+  return <section><h3>{title}</h3>{items.map((item) => <p key={item.rule} data-passed={item.passed}><Check size={15} />{item.rule}</p>)}</section>
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? value : new Intl.DateTimeFormat("zh-CN", {
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(date)
 }
 
 function confidence(value: "low" | "medium" | "high") {

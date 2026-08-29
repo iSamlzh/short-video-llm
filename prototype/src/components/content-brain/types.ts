@@ -54,6 +54,17 @@ export type CandidateRecord = {
   targetTemplateId?: string | null
   payload: CandidatePayload
   preview?: StructurePreview | null
+  createdAt?: string
+  createdBy?: string
+  sourceAnalysisIds?: string[]
+  activation?: {
+    templateId: string
+    templateVersionId: string
+    templateVersion: number
+    reason: string
+    activatedBy: string
+    activatedAt: string
+  } | null
 }
 
 export type SampleWorkspace = {

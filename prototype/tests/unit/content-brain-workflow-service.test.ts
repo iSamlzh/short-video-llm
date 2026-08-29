@@ -74,6 +74,14 @@ describe("ContentBrainWorkflowService", () => {
       "SELECT action,reason FROM platform_template_activation_events WHERE template_version_id=?",
     ).get(activated.id)).toEqual({ action: "activate", reason: "试生成通过" })
     expect(repository.requireSample("sample-trust").status).toBe("completed")
+    expect(repository.getSampleWorkspace("sample-trust").candidates.at(-1)).toMatchObject({
+      status: "active",
+      sourceAnalysisIds: ["reviewed-trust"],
+      activation: {
+        templateId: "trust", templateVersionId: activated.id, templateVersion: 2,
+        reason: "试生成通过", activatedBy: admin.userId,
+      },
+    })
 
     const repeated = service.activateCandidate(admin, upgradeId, {
       reason: "重复提交不应产生新版本", expectedVersion: 1,

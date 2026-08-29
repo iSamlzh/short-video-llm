@@ -135,6 +135,34 @@ describe("AI 原生爆款拆解工作区", () => {
     expect(screen.getByRole("dialog", { name: "确认启用结构版本" })).toBeVisible()
   })
 
+  it("已启用决策展示完整只读档案且不再提供启用和驳回动作", () => {
+    render(<StructureDecisionDocument candidate={{
+      ...candidateFixture,
+      status: "active",
+      preview: previewFixture,
+      sourceAnalysisIds: ["analysis-1"],
+      activation: {
+        templateId: "trust", templateVersionId: "trust-v2", templateVersion: 2,
+        reason: "试生成符合质量和风险要求", activatedBy: "平台管理员",
+        activatedAt: "2026-08-29T10:04:11.064Z",
+      },
+    }} canActivate api={fixtureApi() as any} onUpdated={vi.fn()} onActivated={vi.fn()} />)
+
+    expect(screen.getByText("已启用决策")).toBeVisible()
+    expect(screen.getByText("已启用 · v2")).toBeVisible()
+    expect(screen.getByRole("heading", { name: "启用凭证" })).toBeVisible()
+    expect(screen.getByText("试生成符合质量和风险要求")).toBeVisible()
+    expect(screen.getByText("1 个已复核版本，可追溯到当前爆款样本")).toBeVisible()
+    expect(screen.getByRole("heading", { name: "适用范围" })).toBeVisible()
+    expect(screen.getByText("团长")).toBeVisible()
+    expect(screen.getByRole("heading", { name: "已固化结构" })).toBeVisible()
+    expect(screen.getByRole("heading", { name: "启用前试生成记录" })).toBeVisible()
+    expect(screen.queryByRole("button", { name: "启用这个结构" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "驳回结构" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "保存结构草稿" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument()
+  })
+
   it("空结构库明确说明只有人工启用版本才能进入团长创作", () => {
     render(<StructureLedger structures={[]} />)
     expect(screen.getByText("还没有已启用结构")).toBeVisible()
