@@ -5,15 +5,17 @@ import { ArrowClockwise, BookOpen, FilePlus, Files, SealCheck, TrendUp } from "@
 import { AnalysisReviewDocument } from "./AnalysisReviewDocument"
 import { AgentQueueSummary, AgentTaskDocument, latestJobForResource } from "./AgentTaskDocument"
 import { SampleIntakeDocument } from "./SampleIntakeDocument"
+import { SampleQueueDocument } from "./SampleQueueDocument"
 import { StructureDecisionDocument } from "./StructureDecisionDocument"
 import { StructureLedger } from "./StructureLedger"
 import { StructureEvolutionWorkspace } from "./StructureEvolutionWorkspace"
-import type { ActiveStructure, AgentJob, ContentBrainApi, SampleSummary, SampleWorkspace, StructureEvaluation } from "./types"
+import type { ActiveStructure, AgentJob, ContentBrainApi, SampleQueueFilters, SampleQueuePage, SampleSummary, SampleWorkspace, StructureEvaluation } from "./types"
 
 const defaultBrowserApi = browserApi()
 
-export function ContentBrainWorkspace({ initialSamples, initialStructures, initialEvaluations = [], initialJobs = [], canActivate, evolutionEnabled = false, api = defaultBrowserApi }: {
+export function ContentBrainWorkspace({ initialSamples, initialSamplePage, initialStructures, initialEvaluations = [], initialJobs = [], canActivate, evolutionEnabled = false, api = defaultBrowserApi }: {
   initialSamples: SampleSummary[]
+  initialSamplePage?: SampleQueuePage
   initialStructures: ActiveStructure[]
   initialEvaluations?: StructureEvaluation[]
   initialJobs?: AgentJob[]
@@ -22,7 +24,11 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
   api?: ContentBrainApi
 }) {
   const [view, setView] = useState<"samples" | "structures" | "evolution" | "review">("samples")
-  const [samples, setSamples] = useState(initialSamples)
+  const [samplePage, setSamplePage] = useState(initialSamplePage ?? legacySamplePage(initialSamples))
+  const [sampleFilters, setSampleFilters] = useState<SampleQueueFilters>({ queue: "todo", limit: 50 })
+  const [queueLoading, setQueueLoading] = useState(false)
+  const [queueError, setQueueError] = useState("")
+  const [queueNotice, setQueueNotice] = useState("")
   const [structures, setStructures] = useState(initialStructures)
   const [evaluations, setEvaluations] = useState(initialEvaluations)
   const [jobs, setJobs] = useState(initialJobs)
@@ -41,8 +47,8 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
   }
   async function refresh(current = workspace) {
     if (current) setWorkspace(await api.getSample(current.sample.id))
-    const [nextSamples, nextStructures, nextJobs, nextEvaluations] = await Promise.all([api.listSamples(), api.listStructures(), api.listTasks(), api.listEvaluations()])
-    setSamples(nextSamples)
+    const [nextPage, nextStructures, nextJobs, nextEvaluations] = await Promise.all([api.listSampleQueue(sampleFilters), api.listStructures(), api.listTasks(), api.listEvaluations()])
+    setSamplePage(nextPage)
     setStructures(nextStructures)
     setJobs(nextJobs)
     setEvaluations(nextEvaluations)
@@ -50,8 +56,8 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
   async function acceptReviewUpdate(next?: SampleWorkspace) {
     if (!next) return refresh()
     setWorkspace(next)
-    const [nextSamples, nextStructures, nextJobs] = await Promise.all([api.listSamples(), api.listStructures(), api.listTasks()])
-    setSamples(nextSamples)
+    const [nextPage, nextStructures, nextJobs] = await Promise.all([api.listSampleQueue(sampleFilters), api.listStructures(), api.listTasks()])
+    setSamplePage(nextPage)
     setStructures(nextStructures)
     setJobs(nextJobs)
   }
@@ -60,8 +66,8 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
     setView("structures")
     setNotice(`“${structureName}”已启用，当前版本已经进入团长口播稿创作。`)
     try {
-      const [nextSamples, nextStructures, nextJobs] = await Promise.all([api.listSamples(), api.listStructures(), api.listTasks()])
-      setSamples(nextSamples)
+      const [nextPage, nextStructures, nextJobs] = await Promise.all([api.listSampleQueue(sampleFilters), api.listStructures(), api.listTasks()])
+      setSamplePage(nextPage)
       setStructures(nextStructures)
       setJobs(nextJobs)
     } catch {
@@ -80,10 +86,10 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
     let timer: ReturnType<typeof setTimeout>
     const poll = async () => {
       try {
-        const [nextJobs, nextSamples] = await Promise.all([api.listTasks(), api.listSamples()])
+        const [nextJobs, nextPage] = await Promise.all([api.listTasks(), api.listSampleQueue(sampleFilters)])
         if (stopped) return
         setJobs(nextJobs)
-        setSamples(nextSamples)
+        setSamplePage(nextPage)
         if (workspace) {
           const nextJob = latestJobForResource(nextJobs, workspace.sample.id)
           if (nextJob && ["succeeded", "failed", "timed_out", "cancelled"].includes(nextJob.status)) {
@@ -97,13 +103,45 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
     }
     timer = setTimeout(poll, 1_000)
     return () => { stopped = true; clearTimeout(timer) }
-  }, [activeSignature, api, workspace?.sample.id])
+  }, [activeSignature, api, workspace?.sample.id, sampleFilters])
+
+  async function changeSampleFilters(nextFilters: SampleQueueFilters) {
+    const normalized = { ...nextFilters, cursor: undefined }
+    setQueueLoading(true); setQueueError(""); setQueueNotice("")
+    try {
+      const next = await api.listSampleQueue(normalized)
+      setSampleFilters(normalized)
+      setSamplePage(next)
+    } catch (cause) { setQueueError(cause instanceof Error ? cause.message : "样本队列读取失败，请重试") }
+    finally { setQueueLoading(false) }
+  }
+
+  async function loadMoreSamples() {
+    if (!samplePage.nextCursor) return
+    setQueueLoading(true); setQueueError("")
+    try {
+      const next = await api.listSampleQueue({ ...sampleFilters, cursor: samplePage.nextCursor })
+      setSamplePage({ ...next, items: [...samplePage.items, ...next.items] })
+    } catch (cause) { setQueueError(cause instanceof Error ? cause.message : "更多样本读取失败，请重试") }
+    finally { setQueueLoading(false) }
+  }
+
+  async function retryMany(jobIds: string[]) {
+    setQueueLoading(true); setQueueError(""); setQueueNotice("")
+    try {
+      const result = await api.retryManyTasks(jobIds)
+      setQueueNotice(`已将 ${result.accepted} 条异常样本重新加入拆解队列。`)
+      setSamplePage(await api.listSampleQueue(sampleFilters))
+    } catch (cause) { setQueueError(cause instanceof Error ? cause.message : "批量重试失败，请刷新后再试") }
+    finally { setQueueLoading(false) }
+  }
 
   async function startAnalysis(sampleId: string) {
     setTaskPending(true); setError("")
     try {
       const job = await api.analyze(sampleId)
       setJobs((current) => mergeJobs(current, [job]))
+      setSamplePage(await api.listSampleQueue(sampleFilters))
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "拆解任务创建失败，请重试")
     } finally { setTaskPending(false) }
@@ -121,7 +159,7 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
 
   return <div className="brain-workspace">
     <nav className="brain-task-navigation" aria-label="内容大脑任务">
-      <button aria-current={view === "samples" ? "page" : undefined} onClick={() => { setView("samples"); setWorkspace(null); setNotice("") }}><Files size={19} />爆款样本</button>
+      <button aria-current={view === "samples" ? "page" : undefined} onClick={() => { setView("samples"); setWorkspace(null); setNotice(""); void changeSampleFilters(sampleFilters) }}><Files size={19} />爆款样本</button>
       <button aria-current={view === "structures" ? "page" : undefined} onClick={() => setView("structures")}><BookOpen size={19} />结构库</button>
       <button aria-current={view === "evolution" ? "page" : undefined} onClick={() => setView("evolution")}><TrendUp size={19} />结构进化</button>
       <button aria-current={view === "review" ? "page" : undefined} onClick={() => { setView("review"); setNotice("") }}><SealCheck size={19} />待复核</button>
@@ -148,29 +186,18 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
         : <AgentTaskDocument job={workspaceJob} sampleTitle={workspace.sample.title} pending={taskPending}
           onStart={() => startAnalysis(workspace.sample.id)} onRetry={retryAnalysis} />)}
     {!loading && !intake && view === "review" && !workspace && <section className="brain-empty-state"><h2>选择一条待复核样本</h2><p>从爆款样本列表打开 Agent 已完成的拆解任务。</p><button className="brain-button-secondary" onClick={() => setView("samples")}>查看样本</button></section>}
-    {!loading && !intake && view === "samples" && <section className="brain-sample-index">
-      <header><h1>从真实内容开始</h1><p>先提供一条真实内容，Agent 再提炼可复用结构。</p></header>
-      {samples.length ? <div className="brain-sample-list">{samples.map((sample) => {
-        const job = latestJobForResource(jobs, sample.id)
-        return <button key={sample.id} onClick={() => openSample(sample.id)}><span><strong>{sample.title}</strong><small>{sample.sourcePlatform}</small></span><em>{jobStatusText(job, sample.status)}</em></button>
-      })}</div> : <div className="brain-empty-state"><FilePlus size={32} /><h2>还没有爆款样本</h2><p>使用右上角“新增爆款样本”粘贴原文或导入已授权文件，系统会直接开始拆解。</p></div>}
-    </section>}
+    {!loading && !intake && view === "samples" && <>
+      {queueNotice && <p className="brain-success-note brain-workspace-success" role="status">{queueNotice}</p>}
+      <SampleQueueDocument page={samplePage} filters={sampleFilters} loading={queueLoading} error={queueError}
+        onFiltersChange={changeSampleFilters} onLoadMore={loadMoreSamples} onOpenSample={openSample} onRetryMany={retryMany} />
+    </>}
   </div>
-}
-
-function jobStatusText(job: AgentJob | undefined, sampleStatus: string) {
-  if (!job) return statusText(sampleStatus)
-  return ({ queued: "等待拆解", running: "拆解中", succeeded: statusText(sampleStatus), failed: "拆解失败", timed_out: "拆解超时", cancelled: "已取消" } as Record<string, string>)[job.status]
 }
 
 function mergeJobs(current: AgentJob[], incoming: AgentJob[]) {
   const merged = new Map(current.map((job) => [job.id, job]))
   for (const job of incoming) merged.set(job.id, job)
   return [...merged.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))
-}
-
-function statusText(status: string) {
-  return ({ draft: "待拆解", analyzing: "拆解中", review_required: "待复核", reviewed: "已复核", candidate_ready: "待决策", completed: "已启用", analysis_failed: "拆解失败", rejected: "已驳回" } as Record<string, string>)[status] ?? status
 }
 
 function browserApi(): ContentBrainApi {
@@ -195,8 +222,22 @@ function browserApi(): ContentBrainApi {
     rejectAnalysis: (id, input) => request(`/analyses/${id}/reject`, json("POST", input)), saveCandidate: (id, input) => request(`/candidates/${id}`, json("PUT", input)),
     previewCandidate: (id, input) => request(`/candidates/${id}/preview`, modelJson(input)), rejectCandidate: (id, input) => request(`/candidates/${id}/reject`, json("POST", input)),
     activateCandidate: (id, input) => request(`/candidates/${id}/activate`, json("POST", input)), listSamples: () => request("/samples"), listStructures: () => request("/structures"),
+    listSampleQueue: (filters) => { const search = new URLSearchParams(); Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") search.set(key, String(value)) }); return request(`/sample-queue?${search}`) },
+    retryManyTasks: (jobIds) => request("/tasks/bulk-retry", modelJson({ jobIds })),
     listEvaluations: () => request("/evaluations"), getEvaluation: (id) => request(`/evaluations/${id}`),
     evaluateStructure: (id) => request(`/structures/${id}/evaluate`, modelJson({})),
     proposeEvolution: (id) => request(`/evaluations/${id}/propose`, modelJson({})),
   }
+}
+
+function legacySamplePage(samples: SampleSummary[]): SampleQueuePage {
+  const items = samples.map((sample) => ({
+    ...sample,
+    workStage: (sample.status === "completed" ? "completed" : sample.status === "rejected" ? "rejected" : sample.status === "analysis_failed" ? "failed" : sample.status === "review_required" ? "review_required" : sample.status === "candidate_ready" || sample.status === "reviewed" ? "decision_required" : sample.status === "analyzing" ? "running" : "waiting_analysis") as SampleQueuePage["items"][number]["workStage"],
+    createdAt: sample.updatedAt ?? new Date(0).toISOString(), queueAt: sample.updatedAt ?? new Date(0).toISOString(), createdBy: "平台运营", latestJob: null,
+  }))
+  const counts = { todo: 0, waiting_analysis: 0, running: 0, review_required: 0, decision_required: 0, failed: 0, completed: 0, rejected: 0, all: items.length }
+  items.forEach((item) => { counts[item.workStage] += 1 })
+  counts.todo = counts.waiting_analysis + counts.running + counts.review_required + counts.decision_required + counts.failed
+  return { items: items.filter((item) => !["completed", "rejected"].includes(item.workStage)), counts, nextCursor: null }
 }

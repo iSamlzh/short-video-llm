@@ -16,6 +16,17 @@ type ContentBrainDeps = ContentBrainServices & { modelTasks?: ModelTaskService }
 
 const emptySchema = z.object({}).strict()
 const analyzeJobSchema = z.object({ batchId: z.string().uuid().optional() }).strict()
+const bulkRetrySchema = z.object({ jobIds: z.array(z.string().uuid()).min(1).max(100) }).strict()
+const sampleQueueSchema = z.object({
+  queue: z.enum(["todo", "waiting_analysis", "running", "review_required", "decision_required", "failed", "completed", "rejected", "all"]).default("todo"),
+  q: z.string().trim().max(100).optional(),
+  sourcePlatform: z.string().trim().max(50).optional(),
+  batchId: z.string().trim().max(100).optional(),
+  from: z.string().date().optional(),
+  to: z.string().date().optional(),
+  cursor: z.string().max(500).optional(),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+}).strict()
 const versionSchema = z.object({ expectedVersion: z.number().int().positive() }).strict()
 const reasonSchema = z.object({ reason: z.string().trim().min(2).max(2_000) }).strict()
 const versionReasonSchema = reasonSchema.extend({ expectedVersion: z.number().int().positive() }).strict()
@@ -52,6 +63,20 @@ export async function handleContentBrain(
       const status = rawStatus ? sampleStatusSchema.parse(rawStatus) : undefined
       return Response.json(deps.repository.listSamples(status))
     }
+    if (request.method === "GET" && segments.length === 1 && segments[0] === "sample-queue") {
+      const url = new URL(request.url)
+      const input = sampleQueueSchema.parse(Object.fromEntries(url.searchParams))
+      return Response.json(deps.repository.listSampleQueue({
+        queue: input.queue,
+        q: input.q || undefined,
+        sourcePlatform: input.sourcePlatform || undefined,
+        batchId: input.batchId || undefined,
+        createdFrom: input.from ? `${input.from}T00:00:00.000Z` : undefined,
+        createdToExclusive: input.to ? `${addUtcDay(input.to)}T00:00:00.000Z` : undefined,
+        cursor: input.cursor,
+        limit: input.limit,
+      }))
+    }
     if (request.method === "GET" && segments.length === 2 && segments[0] === "samples") {
       return Response.json(deps.repository.getSampleWorkspace(segments[1]))
     }
@@ -74,6 +99,12 @@ export async function handleContentBrain(
       const job = deps.analysisJobs.retry(context, segments[1], requireIdempotencyKey(request))
       deps.analysisJobs.kick()
       return Response.json(job, { status: 202 })
+    }
+    if (request.method === "POST" && segments.length === 2 && segments[0] === "tasks" && segments[1] === "bulk-retry") {
+      const input = bulkRetrySchema.parse(await request.json())
+      const result = deps.analysisJobs.retryMany(context, input.jobIds, requireIdempotencyKey(request))
+      deps.analysisJobs.kick()
+      return Response.json(result, { status: 202 })
     }
     if (request.method === "PUT" && segments.length === 2 && segments[0] === "analyses") {
       const input = analysisDraftSchema.parse(await request.json())
@@ -170,3 +201,9 @@ async function put(request: Request, route: RouteContext) {
 export const GET = withRequestLog(get)
 export const POST = withRequestLog(post)
 export const PUT = withRequestLog(put)
+
+function addUtcDay(date: string) {
+  const value = new Date(`${date}T00:00:00.000Z`)
+  value.setUTCDate(value.getUTCDate() + 1)
+  return value.toISOString().slice(0, 10)
+}

@@ -169,16 +169,23 @@ describe("database migrations", () => {
         filename TEXT NOT NULL,
         applied_at TEXT NOT NULL
       );
-      CREATE TABLE platform_content_analysis_versions (id TEXT PRIMARY KEY);
+      CREATE TABLE platform_content_analysis_versions (
+        id TEXT PRIMARY KEY,
+        sample_id TEXT,
+        version INTEGER
+      );
       CREATE TABLE platform_content_samples (
         id TEXT PRIMARY KEY,
+        source_platform TEXT,
         workflow_status TEXT NOT NULL,
+        created_at TEXT,
         updated_at TEXT
       );
       CREATE TABLE platform_structure_candidates (
         id TEXT PRIMARY KEY,
         sample_id TEXT,
         status TEXT NOT NULL,
+        created_at TEXT,
         updated_at TEXT
       );
       CREATE TABLE users (id TEXT PRIMARY KEY);

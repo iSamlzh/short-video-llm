@@ -36,11 +36,13 @@ describe("平台内容大脑私有路由", () => {
   it.each([
     ["POST", ["samples"], { title: "真实售后复盘", sourcePlatform: "视频号", transcript: "这是一段超过四十字的真实样本文本，用于验证爆款拆解工作区的粘贴输入流程和数据保存边界。", rightsNote: "已获授权" }, "samples.createFromText"],
     ["GET", ["samples"], undefined, "repository.listSamples"],
+    ["GET", ["sample-queue"], undefined, "repository.listSampleQueue"],
     ["GET", ["samples", "sample-1"], undefined, "repository.getSampleWorkspace"],
     ["POST", ["samples", "sample-1", "analyze"], {}, "analysisJobs.enqueue"],
     ["GET", ["tasks"], undefined, "analysisJobs.list"],
     ["GET", ["tasks", "task-1"], undefined, "analysisJobs.get"],
     ["POST", ["tasks", "task-1", "retry"], {}, "analysisJobs.retry"],
+    ["POST", ["tasks", "bulk-retry"], { jobIds: ["00000000-0000-4000-8000-000000000001"] }, "analysisJobs.retryMany"],
     ["PUT", ["analyses", "analysis-1"], { expectedVersion: 1, payload: analysisPayload }, "analysis.saveDraft"],
     ["POST", ["analyses", "analysis-1", "approve"], { expectedVersion: 1, payload: analysisPayload }, "analysis.approveAndPropose"],
     ["POST", ["analyses", "analysis-1", "reject"], { expectedVersion: 1, reason: "证据不足" }, "analysis.rejectAnalysis"],
@@ -78,6 +80,25 @@ describe("平台内容大脑私有路由", () => {
     const responsePayload = await response.clone().json()
     expect(response.status, JSON.stringify(responsePayload)).toBe(201)
     expect(deps.samples.createFromFile).toHaveBeenCalledWith(operator, expect.objectContaining({ filename: "samples.csv", rightsNote: "已获内部拆解授权" }))
+  })
+
+  it("样本工作队列解析筛选、日期和游标参数", async () => {
+    const deps = routeDeps()
+    const request = new Request("http://test/api?queue=failed&q=%E5%94%AE%E5%90%8E&sourcePlatform=wechat_channels&batchId=batch-7&from=2026-08-01&to=2026-08-29&cursor=next-page&limit=25")
+
+    const response = await handleContentBrain(request, ["sample-queue"], operator, deps)
+
+    expect(response.status).toBe(200)
+    expect(deps.repository.listSampleQueue).toHaveBeenCalledWith({
+      queue: "failed",
+      q: "售后",
+      sourcePlatform: "wechat_channels",
+      batchId: "batch-7",
+      createdFrom: "2026-08-01T00:00:00.000Z",
+      createdToExclusive: "2026-08-30T00:00:00.000Z",
+      cursor: "next-page",
+      limit: 25,
+    })
   })
 
   it.each([
@@ -121,6 +142,7 @@ function routeDeps() {
       enqueue: vi.fn(() => ({ id: "task-1", status: "queued" })), kick: vi.fn(),
       list: vi.fn(() => []), get: vi.fn(() => ({ id: "task-1", status: "running" })),
       retry: vi.fn(() => ({ id: "task-2", status: "queued" })),
+      retryMany: vi.fn(() => ({ accepted: 1, jobs: [{ id: "task-2", status: "queued" }] })),
     },
     workflow: {
       reviewCandidate: vi.fn(() => ({ id: "candidate-2" })), previewCandidate: vi.fn(() => ({ id: "preview-1" })),
@@ -129,6 +151,7 @@ function routeDeps() {
     },
     repository: {
       listSamples: vi.fn(() => []), getSampleWorkspace: vi.fn(() => ({ id: "sample-1" })),
+      listSampleQueue: vi.fn(() => ({ items: [], nextCursor: null, counts: {} })),
       listActivePackages: vi.fn(() => []),
     },
     evaluations: {

@@ -14,7 +14,8 @@ export default async function ContentBrainPage() {
   return <div className="app-shell platform-brain-shell">
     <PlatformMasthead operatorName="陈默" role={access.platformRole === "platform_admin" ? "平台管理员" : "平台运营"} />
     <main><ContentBrainWorkspace
-      initialSamples={repository.listSamples()}
+      initialSamples={[]}
+      initialSamplePage={repository.listSampleQueue({ queue: "todo", limit: 50 })}
       initialStructures={repository.listActivePackages()}
       initialEvaluations={services.evaluations.listCurrent()}
       initialJobs={jobs}

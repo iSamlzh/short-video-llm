@@ -1,6 +1,13 @@
 import { createHash, randomUUID } from "node:crypto"
 import type Database from "better-sqlite3"
-import { normalizeStructureNodes, type ContentAnalysis, type SampleStatus, type TemplatePackage } from "../../domain/content-brain"
+import {
+  normalizeStructureNodes,
+  type ContentAnalysis,
+  type SampleQueueQuery,
+  type SampleQueueStage,
+  type SampleStatus,
+  type TemplatePackage,
+} from "../../domain/content-brain"
 import type { StructureCandidateInput, StructurePreview } from "../../domain/content-brain-schemas"
 import type { TokenUsage } from "../llm/adapter"
 
@@ -329,6 +336,70 @@ export class ContentBrainRepository {
       .map((row) => row.analysis_id)
   }
 
+  listSampleQueue(input: SampleQueueQuery) {
+    const limit = Math.min(Math.max(input.limit ?? 50, 1), 100)
+    const filters: string[] = []
+    const filterParameters: unknown[] = []
+    if (input.q?.trim()) {
+      const term = `%${escapeLike(input.q.trim())}%`
+      filters.push(`(title LIKE ? ESCAPE '\\' OR COALESCE(author_reference,'') LIKE ? ESCAPE '\\'
+        OR COALESCE(source_url,'') LIKE ? ESCAPE '\\')`)
+      filterParameters.push(term, term, term)
+    }
+    if (input.sourcePlatform) {
+      filters.push("source_platform=?")
+      filterParameters.push(input.sourcePlatform)
+    }
+    if (input.batchId) {
+      filters.push("batch_id=?")
+      filterParameters.push(input.batchId)
+    }
+    if (input.createdFrom) {
+      filters.push("created_at>=?")
+      filterParameters.push(input.createdFrom)
+    }
+    if (input.createdToExclusive) {
+      filters.push("created_at<?")
+      filterParameters.push(input.createdToExclusive)
+    }
+    const commonWhere = filters.length ? `WHERE ${filters.join(" AND ")}` : ""
+    const queueFilter = input.queue === "todo"
+      ? "work_stage NOT IN ('completed','rejected')"
+      : input.queue === "all" ? "1=1" : "work_stage=?"
+    const queueParameters = input.queue === "todo" || input.queue === "all" ? [] : [input.queue]
+    const descending = input.queue === "completed" || input.queue === "rejected"
+    const cursor = input.cursor ? decodeSampleQueueCursor(input.cursor) : null
+    const cursorFilter = !cursor ? "" : descending
+      ? `AND (sort_rank>? OR (sort_rank=? AND queue_at<?)
+        OR (sort_rank=? AND queue_at=? AND id<?))`
+      : `AND (sort_rank>? OR (sort_rank=? AND queue_at>?)
+        OR (sort_rank=? AND queue_at=? AND id>?))`
+    const cursorParameters = cursor
+      ? [cursor.rank, cursor.rank, cursor.queueAt, cursor.rank, cursor.queueAt, cursor.id]
+      : []
+    const orderDirection = descending ? "DESC" : "ASC"
+    const cte = sampleQueueCte(commonWhere)
+    const rows = this.database.prepare(`${cte}
+      SELECT * FROM filtered_queue WHERE ${queueFilter} ${cursorFilter}
+      ORDER BY sort_rank ASC,queue_at ${orderDirection},id ${orderDirection} LIMIT ?`)
+      .all(...filterParameters, ...queueParameters, ...cursorParameters, limit + 1) as SampleQueueRow[]
+    const countRows = this.database.prepare(`${cte}
+      SELECT work_stage,COUNT(*) count FROM filtered_queue GROUP BY work_stage`)
+      .all(...filterParameters) as Array<{ work_stage: SampleQueueStage; count: number }>
+    const counts = emptySampleQueueCounts()
+    countRows.forEach((row) => { counts[row.work_stage] = Number(row.count) })
+    counts.todo = counts.waiting_analysis + counts.running + counts.review_required + counts.decision_required + counts.failed
+    counts.all = counts.todo + counts.completed + counts.rejected
+    const hasMore = rows.length > limit
+    const pageRows = hasMore ? rows.slice(0, limit) : rows
+    const last = pageRows.at(-1)
+    return {
+      items: pageRows.map(mapSampleQueueRow),
+      counts,
+      nextCursor: hasMore && last ? encodeSampleQueueCursor({ rank: last.sort_rank, queueAt: last.queue_at, id: last.id }) : null,
+    }
+  }
+
   appendEvolutionCandidate(input: {
     id: string
     evaluationId: string
@@ -622,4 +693,157 @@ export class ContentBrainRepository {
 
 function hashTranscript(transcript: string) {
   return createHash("sha256").update(transcript.normalize("NFKC").replace(/\s+/g, " ").trim()).digest("hex")
+}
+
+type SampleQueueRow = {
+  id: string
+  title: string
+  source_platform: string
+  source_url: string | null
+  author_reference: string | null
+  workflow_status: SampleStatus
+  current_revision_version: number
+  data_origin: "demo" | "formal"
+  created_at: string
+  updated_at: string
+  created_by_user_id: string
+  creator_name: string | null
+  analysis_id: string | null
+  candidate_id: string | null
+  work_stage: SampleQueueStage
+  sort_rank: number
+  queue_at: string
+  job_id: string | null
+  batch_id: string | null
+  job_status: "queued" | "running" | "succeeded" | "failed" | "timed_out" | "cancelled" | null
+  job_stage: string | null
+  progress_message: string | null
+  error_code: string | null
+  retryable: number | null
+  attempt_count: number | null
+  max_attempts: number | null
+  available_at: string | null
+  started_at: string | null
+  finished_at: string | null
+  job_created_at: string | null
+  job_updated_at: string | null
+}
+
+function sampleQueueCte(commonWhere: string) {
+  return `WITH ranked_jobs AS (
+      SELECT j.*,ROW_NUMBER() OVER (PARTITION BY j.resource_id ORDER BY j.created_at DESC,j.id DESC) row_number
+      FROM agent_jobs j
+      WHERE j.scope_type='platform' AND j.scope_id='platform'
+        AND j.job_type='content_analysis' AND j.resource_type='content_sample'
+    ), latest_jobs AS (
+      SELECT * FROM ranked_jobs WHERE row_number=1
+    ), sample_stage AS (
+      SELECT s.id,s.title,s.source_platform,s.source_url,s.author_reference,s.workflow_status,
+        s.current_revision_version,s.data_origin,s.created_at,s.updated_at,s.created_by_user_id,
+        u.display_name creator_name,
+        (SELECT a.id FROM platform_content_analysis_versions a
+          WHERE a.sample_id=s.id ORDER BY a.version DESC LIMIT 1) analysis_id,
+        (SELECT c.id FROM platform_structure_candidates c
+          WHERE c.sample_id=s.id ORDER BY c.created_at DESC,c.id DESC LIMIT 1) candidate_id,
+        j.id job_id,j.batch_id,j.status job_status,j.stage job_stage,j.progress_message,j.error_code,j.retryable,
+        j.attempt_count,j.max_attempts,j.available_at,j.started_at,j.finished_at,
+        j.created_at job_created_at,j.updated_at job_updated_at,
+        CASE
+          WHEN s.workflow_status='completed' THEN 'completed'
+          WHEN s.workflow_status='rejected' THEN 'rejected'
+          WHEN s.workflow_status IN ('reviewed','candidate_ready') THEN 'decision_required'
+          WHEN s.workflow_status='review_required' THEN 'review_required'
+          WHEN j.status='running' THEN 'running'
+          WHEN j.status='queued' THEN 'waiting_analysis'
+          WHEN j.status IN ('failed','timed_out','cancelled') OR s.workflow_status='analysis_failed' THEN 'failed'
+          WHEN s.workflow_status='analyzing' THEN 'running'
+          ELSE 'waiting_analysis'
+        END work_stage
+      FROM platform_content_samples s
+      LEFT JOIN latest_jobs j ON j.resource_id=s.id
+      LEFT JOIN users u ON u.id=s.created_by_user_id
+      WHERE s.source_platform!='internal_evolution'
+    ), sample_queue AS (
+      SELECT *,
+        CASE work_stage WHEN 'failed' THEN 0 WHEN 'review_required' THEN 1
+          WHEN 'decision_required' THEN 2 WHEN 'waiting_analysis' THEN 3
+          WHEN 'running' THEN 4 WHEN 'completed' THEN 5 ELSE 6 END sort_rank,
+        CASE WHEN work_stage IN ('waiting_analysis','running','failed')
+          THEN COALESCE(job_created_at,updated_at,created_at)
+          ELSE COALESCE(updated_at,created_at) END queue_at
+      FROM sample_stage
+    ), filtered_queue AS (
+      SELECT * FROM sample_queue ${commonWhere}
+    )`
+}
+
+function mapSampleQueueRow(row: SampleQueueRow) {
+  return {
+    id: row.id,
+    title: row.title,
+    sourcePlatform: row.source_platform,
+    sourceUrl: row.source_url,
+    authorReference: row.author_reference,
+    status: row.workflow_status,
+    workStage: row.work_stage,
+    revisionVersion: row.current_revision_version,
+    dataOrigin: row.data_origin,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    queueAt: row.queue_at,
+    createdBy: row.creator_name ?? row.created_by_user_id,
+    analysisId: row.analysis_id,
+    candidateId: row.candidate_id,
+    latestJob: row.job_id ? {
+      id: row.job_id,
+      batchId: row.batch_id,
+      status: row.job_status!,
+      stage: row.job_stage!,
+      progressMessage: row.progress_message!,
+      errorCode: row.error_code,
+      retryable: Boolean(row.retryable),
+      attemptCount: Number(row.attempt_count ?? 0),
+      maxAttempts: Number(row.max_attempts ?? 0),
+      availableAt: row.available_at,
+      startedAt: row.started_at,
+      finishedAt: row.finished_at,
+      createdAt: row.job_created_at!,
+      updatedAt: row.job_updated_at!,
+    } : null,
+  }
+}
+
+function emptySampleQueueCounts() {
+  return {
+    todo: 0,
+    waiting_analysis: 0,
+    running: 0,
+    review_required: 0,
+    decision_required: 0,
+    failed: 0,
+    completed: 0,
+    rejected: 0,
+    all: 0,
+  }
+}
+
+function escapeLike(value: string) {
+  return value.replace(/[\\%_]/g, (character) => `\\${character}`)
+}
+
+function encodeSampleQueueCursor(cursor: { rank: number; queueAt: string; id: string }) {
+  return Buffer.from(JSON.stringify(cursor), "utf8").toString("base64url")
+}
+
+function decodeSampleQueueCursor(value: string) {
+  try {
+    const parsed = JSON.parse(Buffer.from(value, "base64url").toString("utf8")) as Record<string, unknown>
+    if (!Number.isInteger(parsed.rank) || typeof parsed.queueAt !== "string" || typeof parsed.id !== "string"
+      || parsed.id.length < 1 || parsed.id.length > 200 || parsed.queueAt.length > 50) {
+      throw new Error("SAMPLE_QUEUE_CURSOR_INVALID")
+    }
+    return { rank: Number(parsed.rank), queueAt: parsed.queueAt, id: parsed.id }
+  } catch {
+    throw new Error("SAMPLE_QUEUE_CURSOR_INVALID")
+  }
 }

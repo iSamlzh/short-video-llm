@@ -12,7 +12,8 @@ describe("AI 原生爆款拆解工作区", () => {
     render(<ContentBrainWorkspace initialSamples={[]} initialStructures={[]} canActivate api={fixtureApi() as any} />)
     expect(screen.getByRole("button", { name: "新增爆款样本" })).toBeVisible()
     expect(screen.queryByText("新建空白模板")).not.toBeInTheDocument()
-    expect(screen.getByText("先提供一条真实内容，Agent 再提炼可复用结构。" )).toBeVisible()
+    expect(screen.getByRole("heading", { name: "今天先处理这些" })).toBeVisible()
+    expect(screen.getByText("Agent 自动推进拆解，人工只处理复核、决策和异常。最早进入队列的样本不会被新导入内容淹没。" )).toBeVisible()
   })
 
   it("新增样本后直接开始拆解并进入结果文档", async () => {
@@ -65,9 +66,7 @@ describe("AI 原生爆款拆解工作区", () => {
       candidates: [candidateFixture],
     }
     api.getSample.mockResolvedValueOnce(workspaceFixture).mockResolvedValueOnce(candidateWorkspace)
-    api.listSamples.mockResolvedValueOnce([
-      { ...workspaceFixture.sample, status: "candidate_ready" },
-    ])
+    api.listSampleQueue.mockResolvedValue(sampleQueuePage({ ...workspaceFixture.sample, status: "candidate_ready" }))
     render(<ContentBrainWorkspace
       initialSamples={[workspaceFixture.sample]}
       initialStructures={[]}
@@ -81,6 +80,33 @@ describe("AI 原生爆款拆解工作区", () => {
     await userEvent.click(screen.getByRole("button", { name: "爆款样本" }))
 
     expect(screen.getByRole("button", { name: /一次售后让我重新理解团长.*待决策/ })).toBeVisible()
+  })
+
+  it("异常样本支持勾选后批量重新进入拆解队列", async () => {
+    const api = fixtureApi()
+    const failedPage = {
+      ...sampleQueuePage(),
+      items: [{
+        id: "sample-failed", title: "一次失败的创业复盘", sourcePlatform: "douyin", sourceUrl: null,
+        authorReference: "创业者 A", status: "analysis_failed", workStage: "failed", revisionVersion: 1,
+        dataOrigin: "formal", createdAt: "2026-08-29T10:00:00.000Z", updatedAt: "2026-08-29T10:03:00.000Z",
+        queueAt: "2026-08-29T10:03:00.000Z", createdBy: "平台运营", analysisId: null, candidateId: null,
+        latestJob: {
+          id: "00000000-0000-4000-8000-000000000009", batchId: "batch-9", status: "failed", stage: "failed",
+          progressMessage: "模型返回结构不完整", errorCode: "LLM_INVALID_RESPONSE", retryable: true,
+          attemptCount: 2, maxAttempts: 2, availableAt: "2026-08-29T10:00:00.000Z", startedAt: null,
+          finishedAt: "2026-08-29T10:03:00.000Z", createdAt: "2026-08-29T10:00:00.000Z", updatedAt: "2026-08-29T10:03:00.000Z",
+        },
+      }],
+      counts: { ...sampleQueuePage().counts, todo: 1, failed: 1, all: 1 },
+    }
+    render(<ContentBrainWorkspace initialSamples={[]} initialSamplePage={failedPage as any} initialStructures={[]} canActivate api={api as any} />)
+
+    await userEvent.click(screen.getByRole("checkbox", { name: "选择 一次失败的创业复盘" }))
+    await userEvent.click(screen.getByRole("button", { name: "重新拆解" }))
+
+    expect(api.retryManyTasks).toHaveBeenCalledWith(["00000000-0000-4000-8000-000000000009"])
+    expect(await screen.findByText("已将 1 条异常样本重新加入拆解队列。" )).toBeVisible()
   })
 
   it("试生成成功后仍要求人工确认启用", async () => {
@@ -295,14 +321,35 @@ function fixtureApi() {
     analyze: vi.fn().mockResolvedValue(runningJobFixture),
     getTask: vi.fn().mockResolvedValue(runningJobFixture), listTasks: vi.fn().mockResolvedValue([]),
     retryTask: vi.fn().mockResolvedValue({ ...runningJobFixture, id: "task-2", status: "queued" }),
+    retryManyTasks: vi.fn().mockResolvedValue({ accepted: 1, jobs: [{ ...runningJobFixture, id: "task-2", status: "queued" }] }),
     getSample: vi.fn().mockResolvedValue(workspaceFixture),
     saveAnalysis: vi.fn().mockResolvedValue({}), approveAnalysis: vi.fn().mockResolvedValue({}),
     rejectAnalysis: vi.fn().mockResolvedValue({}), saveCandidate: vi.fn().mockResolvedValue({}),
     previewCandidate: vi.fn().mockResolvedValue(previewFixture), rejectCandidate: vi.fn().mockResolvedValue({}),
     activateCandidate: vi.fn().mockResolvedValue({ id: "version-1" }),
-    listSamples: vi.fn().mockResolvedValue([]), listStructures: vi.fn().mockResolvedValue([]),
+    listSamples: vi.fn().mockResolvedValue([]), listSampleQueue: vi.fn().mockResolvedValue(sampleQueuePage()), listStructures: vi.fn().mockResolvedValue([]),
     listEvaluations: vi.fn().mockResolvedValue([]), getEvaluation: vi.fn(),
     evaluateStructure: vi.fn(), proposeEvolution: vi.fn(),
+  }
+}
+
+function sampleQueuePage(sample?: typeof workspaceFixture.sample & { status: string }) {
+  const workStage = sample?.status === "candidate_ready" ? "decision_required"
+    : sample?.status === "review_required" ? "review_required"
+      : sample?.status === "analyzing" ? "running" : "waiting_analysis"
+  const items = sample ? [{
+    ...sample, workStage, createdAt: "2026-08-29T10:00:00.000Z", updatedAt: "2026-08-29T10:00:00.000Z", queueAt: "2026-08-29T10:00:00.000Z",
+    createdBy: "平台运营", latestJob: null,
+  }] : []
+  return {
+    items, nextCursor: null,
+    counts: {
+      todo: items.length, waiting_analysis: workStage === "waiting_analysis" ? items.length : 0,
+      running: workStage === "running" ? items.length : 0,
+      review_required: workStage === "review_required" ? items.length : 0,
+      decision_required: workStage === "decision_required" ? items.length : 0,
+      failed: 0, completed: 0, rejected: 0, all: items.length,
+    },
   }
 }
 

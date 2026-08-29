@@ -258,7 +258,7 @@ describe("approved AI-native page hierarchy", () => {
     render(<ContentBrainWorkspace initialSamples={[]} initialStructures={[]} canActivate api={{} as any} />)
 
     expect(screen.getByRole("button", { name: "新增爆款样本" })).toBeVisible()
-    expect(screen.getByText(/先提供一条真实内容/)).toBeVisible()
+    expect(screen.getByRole("heading", { name: "今天先处理这些" })).toBeVisible()
     expect(screen.queryByText("林姐说团购")).not.toBeInTheDocument()
   })
 })

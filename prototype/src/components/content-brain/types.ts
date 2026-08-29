@@ -72,6 +72,53 @@ export type CandidateRecord = {
   } | null
 }
 
+export type SampleQueueStage = "waiting_analysis" | "running" | "review_required" | "decision_required" | "failed" | "completed" | "rejected"
+export type SampleQueueName = "todo" | SampleQueueStage | "all"
+
+export type SampleQueueFilters = {
+  queue: SampleQueueName
+  q?: string
+  sourcePlatform?: string
+  batchId?: string
+  from?: string
+  to?: string
+  cursor?: string
+  limit?: number
+}
+
+export type SampleQueueItem = SampleSummary & {
+  workStage: SampleQueueStage
+  sourceUrl?: string | null
+  authorReference?: string | null
+  createdAt: string
+  queueAt: string
+  createdBy: string
+  latestJob: null | {
+    id: string
+    batchId?: string | null
+    status: AgentJob["status"]
+    stage: string
+    progressMessage: string
+    errorCode?: string | null
+    retryable: boolean
+    attemptCount: number
+    maxAttempts: number
+    availableAt?: string | null
+    startedAt?: string | null
+    finishedAt?: string | null
+    createdAt: string
+    updatedAt: string
+  }
+}
+
+export type SampleQueueCounts = Record<SampleQueueName, number>
+
+export type SampleQueuePage = {
+  items: SampleQueueItem[]
+  counts: SampleQueueCounts
+  nextCursor: string | null
+}
+
 export type SampleWorkspace = {
   sample: SampleSummary & { transcript: string }
   revisions: unknown[]
@@ -184,6 +231,8 @@ export type ContentBrainApi = {
   rejectCandidate(candidateId: string, input: { expectedVersion: number; reason: string }): Promise<unknown>
   activateCandidate(candidateId: string, input: { expectedVersion: number; reason: string }): Promise<unknown>
   listSamples(): Promise<SampleSummary[]>
+  listSampleQueue(filters: SampleQueueFilters): Promise<SampleQueuePage>
+  retryManyTasks(jobIds: string[]): Promise<{ accepted: number; jobs: AgentJob[] }>
   listStructures(): Promise<ActiveStructure[]>
   listEvaluations(): Promise<StructureEvaluation[]>
   getEvaluation(evaluationId: string): Promise<StructureEvaluationDetail>

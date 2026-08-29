@@ -8,6 +8,28 @@ export type SampleStatus =
   | "analysis_failed"
   | "rejected"
 
+export type SampleQueueStage =
+  | "waiting_analysis"
+  | "running"
+  | "review_required"
+  | "decision_required"
+  | "failed"
+  | "completed"
+  | "rejected"
+
+export type SampleQueueName = "todo" | SampleQueueStage | "all"
+
+export type SampleQueueQuery = {
+  queue: SampleQueueName
+  q?: string
+  sourcePlatform?: string
+  batchId?: string
+  createdFrom?: string
+  createdToExclusive?: string
+  cursor?: string
+  limit?: number
+}
+
 export type CandidateStatus =
   | "draft"
   | "preview_ready"

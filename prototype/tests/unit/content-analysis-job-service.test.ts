@@ -73,4 +73,29 @@ describe("ContentAnalysisJobService", () => {
 
     await vi.waitFor(() => expect(service.get(operator, queued.id).status).toBe("succeeded"))
   })
+
+  it("批量重试在一个事务内创建任务并保持请求幂等", () => {
+    const analysis = { analyze: vi.fn() }
+    const modelTasks = { run: vi.fn() }
+    const service = new ContentAnalysisJobService(database, analysis as any, modelTasks as any, {
+      NODE_ENV: "production", CONTENT_ANALYSIS_WORKER_CONCURRENCY: "1",
+    })
+    const first = service.enqueue(operator, "sample-failure", "bulk-source-first-12345678", "batch-retry")
+    const second = service.enqueue(operator, "sample-boundary", "bulk-source-second-12345678", "batch-retry")
+    database.prepare(`UPDATE agent_jobs SET status='failed',stage='failed',retryable=1,
+      error_code='MODEL_SCHEMA_INVALID',finished_at=updated_at WHERE id IN (?,?)`).run(first.id, second.id)
+
+    const retried = service.retryMany(operator, [first.id, second.id, first.id], "bulk-retry-request-12345678")
+    const repeated = service.retryMany(operator, [second.id, first.id], "bulk-retry-request-12345678")
+
+    expect(retried.accepted).toBe(2)
+    expect(retried.jobs).toEqual([
+      expect.objectContaining({ resourceId: "sample-failure", parentJobId: first.id, batchId: "batch-retry", status: "queued" }),
+      expect.objectContaining({ resourceId: "sample-boundary", parentJobId: second.id, batchId: "batch-retry", status: "queued" }),
+    ])
+    expect(repeated.jobs.map((job) => [job.resourceId, job.id])).toEqual([
+      ["sample-boundary", retried.jobs[1].id], ["sample-failure", retried.jobs[0].id],
+    ])
+    expect(database.prepare("SELECT COUNT(*) count FROM agent_jobs WHERE parent_job_id IS NOT NULL").get()).toEqual({ count: 2 })
+  })
 })

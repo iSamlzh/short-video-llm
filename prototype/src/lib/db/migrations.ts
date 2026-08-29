@@ -95,6 +95,10 @@ const migrations = [
     version: 24,
     filename: "024_structure_evaluation_evolution.sql",
   },
+  {
+    version: 25,
+    filename: "025_content_sample_queue_indexes.sql",
+  },
 ] as const
 
 export const LATEST_MIGRATION_VERSION = migrations.at(-1)!.version

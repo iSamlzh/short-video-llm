@@ -51,6 +51,16 @@ export class ContentAnalysisJobService {
     return this.jobs.createRetry(jobId, context.userId, idempotencyKey).job
   }
 
+  retryMany(context: PlatformAccessContext, jobIds: string[], idempotencyKey: string) {
+    requirePlatformOperator(context)
+    const uniqueIds = [...new Set(jobIds)]
+    const jobs = this.database.transaction(() => uniqueIds.map((jobId) => {
+      this.jobs.requireScoped(jobId, "platform", "platform")
+      return this.jobs.createRetry(jobId, context.userId, `bulk:${idempotencyKey}:${jobId}`).job
+    }))()
+    return { accepted: jobs.length, jobs }
+  }
+
   get(context: PlatformAccessContext, jobId: string) {
     requirePlatformOperator(context)
     return this.jobs.requireScoped(jobId, "platform", "platform")
