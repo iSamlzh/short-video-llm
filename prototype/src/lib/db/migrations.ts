@@ -75,6 +75,10 @@ const migrations = [
     version: 19,
     filename: "019_model_task_scopes.sql",
   },
+  {
+    version: 20,
+    filename: "020_agent_jobs.sql",
+  },
 ] as const
 
 export const LATEST_MIGRATION_VERSION = migrations.at(-1)!.version

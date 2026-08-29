@@ -1,0 +1,40 @@
+[Unit]
+Description=团长内容增长 Agent 后台拆解 Worker
+After=network-online.target content-agent.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=content-agent
+Group=content-agent
+WorkingDirectory=/opt/content-agent/current
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/content-agent/content-agent.env
+Environment=CONTENT_ANALYSIS_INLINE_WORKER=false
+ExecStartPre=/usr/bin/test -r /etc/content-agent/content-agent.env
+ExecStartPre=/usr/bin/test -w /var/lib/content-agent
+ExecStart=/usr/bin/npm run worker:content
+StandardOutput=append:/var/log/content-agent/worker-access.jsonl
+StandardError=append:/var/log/content-agent/worker-error.jsonl
+SyslogIdentifier=content-agent-worker
+Restart=on-failure
+RestartSec=5s
+TimeoutStopSec=30s
+KillSignal=SIGTERM
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/content-agent /var/cache/content-agent /var/log/content-agent
+LimitNOFILE=65535
+TasksMax=256
+MemoryMax=2G
+
+[Install]
+WantedBy=multi-user.target

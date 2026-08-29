@@ -37,7 +37,10 @@ describe("平台内容大脑私有路由", () => {
     ["POST", ["samples"], { title: "真实售后复盘", sourcePlatform: "视频号", transcript: "这是一段超过四十字的真实样本文本，用于验证爆款拆解工作区的粘贴输入流程和数据保存边界。", rightsNote: "已获授权" }, "samples.createFromText"],
     ["GET", ["samples"], undefined, "repository.listSamples"],
     ["GET", ["samples", "sample-1"], undefined, "repository.getSampleWorkspace"],
-    ["POST", ["samples", "sample-1", "analyze"], {}, "analysis.analyze"],
+    ["POST", ["samples", "sample-1", "analyze"], {}, "analysisJobs.enqueue"],
+    ["GET", ["tasks"], undefined, "analysisJobs.list"],
+    ["GET", ["tasks", "task-1"], undefined, "analysisJobs.get"],
+    ["POST", ["tasks", "task-1", "retry"], {}, "analysisJobs.retry"],
     ["PUT", ["analyses", "analysis-1"], { expectedVersion: 1, payload: analysisPayload }, "analysis.saveDraft"],
     ["POST", ["analyses", "analysis-1", "approve"], { expectedVersion: 1, payload: analysisPayload }, "analysis.approveAndPropose"],
     ["POST", ["analyses", "analysis-1", "reject"], { expectedVersion: 1, reason: "证据不足" }, "analysis.rejectAnalysis"],
@@ -51,7 +54,8 @@ describe("平台内容大脑私有路由", () => {
   ] as const)("%s /%s 调用 %s", async (method, segments, body, callPath) => {
     const deps = routeDeps()
     const response = await handleContentBrain(jsonRequest(method, body), [...segments], callPath.includes("activate") || callPath.includes("deactivate") || callPath.includes("rollback") ? admin : operator, deps)
-    expect(response.status).toBe(method === "POST" && segments.length === 1 && segments[0] === "samples" ? 201 : 200)
+    const asyncJobRequest = method === "POST" && (segments[0] === "tasks" || segments[2] === "analyze")
+    expect(response.status).toBe(method === "POST" && segments.length === 1 && segments[0] === "samples" ? 201 : asyncJobRequest ? 202 : 200)
     const [group, methodName] = callPath.split(".") as [keyof typeof deps, string]
     expect((deps[group] as Record<string, ReturnType<typeof vi.fn>>)[methodName]).toHaveBeenCalledTimes(1)
   })
@@ -97,7 +101,7 @@ describe("平台内容大脑私有路由", () => {
 function jsonRequest(method: string, body?: unknown) {
   return new Request("http://test/api", {
     method,
-    headers: body === undefined ? undefined : { "content-type": "application/json" },
+    headers: body === undefined ? undefined : { "content-type": "application/json", "idempotency-key": "test-request-12345678" },
     body: body === undefined ? undefined : JSON.stringify(body),
   })
 }
@@ -108,6 +112,11 @@ function routeDeps() {
     analysis: {
       analyze: vi.fn(() => ({ id: "analysis-1" })), saveDraft: vi.fn(() => ({ id: "analysis-2" })),
       approveAndPropose: vi.fn(() => ({ id: "candidate-1" })), rejectAnalysis: vi.fn(() => ({ id: "analysis-2" })),
+    },
+    analysisJobs: {
+      enqueue: vi.fn(() => ({ id: "task-1", status: "queued" })), kick: vi.fn(),
+      list: vi.fn(() => []), get: vi.fn(() => ({ id: "task-1", status: "running" })),
+      retry: vi.fn(() => ({ id: "task-2", status: "queued" })),
     },
     workflow: {
       reviewCandidate: vi.fn(() => ({ id: "candidate-2" })), previewCandidate: vi.fn(() => ({ id: "preview-1" })),

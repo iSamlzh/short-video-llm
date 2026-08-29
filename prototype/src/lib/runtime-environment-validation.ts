@@ -12,6 +12,7 @@ export function validateRuntimeEnvironment(environment: RuntimeEnvironment, cwd 
     if (environment.PLAYWRIGHT_TEST_MODE === "true") errors.push("PLAYWRIGHT_TEST_MODE_FORBIDDEN")
     if (environment.PROTOTYPE_DEMO_CONTROLS === "true") errors.push("DEMO_CONTROLS_FORBIDDEN")
     if (environment.PROTOTYPE_ALLOW_DEMO_CLEAR === "true") errors.push("DEMO_CLEAR_FORBIDDEN")
+    if (environment.CONTENT_ANALYSIS_INLINE_WORKER === "true") errors.push("INLINE_CONTENT_WORKER_FORBIDDEN")
     validateProductionDatabasePath(environment.PROTOTYPE_DB_PATH, cwd, errors)
   }
 

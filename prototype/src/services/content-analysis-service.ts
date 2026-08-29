@@ -8,6 +8,8 @@ import { StructuredLlmClient } from "../lib/llm/structured"
 
 const PROMPT_VERSION = 1
 
+export type ContentAnalysisProgress = (stage: "structure_analysis" | "evidence_validation" | "persistence", message: string) => void
+
 export class ContentAnalysisService {
   private readonly inFlight = new Map<string, Promise<ReturnType<ContentBrainRepository["requireAnalysis"]>>>()
 
@@ -17,7 +19,7 @@ export class ContentAnalysisService {
     private readonly repository = new ContentBrainRepository(database),
   ) {}
 
-  async analyze(context: AccessContext, sampleId: string) {
+  async analyze(context: AccessContext, sampleId: string, onProgress?: ContentAnalysisProgress) {
     requirePlatformOperator(context)
     const sample = this.repository.requireSample(sampleId)
     const existing = this.repository.findLatestAnalysisForRevision(sampleId, sample.revisionId)
@@ -25,7 +27,7 @@ export class ContentAnalysisService {
     const key = `${sampleId}:${sample.revisionId}`
     const running = this.inFlight.get(key)
     if (running) return running
-    const task = this.runAnalysis(requirePlatformOperator(context), sample)
+    const task = this.runAnalysis(requirePlatformOperator(context), sample, onProgress)
     this.inFlight.set(key, task)
     try {
       return await task
@@ -37,18 +39,22 @@ export class ContentAnalysisService {
   private async runAnalysis(
     context: ReturnType<typeof requirePlatformOperator>,
     sample: ReturnType<ContentBrainRepository["requireSample"]>,
+    onProgress?: ContentAnalysisProgress,
   ) {
     const sampleId = sample.id
     const startedAt = new Date().toISOString()
     this.repository.updateSampleStatus(sampleId, "analyzing", startedAt)
     try {
+      onProgress?.("structure_analysis", "正在识别爆款结构")
       const result = await this.llm.generateStructuredResult("content_analysis", {
         title: sample.title,
         transcript: sample.transcript,
         sourcePlatform: sample.sourcePlatform,
         instruction: "只拆解输入内容，所有证据引用必须来自 transcript。",
       }, contentAnalysisSchema)
+      onProgress?.("evidence_validation", "正在校验证据引用")
       validateEvidence(result.data)
+      onProgress?.("persistence", "正在保存拆解结果")
       const createdAt = new Date().toISOString()
       const persist = this.database.transaction(() => {
         const analysis = this.repository.appendAnalysis({

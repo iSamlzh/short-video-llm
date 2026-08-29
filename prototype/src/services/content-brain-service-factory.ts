@@ -4,8 +4,10 @@ import { OpenAiCompatibleAdapter } from "../lib/llm/adapter"
 import { PrototypeFixtureLlmAdapter } from "../lib/llm/fake"
 import { StructuredLlmClient } from "../lib/llm/structured"
 import { ContentAnalysisService } from "./content-analysis-service"
+import { ContentAnalysisJobService } from "./content-analysis-job-service"
 import { ContentBrainWorkflowService } from "./content-brain-workflow-service"
 import { ContentSampleService } from "./content-sample-service"
+import { ModelTaskService } from "./model-task-service"
 
 export type ContentBrainServices = ReturnType<typeof createContentBrainServices>
 
@@ -21,10 +23,12 @@ function createContentBrainServices() {
   const repository = new ContentBrainRepository(database)
   const fixtureAllowed = process.env.PROTOTYPE_TEST_MODE === "true" && process.env.PLAYWRIGHT_TEST_MODE === "true"
   const llm = new StructuredLlmClient(fixtureAllowed ? new PrototypeFixtureLlmAdapter() : new OpenAiCompatibleAdapter())
+  const analysis = new ContentAnalysisService(database, llm, repository)
   return {
     repository,
     samples: new ContentSampleService(repository),
-    analysis: new ContentAnalysisService(database, llm, repository),
+    analysis,
+    analysisJobs: new ContentAnalysisJobService(database, analysis, new ModelTaskService(database)),
     workflow: new ContentBrainWorkflowService(database, llm, repository),
   }
 }

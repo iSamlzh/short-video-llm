@@ -20,6 +20,9 @@ export type RuntimeEnvironment = {
   DISK_MIN_FREE_MB?: string
   HEALTH_MODEL_FAILURE_THRESHOLD?: string
   APP_VERSION?: string
+  CONTENT_ANALYSIS_INLINE_WORKER?: string
+  CONTENT_ANALYSIS_WORKER_CONCURRENCY?: string
+  AGENT_JOB_STALE_SECONDS?: string
 }
 
 export type RuntimeFeatures = {

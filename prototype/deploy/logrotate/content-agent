@@ -1,4 +1,5 @@
 /var/log/content-agent/app-access.jsonl
+/var/log/content-agent/worker-access.jsonl
 /var/log/content-agent/nginx-access.jsonl {
     daily
     rotate 14
@@ -13,6 +14,7 @@
 }
 
 /var/log/content-agent/app-error.jsonl
+/var/log/content-agent/worker-error.jsonl
 /var/log/content-agent/nginx-exception.jsonl
 /var/log/content-agent/nginx-error.log {
     daily

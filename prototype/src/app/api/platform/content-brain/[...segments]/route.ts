@@ -15,6 +15,7 @@ export const dynamic = "force-dynamic"
 type ContentBrainDeps = ContentBrainServices & { modelTasks?: ModelTaskService }
 
 const emptySchema = z.object({}).strict()
+const analyzeJobSchema = z.object({ batchId: z.string().uuid().optional() }).strict()
 const versionSchema = z.object({ expectedVersion: z.number().int().positive() }).strict()
 const reasonSchema = z.object({ reason: z.string().trim().min(2).max(2_000) }).strict()
 const versionReasonSchema = reasonSchema.extend({ expectedVersion: z.number().int().positive() }).strict()
@@ -55,13 +56,24 @@ export async function handleContentBrain(
       return Response.json(deps.repository.getSampleWorkspace(segments[1]))
     }
     if (request.method === "POST" && segments.length === 3 && segments[0] === "samples" && segments[2] === "analyze") {
+      const input = analyzeJobSchema.parse(await request.json())
+      const job = deps.analysisJobs.enqueue(context, segments[1], requireIdempotencyKey(request), input.batchId)
+      deps.analysisJobs.kick()
+      return Response.json(job, { status: 202 })
+    }
+    if (request.method === "GET" && segments.length === 1 && segments[0] === "tasks") {
+      const rawLimit = new URL(request.url).searchParams.get("limit")
+      const limit = rawLimit ? z.coerce.number().int().min(1).max(500).parse(rawLimit) : 100
+      return Response.json(deps.analysisJobs.list(context, limit))
+    }
+    if (request.method === "GET" && segments.length === 2 && segments[0] === "tasks") {
+      return Response.json(deps.analysisJobs.get(context, segments[1]))
+    }
+    if (request.method === "POST" && segments.length === 3 && segments[0] === "tasks" && segments[2] === "retry") {
       emptySchema.parse(await request.json())
-      const run = () => deps.analysis.analyze(context, segments[1])
-      const result = deps.modelTasks ? await deps.modelTasks.run({
-        scopeType: "platform", actorUserId: context.userId, operation: "content_brain.analysis",
-        idempotencyKey: requireIdempotencyKey(request), signal: request.signal,
-      }, run, run) : await run()
-      return Response.json(result)
+      const job = deps.analysisJobs.retry(context, segments[1], requireIdempotencyKey(request))
+      deps.analysisJobs.kick()
+      return Response.json(job, { status: 202 })
     }
     if (request.method === "PUT" && segments.length === 2 && segments[0] === "analyses") {
       const input = analysisDraftSchema.parse(await request.json())

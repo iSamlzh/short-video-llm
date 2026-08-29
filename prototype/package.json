@@ -14,7 +14,8 @@
     "test:live": "tsx tests/live/live-model-smoke.ts",
     "seed:demo": "tsx src/scripts/seed-demo.ts",
     "seed:demo:clear": "tsx src/scripts/clear-demo.ts",
-    "init:production": "tsx src/scripts/init-production.ts"
+    "init:production": "tsx src/scripts/init-production.ts",
+    "worker:content": "tsx src/scripts/content-analysis-worker.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "^2.1.10",

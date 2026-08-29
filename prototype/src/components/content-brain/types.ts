@@ -76,10 +76,35 @@ export type ActiveStructure = {
   sourceCount: number
 }
 
+export type AgentJob = {
+  id: string
+  jobType: "content_analysis"
+  resourceType: "content_sample"
+  resourceId: string
+  batchId?: string | null
+  parentJobId?: string | null
+  status: "queued" | "running" | "succeeded" | "failed" | "timed_out" | "cancelled"
+  stage: string
+  progressMessage: string
+  resultReference?: string | null
+  errorCode?: string | null
+  retryable: boolean
+  attemptCount: number
+  maxAttempts: number
+  heartbeatAt?: string | null
+  startedAt?: string | null
+  finishedAt?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export type ContentBrainApi = {
   createSample(input: Record<string, unknown>): Promise<{ sampleId: string; duplicate?: boolean }>
   importSamples(file: File, rightsNote: string): Promise<Array<{ sampleId: string; duplicate?: boolean }>>
-  analyze(sampleId: string): Promise<unknown>
+  analyze(sampleId: string, batchId?: string): Promise<AgentJob>
+  getTask(taskId: string): Promise<AgentJob>
+  listTasks(): Promise<AgentJob[]>
+  retryTask(taskId: string): Promise<AgentJob>
   getSample(sampleId: string): Promise<SampleWorkspace>
   saveAnalysis(analysisId: string, input: { expectedVersion: number; payload: AnalysisPayload }): Promise<unknown>
   approveAnalysis(analysisId: string, input: { expectedVersion: number; payload: AnalysisPayload }): Promise<unknown>

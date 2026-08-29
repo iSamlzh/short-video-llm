@@ -2,11 +2,11 @@
 
 import { useRef, useState } from "react"
 import { FileArrowUp, TextAlignLeft, X } from "@phosphor-icons/react"
-import type { ContentBrainApi, SampleWorkspace } from "./types"
+import type { AgentJob, ContentBrainApi, SampleWorkspace } from "./types"
 
 export function SampleIntakeDocument({ api, onCompleted, onCancel }: {
   api: ContentBrainApi
-  onCompleted: (workspace: SampleWorkspace, duplicate: boolean) => void
+  onCompleted: (workspace: SampleWorkspace, jobs: AgentJob[], duplicate: boolean) => void
   onCancel: () => void
 }) {
   const [mode, setMode] = useState<"paste" | "file">("paste")
@@ -20,26 +20,27 @@ export function SampleIntakeDocument({ api, onCompleted, onCancel }: {
     setPending(true)
     try {
       const form = new FormData(event.currentTarget)
-      let sampleId: string
+      let sampleIds: string[]
       let duplicate = false
       if (mode === "file") {
         const file = fileRef.current?.files?.[0]
         if (!file) throw new Error("请选择要导入的文件")
         const rows = await api.importSamples(file, String(form.get("rightsNote") ?? ""))
         if (!rows[0]) throw new Error("文件中没有可用样本")
-        sampleId = rows[0].sampleId
-        duplicate = Boolean(rows[0].duplicate)
+        sampleIds = [...new Set(rows.map((row) => row.sampleId))]
+        duplicate = rows.some((row) => Boolean(row.duplicate))
       } else {
         const created = await api.createSample({
           title: form.get("title"), sourcePlatform: form.get("sourcePlatform"),
           transcript: form.get("transcript"), rightsNote: form.get("rightsNote"),
           sourceUrl: null,
         })
-        sampleId = created.sampleId
+        sampleIds = [created.sampleId]
         duplicate = Boolean(created.duplicate)
       }
-      await api.analyze(sampleId)
-      onCompleted(await api.getSample(sampleId), duplicate)
+      const batchId = sampleIds.length > 1 ? crypto.randomUUID() : undefined
+      const jobs = await Promise.all(sampleIds.map((sampleId) => api.analyze(sampleId, batchId)))
+      onCompleted(await api.getSample(sampleIds[0]), jobs, duplicate)
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "样本处理失败，请重试")
     } finally {

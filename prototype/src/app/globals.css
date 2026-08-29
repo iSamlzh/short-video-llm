@@ -249,9 +249,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .brain-task-navigation .brain-new-sample { min-height: 44px; margin: 11px 0 11px auto; border: 1px solid var(--brain-accent); background: var(--brain-accent); color: #fffaf4; }
 .brain-task-navigation .brain-new-sample:hover { background: #a93c27; color: #fffaf4; }
 
-.brain-sample-index, .brain-intake-document, .brain-decision-document, .brain-ledger { width: min(1040px, 100%); margin: 0 auto; padding: 58px 0 0; }
+.brain-sample-index, .brain-intake-document, .brain-decision-document, .brain-ledger, .brain-agent-task { width: min(1040px, 100%); margin: 0 auto; padding: 58px 0 0; }
 .brain-sample-index > header { max-width: 720px; margin-bottom: 44px; }
-.brain-sample-index h1, .brain-intake-document h1, .brain-decision-document h1, .brain-ledger h1, .brain-live-document h1 { margin: 0; font: 650 clamp(32px, 4vw, 54px)/1.15 var(--sans); letter-spacing: -.035em; }
+.brain-sample-index h1, .brain-intake-document h1, .brain-decision-document h1, .brain-ledger h1, .brain-live-document h1, .brain-agent-task h1 { margin: 0; font: 650 clamp(32px, 4vw, 54px)/1.15 var(--sans); letter-spacing: -.035em; }
 .brain-sample-index > header p, .brain-document-heading p { max-width: 680px; margin: 13px 0 0; color: var(--brain-muted); font: 16px/1.75 var(--sans); }
 .brain-sample-list { display: grid; border-top: 1px solid var(--brain-line); }
 .brain-sample-list > button { min-height: 86px; padding: 14px 4px; border-bottom: 1px solid var(--brain-soft); display: flex; align-items: center; justify-content: space-between; gap: 24px; text-align: left; }
@@ -265,6 +265,36 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .brain-empty-state svg { color: var(--brain-accent); }
 .brain-empty-state h2 { margin: 20px 0 8px; font: 650 27px/1.25 var(--sans); letter-spacing: -.02em; }
 .brain-empty-state p { max-width: 600px; margin: 0 0 28px; color: var(--brain-muted); font-size: 15px; line-height: 1.75; }
+
+.brain-queue-summary { width: min(1040px, 100%); margin: 22px auto 0; padding: 16px 0 17px; border-bottom: 1px solid var(--brain-line); display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 5px 28px; }
+.brain-queue-summary > div:first-child { display: flex; align-items: baseline; gap: 12px; }
+.brain-queue-summary span, .brain-queue-summary p { color: var(--brain-muted); font-size: 12px; }
+.brain-queue-summary strong { font-size: 14px; }
+.brain-queue-summary p { margin: 0; text-align: right; }
+.brain-queue-track { grid-column: 1 / -1; height: 3px; margin-top: 8px; overflow: hidden; background: var(--brain-soft); }
+.brain-queue-track span { height: 100%; display: block; background: var(--brain-accent); transition: width .25s ease; }
+
+.brain-agent-elapsed { min-height: 34px; padding: 0 10px; border: 1px solid var(--brain-line); display: inline-flex; align-items: center; gap: 7px; color: var(--brain-muted); font-size: 12px; white-space: nowrap; }
+.brain-agent-stages { margin: 34px 0 0; padding: 0; list-style: none; }
+.brain-agent-stages li { min-height: 67px; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 13px; }
+.brain-agent-stages li > span { width: 26px; height: 26px; border: 1px solid var(--brain-line); display: grid; place-items: center; color: #9a9e99; }
+.brain-agent-stages li > div { position: relative; padding: 1px 0 22px 8px; border-left: 1px solid var(--brain-soft); }
+.brain-agent-stages li:last-child > div { border-left-color: transparent; }
+.brain-agent-stages strong { display: block; color: #8a908b; font-size: 15px; font-weight: 600; }
+.brain-agent-stages small { display: block; margin-top: 5px; color: var(--brain-muted); line-height: 1.6; }
+.brain-agent-stages li.is-complete > span { border-color: #92aa97; color: var(--success); }
+.brain-agent-stages li.is-complete strong { color: #4f5e52; }
+.brain-agent-stages li.is-current > span { border-color: var(--brain-accent); color: var(--brain-accent); }
+.brain-agent-stages li.is-current strong { color: var(--brain-ink); }
+.brain-agent-stages li.is-failed > span { border-color: var(--danger); color: var(--danger); }
+.brain-agent-stages li.is-failed strong { color: var(--danger); }
+.brain-agent-leave-note { margin: 2px 0 0 47px; color: var(--brain-muted); font-size: 13px; }
+.brain-agent-failure, .brain-agent-idle { margin-top: 32px; padding: 18px 20px; border-left: 3px solid var(--danger); display: flex; align-items: flex-start; gap: 13px; background: #f6e8e3; }
+.brain-agent-idle { border-color: var(--brain-accent); background: rgba(255,255,255,.32); }
+.brain-agent-failure svg { flex: none; color: var(--danger); }
+.brain-agent-idle svg { flex: none; color: var(--brain-accent); }
+.brain-agent-failure p, .brain-agent-idle p { margin: 5px 0 0; color: var(--brain-muted); font-size: 13px; }
+.brain-agent-task .brain-button-primary { display: inline-flex; align-items: center; gap: 8px; }
 
 .brain-document-heading { padding-bottom: 28px; border-bottom: 1px solid var(--brain-line); display: flex; align-items: flex-start; justify-content: space-between; gap: 32px; }
 .brain-kicker { display: block; margin-bottom: 10px; color: var(--brain-accent); font-size: 13px; font-weight: 650; }
@@ -432,7 +462,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .brain-task-navigation { overflow-x: auto; }
   .brain-task-navigation button { padding: 0 11px; }
   .brain-task-navigation .brain-new-sample { position: fixed; right: 16px; bottom: 16px; z-index: 15; margin: 0; padding: 0 16px; box-shadow: 0 12px 34px rgba(72, 52, 42, .2); }
-  .brain-sample-index, .brain-intake-document, .brain-decision-document, .brain-ledger { padding-top: 38px; }
+  .brain-sample-index, .brain-intake-document, .brain-decision-document, .brain-ledger, .brain-agent-task { padding-top: 38px; }
+  .brain-queue-summary { grid-template-columns: 1fr; }
+  .brain-queue-summary p { text-align: left; }
   .brain-form-grid { grid-template-columns: 1fr; }
   .brain-field-wide { grid-column: 1; }
   .brain-document-heading { flex-direction: column; }

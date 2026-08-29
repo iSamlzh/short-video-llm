@@ -47,6 +47,7 @@ install -d -o content-agent -g "${SERVICE_GROUP}" -m 0750 /var/cache/content-age
 install -d -o root -g adm -m 0750 /var/log/content-agent
 install -m 0644 "${SOURCE_DIRECTORY}/deploy/logrotate/content-agent" /etc/logrotate.d/content-agent
 install -m 0644 "${SOURCE_DIRECTORY}/deploy/systemd/content-agent.service" "/etc/systemd/system/${SERVICE_NAME}.service"
+install -m 0644 "${SOURCE_DIRECTORY}/deploy/systemd/content-agent-worker.service" "/etc/systemd/system/${SERVICE_NAME}-worker.service"
 logrotate --debug /etc/logrotate.d/content-agent >/dev/null
 systemctl daemon-reload
 systemctl enable --now logrotate.timer
@@ -59,5 +60,7 @@ ln -sfn "${RELEASE_DIRECTORY}" "${APPLICATION_ROOT}/current.next"
 mv -Tf "${APPLICATION_ROOT}/current.next" "${APPLICATION_ROOT}/current"
 systemctl restart "${SERVICE_NAME}.service"
 bash "${RELEASE_DIRECTORY}/deploy/scripts/smoke-test.sh" "${SMOKE_BASE_URL}"
+systemctl enable "${SERVICE_NAME}-worker.service"
+systemctl restart "${SERVICE_NAME}-worker.service"
 
 echo "部署完成：${RELEASE_ID}。旧 release 未删除，可人工切换 current 后重启回退。"

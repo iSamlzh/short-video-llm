@@ -70,6 +70,14 @@ describe("运行环境能力边界", () => {
     })).toThrow(/PROTOTYPE_API_FORBIDDEN.*PROTOTYPE_TEST_MODE_FORBIDDEN.*PRODUCTION_DB_PATH_MUST_BE_ABSOLUTE/)
   })
 
+  it("生产 Web 进程拒绝内嵌内容拆解 Worker", () => {
+    expect(() => validateRuntimeEnvironment({
+      APP_ENV: "production", NODE_ENV: "production",
+      PROTOTYPE_DB_PATH: "/var/lib/content-agent/production.sqlite",
+      CONTENT_ANALYSIS_INLINE_WORKER: "true",
+    })).toThrow(/INLINE_CONTENT_WORKER_FORBIDDEN/)
+  })
+
   it("生产环境接受明确且隔离的安全配置", () => {
     for (const databasePath of [
       "C:\\srv\\content-agent\\data\\production.sqlite",

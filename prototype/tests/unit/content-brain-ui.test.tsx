@@ -24,8 +24,19 @@ describe("AI 原生爆款拆解工作区", () => {
     await userEvent.click(screen.getByRole("button", { name: "保存并开始拆解" }))
 
     expect(api.createSample).toHaveBeenCalledOnce()
-    expect(api.analyze).toHaveBeenCalledWith("sample-1")
+    expect(api.analyze).toHaveBeenCalledWith("sample-1", undefined)
     expect(await screen.findByText("用具体售后冲突建立可信度，再提炼团长责任边界。" )).toBeVisible()
+  })
+
+  it("拆解任务显示真实阶段、运行时间和离开页面说明", () => {
+    render(<ContentBrainWorkspace
+      initialSamples={[{ ...workspaceFixture.sample, status: "analyzing" }]}
+      initialStructures={[]}
+      initialJobs={[runningJobFixture]}
+      canActivate
+      api={fixtureApi() as any}
+    />)
+    expect(screen.getByRole("button", { name: /一次售后让我重新理解团长.*拆解中/ })).toBeVisible()
   })
 
   it("拆解结果优先显示节点、来源证据和不可复用事实，编辑仅在通过时提交", async () => {
@@ -167,7 +178,9 @@ function fixtureApi() {
   return {
     createSample: vi.fn().mockResolvedValue({ sampleId: "sample-1", duplicate: false }),
     importSamples: vi.fn().mockResolvedValue([]),
-    analyze: vi.fn().mockResolvedValue({ id: "analysis-1" }),
+    analyze: vi.fn().mockResolvedValue(runningJobFixture),
+    getTask: vi.fn().mockResolvedValue(runningJobFixture), listTasks: vi.fn().mockResolvedValue([]),
+    retryTask: vi.fn().mockResolvedValue({ ...runningJobFixture, id: "task-2", status: "queued" }),
     getSample: vi.fn().mockResolvedValue(workspaceFixture),
     saveAnalysis: vi.fn().mockResolvedValue({}), approveAnalysis: vi.fn().mockResolvedValue({}),
     rejectAnalysis: vi.fn().mockResolvedValue({}), saveCandidate: vi.fn().mockResolvedValue({}),
@@ -176,6 +189,13 @@ function fixtureApi() {
     listSamples: vi.fn().mockResolvedValue([]), listStructures: vi.fn().mockResolvedValue([]),
   }
 }
+
+const runningJobFixture = {
+  id: "task-1", jobType: "content_analysis", resourceType: "content_sample", resourceId: "sample-1",
+  status: "running", stage: "structure_analysis", progressMessage: "正在识别爆款结构",
+  retryable: false, attemptCount: 1, maxAttempts: 2,
+  startedAt: new Date().toISOString(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+} as const
 
 const analysisPayload = {
   summary: "用具体售后冲突建立可信度，再提炼团长责任边界。",
