@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { DailyCreationView } from "./DailyCreationView"
 import { GenerationProgress } from "./GenerationProgress"
 import type { PublicationAccount, PublicationRecord } from "./PublicationReceipt"
@@ -8,6 +8,13 @@ import { normalizeScriptSegments, spokenSegmentText, type ScriptSegment } from "
 import { useModelOperation, type ModelOperationStage } from "../../hooks/use-model-operation"
 
 type ApiError = { errorCode?: string; message?: string; retryable?: boolean }
+type CreationIntent = "initial" | "change_topic" | "change_expression"
+type TopicPoolResult = { runId: string; recommendedTopicId: string }
+type PendingTopicCheckpoint = {
+  intent: CreationIntent
+  fromRunId?: string
+  pool: TopicPoolResult
+}
 
 class ApiRequestError extends Error {
   constructor(message: string, readonly code?: string, readonly retryable = false) {
@@ -31,32 +38,44 @@ export function DailyCreationWorkspace({ publicationAccounts = [] }: { publicati
   const [busyAction, setBusyAction] = useState<"saving" | "finalizing" | null>(null)
   const [notice, setNotice] = useState("")
   const [cancelledInitial, setCancelledInitial] = useState(false)
+  const pendingTopicCheckpointRef = useRef<PendingTopicCheckpoint | null>(null)
   const modelOperation = useModelOperation()
 
-  const create = useCallback(async (intent: "initial" | "change_topic" | "change_expression" = "initial", fromRunId?: string) => {
+  const create = useCallback(async (intent: CreationIntent = "initial", fromRunId?: string) => {
     setOperation(intent)
     setCancelledInitial(false)
     setError("")
     setNotice("")
+    pendingTopicCheckpointRef.current = null
     await modelOperation.start({
       initialStage: initialStageFor(intent),
       task: async (signal) => {
-        const operationKey = createIdempotencyKey()
-        const pool = await fetch("/api/app/creation/topics", {
-          method: "POST",
-          headers: { "content-type": "application/json", "idempotency-key": `${operationKey}:topics` },
-          body: JSON.stringify({ intent, ...(fromRunId ? { fromRunId } : {}) }),
-          signal,
-        }).then(readJson)
+        const checkpoint = pendingTopicCheckpointRef.current
+        const canResumeScript = checkpoint
+          && checkpoint.intent === intent
+          && checkpoint.fromRunId === fromRunId
+        let pool: TopicPoolResult | null
+        if (canResumeScript) {
+          pool = checkpoint.pool
+        } else {
+          pool = await fetch("/api/app/creation/topics", {
+            method: "POST",
+            headers: { "content-type": "application/json", "idempotency-key": `${createIdempotencyKey()}:topics` },
+            body: JSON.stringify({ intent, ...(fromRunId ? { fromRunId } : {}) }),
+            signal,
+          }).then(readJson) as TopicPoolResult | null
+        }
         if (!pool) throw new Error("选题池生成结果为空")
+        pendingTopicCheckpointRef.current = { intent, fromRunId, pool }
         return fetch("/api/app/creation/scripts", {
           method: "POST",
-          headers: { "content-type": "application/json", "idempotency-key": `${operationKey}:script` },
+          headers: { "content-type": "application/json", "idempotency-key": `${createIdempotencyKey()}:script` },
           body: JSON.stringify({ runId: pool.runId, topicId: pool.recommendedTopicId, intent, ...(fromRunId ? { fromRunId } : {}) }),
           signal,
         }).then(readJson)
       },
       onSuccess: (result) => {
+        pendingTopicCheckpointRef.current = null
         setDraft(result)
         setOperation(null)
       },
@@ -185,7 +204,7 @@ function createIdempotencyKey() {
     ?? `client-${Date.now()}-${Math.random().toString(36).slice(2)}`
 }
 
-function initialStageFor(intent: "initial" | "change_topic" | "change_expression"): ModelOperationStage {
+function initialStageFor(intent: CreationIntent): ModelOperationStage {
   if (intent === "initial") return "preparing"
   if (intent === "change_topic") return "selecting"
   return "writing"

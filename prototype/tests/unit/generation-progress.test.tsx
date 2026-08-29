@@ -30,7 +30,21 @@ describe("GenerationProgress", () => {
     />)
 
     expect(screen.getByRole("alert")).toHaveTextContent("模型连接失败")
-    await userEvent.click(screen.getByRole("button", { name: "重试本次操作" }))
+    await userEvent.click(screen.getByRole("button", { name: "从失败处重试" }))
+    expect(retry).toHaveBeenCalledTimes(1)
+  })
+
+  it("不可自动重试的失败也不会让每日创作进入死路", async () => {
+    const retry = vi.fn()
+    render(<GenerationProgress
+      operation="initial"
+      state={{ stage: "preparing", elapsedSeconds: 1, cancellable: false, retryable: false }}
+      detailsVisible
+      error="请先配置真实模型连接"
+      onRetry={retry}
+    />)
+
+    await userEvent.click(screen.getByRole("button", { name: "重新发起本次创作" }))
     expect(retry).toHaveBeenCalledTimes(1)
   })
 })

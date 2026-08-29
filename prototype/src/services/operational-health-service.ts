@@ -43,12 +43,17 @@ export class OperationalHealthService {
     const database = this.databaseCheck()
     const migration = this.migrationCheck()
     const disk = this.diskCheck()
+    const contentStructures = this.contentStructuresCheck()
     const model = this.modelCheck()
-    const ready = configuration.ok && database.ok && migration.ok && disk.ok
+    const ready = configuration.ok && database.ok && migration.ok && disk.ok && contentStructures.ok
     if (!configuration.ok) operationalAlert("readiness_configuration_failed", { issueCount: configuration.issues.length })
     if (!database.ok) operationalAlert("readiness_database_write_failed", { errorCode: database.errorCode })
     if (!migration.ok) operationalAlert("readiness_migration_incomplete", { current: migration.current, expected: migration.expected })
     if (!disk.ok) operationalAlert("readiness_disk_low", { freeMegabytes: disk.freeMegabytes, requiredMegabytes: disk.requiredMegabytes })
+    if (!contentStructures.ok) operationalAlert("readiness_content_structure_missing", {
+      activeGeneralCount: contentStructures.activeGeneralCount,
+      usableGeneralCount: contentStructures.usableGeneralCount,
+    })
     if (model.consecutiveFailures >= model.failureThreshold) operationalAlert("model_consecutive_failures", {
       consecutiveFailures: model.consecutiveFailures,
       lastErrorCode: model.lastErrorCode,
@@ -56,7 +61,7 @@ export class OperationalHealthService {
     return {
       status: ready ? "ready" as const : "not_ready" as const,
       checkedAt: this.now().toISOString(),
-      checks: { configuration, database, migration, disk, model },
+      checks: { configuration, database, migration, disk, contentStructures, model },
     }
   }
 
@@ -112,6 +117,22 @@ export class OperationalHealthService {
     } catch { return { ok: false, freeMegabytes: 0, requiredMegabytes } }
   }
 
+  private contentStructuresCheck() {
+    if (!this.database) return { ok: false, activeGeneralCount: 0, usableGeneralCount: 0 }
+    try {
+      const rows = this.database.prepare(`SELECT payload_json FROM platform_template_versions
+        WHERE status='active' AND is_general=1`).all() as Array<{ payload_json: string }>
+      const usableGeneralCount = rows.filter((row) => isUsableStructurePayload(row.payload_json)).length
+      return {
+        ok: usableGeneralCount > 0,
+        activeGeneralCount: rows.length,
+        usableGeneralCount,
+      }
+    } catch {
+      return { ok: false, activeGeneralCount: 0, usableGeneralCount: 0 }
+    }
+  }
+
   private modelCheck() {
     const failureThreshold = positiveInteger(this.environment.HEALTH_MODEL_FAILURE_THRESHOLD, 3)
     if (!this.database) return { state: "no_calls" as const, lastStatus: null, lastErrorCode: null, consecutiveFailures: 0, failureThreshold, lastFinishedAt: null }
@@ -139,6 +160,26 @@ export class OperationalHealthService {
     if (!this.database) return 0
     try { return Number((this.database.prepare("SELECT COUNT(*) count FROM users WHERE data_origin='demo'").get() as { count: number }).count) }
     catch { return 0 }
+  }
+}
+
+function isUsableStructurePayload(serialized: string) {
+  try {
+    const payload = JSON.parse(serialized) as {
+      nodes?: Array<string | { instruction?: unknown }>
+      qualityRules?: unknown[]
+      riskRules?: unknown[]
+    }
+    const nodesValid = Array.isArray(payload.nodes)
+      && payload.nodes.length >= 3
+      && payload.nodes.every((node) => typeof node === "string"
+        ? node.trim().length > 0
+        : typeof node?.instruction === "string" && node.instruction.trim().length > 0)
+    return nodesValid
+      && Array.isArray(payload.qualityRules) && payload.qualityRules.length > 0
+      && Array.isArray(payload.riskRules) && payload.riskRules.length > 0
+  } catch {
+    return false
   }
 }
 

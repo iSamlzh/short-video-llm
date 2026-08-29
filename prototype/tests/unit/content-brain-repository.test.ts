@@ -76,7 +76,8 @@ describe("ContentBrainRepository", () => {
       actorUserId: "platform-admin", reason: "启用新结构", expectedVersion: 1,
       createdAt: "2026-08-17T12:04:00.000Z",
     })).toThrow("CANDIDATE_NOT_ACTIVATABLE")
-    expect(repository.listActive()).toEqual([expect.objectContaining({ id: "stable-v1" })])
+    expect(repository.listActive().filter((item) => item.templateId === "trust"))
+      .toEqual([expect.objectContaining({ id: "stable-v1" })])
     database.close()
   })
 
@@ -89,7 +90,7 @@ describe("ContentBrainRepository", () => {
       dataOrigin: "formal", isGeneral: false,
     })
 
-    expect(repository.listActivePackages()).toEqual([
+    expect(repository.listActivePackages().filter((item) => item.templateId === "trust")).toEqual([
       expect.objectContaining({ templateVersionId: "trust-v3", templateId: "trust", version: 3 }),
     ])
     database.close()

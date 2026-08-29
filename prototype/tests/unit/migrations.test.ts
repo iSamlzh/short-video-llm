@@ -8,6 +8,27 @@ let database: Database.Database | undefined
 afterEach(() => database?.close())
 
 describe("database migrations", () => {
+  it("正式环境始终具备一个可用于兜底的通用内容结构", () => {
+    database = openDatabase(":memory:")
+
+    const structure = database.prepare(`SELECT id,name,status,is_general,data_origin,payload_json
+      FROM platform_template_versions WHERE id='system-general-content-v1'`).get() as {
+        id: string; name: string; status: string; is_general: number; data_origin: string; payload_json: string
+      }
+    const payload = JSON.parse(structure.payload_json) as { nodes: unknown[]; qualityRules: unknown[]; riskRules: unknown[] }
+
+    expect(structure).toMatchObject({
+      id: "system-general-content-v1",
+      name: "通用：真实场景—判断转折—行动方法",
+      status: "active",
+      is_general: 1,
+      data_origin: "formal",
+    })
+    expect(payload.nodes).toHaveLength(4)
+    expect(payload.qualityRules.length).toBeGreaterThan(0)
+    expect(payload.riskRules.length).toBeGreaterThan(0)
+  })
+
   it("applies the tenant-access migration exactly once", () => {
     database = openDatabase(":memory:")
     applyMigrations(database)

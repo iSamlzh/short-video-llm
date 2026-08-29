@@ -39,11 +39,11 @@ export function GenerationProgress({ operation, state, detailsVisible, error, st
       <p className="generation-progress-operation">{error ? "本次操作没有完成" : operationLabels[operation]}</p>
       <strong className="text-balance">{error || (detailsVisible ? stageLabels[state.stage] : "已收到，正在开始处理…")}</strong>
       {detailsVisible && !error && <span className="tabular-nums">已用时 {state.elapsedSeconds} 秒</span>}
-      {error && <span>当前稿件和修改均已保留。</span>}
+      {error && <span>已完成的步骤和当前稿件均已保留，重新发起会从失败处继续。</span>}
     </div>
     <div className="generation-progress-actions">
       {state.cancellable && onCancel && <button type="button" onClick={onCancel}>取消本次生成</button>}
-      {state.retryable && onRetry && <button type="button" onClick={onRetry}>重试本次操作</button>}
+      {error && onRetry && <button type="button" onClick={onRetry}>{state.retryable ? "从失败处重试" : "重新发起本次创作"}</button>}
     </div>
   </section>
 }

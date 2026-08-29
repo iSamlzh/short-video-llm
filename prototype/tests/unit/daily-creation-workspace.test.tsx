@@ -73,4 +73,68 @@ describe("DailyCreationWorkspace 结构化导出", () => {
     expect(screen.getByRole("button", { name: "继续生成" })).toBeInTheDocument()
     expect(screen.queryByRole("alert")).not.toBeInTheDocument()
   })
+
+  it("口播稿生成失败后从选题检查点重跑，不重复生成选题", async () => {
+    const requests: Array<{ url: string; key: string | null }> = []
+    let scriptAttempts = 0
+    global.fetch = vi.fn((input, init) => {
+      const url = String(input)
+      if (url.endsWith("/current")) return Promise.resolve(new Response(null, { status: 204 }))
+      requests.push({ url, key: new Headers(init?.headers).get("idempotency-key") })
+      if (url.endsWith("/topics")) {
+        return Promise.resolve(new Response(JSON.stringify({ runId: "run-retry", recommendedTopicId: "topic-1" }), {
+          status: 201, headers: { "content-type": "application/json" },
+        }))
+      }
+      scriptAttempts += 1
+      if (scriptAttempts === 1) {
+        return Promise.resolve(new Response(JSON.stringify({
+          errorCode: "LLM_NOT_CONFIGURED", message: "请先配置真实模型连接", retryable: false,
+        }), { status: 400, headers: { "content-type": "application/json" } }))
+      }
+      return Promise.resolve(new Response(JSON.stringify({ ...demoProductData.draft, runId: "run-retry" }), {
+        status: 201, headers: { "content-type": "application/json" },
+      }))
+    }) as typeof fetch
+
+    render(<DailyCreationWorkspace />)
+    await userEvent.click(await screen.findByRole("button", { name: "重新发起本次创作" }))
+
+    expect(await screen.findByRole("heading", { name: demoProductData.draft.title })).toBeInTheDocument()
+    expect(requests.filter((request) => request.url.endsWith("/topics"))).toHaveLength(1)
+    const scriptRequests = requests.filter((request) => request.url.endsWith("/scripts"))
+    expect(scriptRequests).toHaveLength(2)
+    expect(scriptRequests[0].key).not.toBe(scriptRequests[1].key)
+  })
+
+  it("选题生成失败后重新生成选题，再继续生成口播稿", async () => {
+    let topicAttempts = 0
+    let scriptAttempts = 0
+    global.fetch = vi.fn((input) => {
+      const url = String(input)
+      if (url.endsWith("/current")) return Promise.resolve(new Response(null, { status: 204 }))
+      if (url.endsWith("/topics")) {
+        topicAttempts += 1
+        if (topicAttempts === 1) {
+          return Promise.resolve(new Response(JSON.stringify({
+            errorCode: "LLM_TIMEOUT", message: "模型调用超时", retryable: true,
+          }), { status: 504, headers: { "content-type": "application/json" } }))
+        }
+        return Promise.resolve(new Response(JSON.stringify({ runId: "run-topic-retry", recommendedTopicId: "topic-1" }), {
+          status: 201, headers: { "content-type": "application/json" },
+        }))
+      }
+      scriptAttempts += 1
+      return Promise.resolve(new Response(JSON.stringify({ ...demoProductData.draft, runId: "run-topic-retry" }), {
+        status: 201, headers: { "content-type": "application/json" },
+      }))
+    }) as typeof fetch
+
+    render(<DailyCreationWorkspace />)
+    await userEvent.click(await screen.findByRole("button", { name: "从失败处重试" }))
+
+    expect(await screen.findByRole("heading", { name: demoProductData.draft.title })).toBeInTheDocument()
+    expect(topicAttempts).toBe(2)
+    expect(scriptAttempts).toBe(1)
+  })
 })

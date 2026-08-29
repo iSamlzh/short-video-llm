@@ -40,6 +40,7 @@ describe("OperationalHealthService", () => {
     expect(result.checks.database.ok).toBe(true)
     expect(result.checks.migration).toMatchObject({ ok: true, current: LATEST_MIGRATION_VERSION, expected: LATEST_MIGRATION_VERSION })
     expect(result.checks.disk).toMatchObject({ ok: true, freeMegabytes: 4096 })
+    expect(result.checks.contentStructures).toMatchObject({ ok: true, usableGeneralCount: expect.any(Number) })
     expect(result.checks.model.state).toBe("no_calls")
   })
 
@@ -69,6 +70,17 @@ describe("OperationalHealthService", () => {
     expect(result.status).toBe("ready")
     expect(result.checks.model).toMatchObject({ state: "degraded", consecutiveFailures: 3, lastErrorCode: "MODEL_CONNECTION_FAILED" })
     expect(error).toHaveBeenCalledWith(expect.stringContaining("model_consecutive_failures"))
+  })
+
+  it("没有节点完整的通用结构时返回未就绪", () => {
+    database.prepare("UPDATE platform_template_versions SET status='inactive' WHERE is_general=1").run()
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined)
+
+    const result = readyService(database).ready()
+
+    expect(result.status).toBe("not_ready")
+    expect(result.checks.contentStructures).toEqual({ ok: false, activeGeneralCount: 0, usableGeneralCount: 0 })
+    expect(error).toHaveBeenCalledWith(expect.stringContaining("readiness_content_structure_missing"))
   })
 
   it("生产配置不返回模型密钥、数据库路径或用户数据", () => {

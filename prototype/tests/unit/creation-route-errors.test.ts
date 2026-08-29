@@ -7,6 +7,8 @@ describe("创作路由模型错误合同", () => {
     ["LLM_TIMEOUT", 504],
     ["MODEL_SCHEMA_INVALID", 502],
     ["MODEL_CONNECTION_FAILED", 503],
+    ["NO_ACTIVE_TEMPLATE", 503],
+    ["NO_APPLICABLE_TEMPLATE", 503],
   ] as const)("稳定映射 %s", async (code, status) => {
     const response = creationErrorResponse(Object.assign(new Error("模型暂时不可用"), { code, retryable: true }))
 

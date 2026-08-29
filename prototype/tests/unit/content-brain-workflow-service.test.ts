@@ -69,7 +69,8 @@ describe("ContentBrainWorkflowService", () => {
     })
 
     expect(activated).toMatchObject({ templateId: "trust", version: 2, status: "active" })
-    expect(repository.listActive()).toEqual([expect.objectContaining({ id: activated.id, version: 2 })])
+    expect(repository.listActive().filter((item) => item.templateId === "trust"))
+      .toEqual([expect.objectContaining({ id: activated.id, version: 2 })])
     expect(database.prepare(
       "SELECT action,reason FROM platform_template_activation_events WHERE template_version_id=?",
     ).get(activated.id)).toEqual({ action: "activate", reason: "试生成通过" })
@@ -127,7 +128,7 @@ describe("ContentBrainWorkflowService", () => {
     const v2 = service.activateCandidate(admin, upgradeId, { reason: "升级", expectedVersion: 1 })
 
     service.deactivateVersion(admin, v2.id, "质量复核")
-    expect(repository.listActive()).toHaveLength(0)
+    expect(repository.listActive().filter((item) => item.templateId === "trust")).toHaveLength(0)
     const rollback = service.rollbackVersion(admin, "trust-v1", "恢复稳定版本")
 
     expect(rollback).toMatchObject({ id: "trust-v1", status: "active" })

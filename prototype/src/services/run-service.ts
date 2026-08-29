@@ -428,7 +428,11 @@ export class RunService {
       goal: prototypePreset.goal.name,
     })
     if (!packages.length) {
-      throw Object.assign(new Error("平台尚未启用可用的内容结构"), { code: "NO_ACTIVE_TEMPLATE" })
+      throw Object.assign(new Error("当前 IP 暂无可用的内容结构"), {
+        code: "NO_APPLICABLE_TEMPLATE",
+        status: 503,
+        retryable: false,
+      })
     }
     return {
       structureVersionIds: packages.map((item) => item.templateVersionId),

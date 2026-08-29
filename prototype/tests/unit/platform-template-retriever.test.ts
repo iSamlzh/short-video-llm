@@ -34,8 +34,29 @@ describe("PlatformTemplateRetriever", () => {
       .toEqual([expect.objectContaining({ templateVersionId: "general-v1" })])
 
     database.prepare("UPDATE platform_template_versions SET status='inactive'").run()
-    expect(() => retriever.retrieve({ ipTags: ["美食"], audience: "宝妈", goal: "建立信任" }))
-      .toThrow("NO_ACTIVE_TEMPLATE")
+    try {
+      retriever.retrieve({ ipTags: ["美食"], audience: "宝妈", goal: "建立信任" })
+      throw new Error("EXPECTED_RETRIEVAL_FAILURE")
+    } catch (error) {
+      expect(error).toMatchObject({ code: "NO_ACTIVE_TEMPLATE", status: 503, retryable: false })
+    }
+  })
+
+  it("只有不匹配的定向结构时明确报告缺少适用结构", () => {
+    database.prepare("UPDATE platform_template_versions SET status='inactive'").run()
+    insertPackage(database, "startup-v1", "startup", false, ["创业"], "active")
+
+    try {
+      retriever.retrieve({ ipTags: ["健康管理"], audience: "家庭用户", goal: "健康科普" })
+      throw new Error("EXPECTED_RETRIEVAL_FAILURE")
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: "NO_APPLICABLE_TEMPLATE",
+        status: 503,
+        retryable: false,
+        message: "当前 IP 暂无匹配的定向结构，且通用内容结构未启用",
+      })
+    }
   })
 })
 

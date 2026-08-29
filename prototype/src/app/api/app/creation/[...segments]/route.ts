@@ -73,6 +73,8 @@ const modelErrorStatuses: Record<string, number> = {
   MODEL_CONNECTION_FAILED: 503,
   MODEL_SERVICE_UNAVAILABLE: 503,
   MODEL_STREAM_INVALID: 502,
+  NO_ACTIVE_TEMPLATE: 503,
+  NO_APPLICABLE_TEMPLATE: 503,
 }
 
 export function creationErrorResponse(error: unknown) {
