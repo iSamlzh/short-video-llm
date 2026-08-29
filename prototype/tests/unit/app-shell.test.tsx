@@ -31,6 +31,7 @@ describe("editorial app mastheads", () => {
   it("marks the platform masthead as an internal security domain", () => {
     render(<PlatformMasthead operatorName="陈默" />)
     expect(screen.getByText("内部安全域")).toBeVisible()
+    expect(screen.getByRole("button", { name: "退出登录" })).toBeVisible()
     expect(screen.queryByRole("link", { name: "今日创作" })).not.toBeInTheDocument()
   })
 })

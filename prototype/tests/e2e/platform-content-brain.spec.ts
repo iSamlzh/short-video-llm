@@ -39,7 +39,8 @@ test("平台拆解启用的新结构进入团长创作且不泄露内部内容",
   await expect(page.getByText("租户原稿与身份不进入平台证据")).toBeVisible()
   await expect(page.getByText("当前结构还没有评估版本")).toBeVisible()
 
-  await page.evaluate(() => fetch("/api/auth/logout", { method: "POST" }))
+  await page.getByRole("button", { name: "退出登录" }).click()
+  await expect(page).toHaveURL(/\/login$/)
   await login(page, "owner@example.test")
   const creationResult = await page.evaluate(async () => {
     const operationKey = crypto.randomUUID()
