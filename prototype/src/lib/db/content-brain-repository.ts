@@ -447,6 +447,7 @@ export class ContentBrainRepository {
         WHERE e.candidate_id=? AND e.action='activate' ORDER BY e.created_at DESC,e.rowid DESC LIMIT 1`)
         .get(candidateId) as { id: string; template_id: string; version: number; name: string; payload_json: string } | undefined
       if (existing) {
+        this.completeActivatedSample(candidate.sampleId, input.createdAt)
         const payload = JSON.parse(existing.payload_json) as StructureCandidateInput
         return {
           id: existing.id, templateId: existing.template_id, version: existing.version,
@@ -471,6 +472,7 @@ export class ContentBrainRepository {
       )
       this.database.prepare(`UPDATE platform_structure_candidates SET status='active',updated_at=? WHERE id=?`)
         .run(input.createdAt, candidateId)
+      this.completeActivatedSample(candidate.sampleId, input.createdAt)
       this.database.prepare(`INSERT INTO platform_template_activation_events
         (id,template_id,template_version_id,candidate_id,action,actor_user_id,reason,created_at)
         VALUES (?,?,?,?,'activate',?,?,?)`).run(
@@ -482,6 +484,12 @@ export class ContentBrainRepository {
       }
     })
     return result()
+  }
+
+  private completeActivatedSample(sampleId: string, updatedAt: string) {
+    this.database.prepare(`UPDATE platform_content_samples
+      SET workflow_status='completed',updated_at=?
+      WHERE id=? AND workflow_status!='completed'`).run(updatedAt, sampleId)
   }
 
   deactivateTemplateVersion(versionId: string, input: { actorUserId: string; reason: string; createdAt: string }) {

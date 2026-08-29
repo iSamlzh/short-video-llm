@@ -116,6 +116,28 @@ describe("database migrations", () => {
     expect(database.prepare("SELECT COUNT(*) count FROM schema_migrations WHERE version=19").get()).toEqual({ count: 1 })
   })
 
+  it("版本 21 将已启用候选的来源内容修正为已完成", () => {
+    database = openDatabase(":memory:")
+    const now = "2026-08-29T10:00:00.000Z"
+    database.prepare(`INSERT INTO platform_content_samples
+      (id,title,source_platform,source_text,rights_note,status,data_origin,created_by_user_id,created_at,
+       current_revision_version,workflow_status,updated_at)
+      VALUES (?,?,?,?,?,'pending','formal',?,?,1,'candidate_ready',?)`)
+      .run("sample-activated", "已启用样本", "douyin", "测试内容", "内部授权", "platform-admin", now, now)
+    database.prepare(`INSERT INTO platform_structure_candidates
+      (id,candidate_key,sample_id,version,decision,target_template_id,payload_json,status,data_origin,
+       created_by_user_id,created_at,updated_at)
+      VALUES (?,?,?,1,'create_new',NULL,'{}','active','formal',?,?,?)`)
+      .run("candidate-activated", "sample-activated:create_new:test", "sample-activated", "platform-admin", now, now)
+    database.prepare("DELETE FROM schema_migrations WHERE version=21").run()
+
+    applyMigrations(database)
+
+    expect(database.prepare("SELECT workflow_status FROM platform_content_samples WHERE id=?")
+      .get("sample-activated")).toEqual({ workflow_status: "completed" })
+    expect(database.prepare("SELECT COUNT(*) count FROM schema_migrations WHERE version=21").get()).toEqual({ count: 1 })
+  })
+
   it("应用版本 8 并建立爆款拆解与创作结构谱系", () => {
     database = openDatabase(":memory:")
     applyMigrations(database)
@@ -148,7 +170,17 @@ describe("database migrations", () => {
         applied_at TEXT NOT NULL
       );
       CREATE TABLE platform_content_analysis_versions (id TEXT PRIMARY KEY);
-      CREATE TABLE platform_structure_candidates (id TEXT PRIMARY KEY);
+      CREATE TABLE platform_content_samples (
+        id TEXT PRIMARY KEY,
+        workflow_status TEXT NOT NULL,
+        updated_at TEXT
+      );
+      CREATE TABLE platform_structure_candidates (
+        id TEXT PRIMARY KEY,
+        sample_id TEXT,
+        status TEXT NOT NULL,
+        updated_at TEXT
+      );
       CREATE TABLE users (id TEXT PRIMARY KEY);
       CREATE TABLE tenants (id TEXT PRIMARY KEY);
       CREATE TABLE memberships (
