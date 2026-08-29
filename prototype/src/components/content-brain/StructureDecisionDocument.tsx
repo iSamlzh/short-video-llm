@@ -6,11 +6,12 @@ import type { CandidateRecord, ContentBrainApi, StructurePreview } from "./types
 
 const decisions = { merge_existing: "归入现有结构", upgrade_existing: "升级现有结构", create_new: "新建结构" }
 
-export function StructureDecisionDocument({ candidate, api, canActivate, onUpdated }: {
+export function StructureDecisionDocument({ candidate, api, canActivate, onUpdated, onActivated }: {
   candidate: CandidateRecord
   api: ContentBrainApi
   canActivate: boolean
   onUpdated: () => void
+  onActivated: (structureName: string) => void | Promise<void>
 }) {
   const [preview, setPreview] = useState<StructurePreview | null>(candidate.preview ?? null)
   const [payload, setPayload] = useState(candidate.payload)
@@ -41,7 +42,8 @@ export function StructureDecisionDocument({ candidate, api, canActivate, onUpdat
     setPending("activate"); setError("")
     try {
       await api.activateCandidate(candidate.id, { expectedVersion: candidate.version, reason })
-      setConfirming(false); onUpdated()
+      setConfirming(false)
+      await onActivated(payload.name)
     } catch (cause) { setError(cause instanceof Error ? cause.message : "启用失败，请重试") }
     finally { setPending(null) }
   }

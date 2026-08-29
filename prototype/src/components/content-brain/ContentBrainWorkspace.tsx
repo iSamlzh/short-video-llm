@@ -26,6 +26,7 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
   const [intake, setIntake] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [notice, setNotice] = useState("")
   const [taskPending, setTaskPending] = useState(false)
 
   async function openSample(sampleId: string) {
@@ -48,6 +49,19 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
     setSamples(nextSamples)
     setStructures(nextStructures)
     setJobs(nextJobs)
+  }
+  async function finishActivation(structureName: string) {
+    setWorkspace(null)
+    setView("structures")
+    setNotice(`“${structureName}”已启用，当前版本已经进入团长口播稿创作。`)
+    try {
+      const [nextSamples, nextStructures, nextJobs] = await Promise.all([api.listSamples(), api.listStructures(), api.listTasks()])
+      setSamples(nextSamples)
+      setStructures(nextStructures)
+      setJobs(nextJobs)
+    } catch {
+      setError("结构已经启用，但结构库刷新失败，请点击重试。")
+    }
   }
   const candidate = workspace?.candidates.at(-1)
   const workspaceJob = workspace ? latestJobForResource(jobs, workspace.sample.id) : undefined
@@ -102,12 +116,13 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
 
   return <div className="brain-workspace">
     <nav className="brain-task-navigation" aria-label="内容大脑任务">
-      <button aria-current={view === "samples" ? "page" : undefined} onClick={() => { setView("samples"); setWorkspace(null) }}><Files size={19} />爆款样本</button>
+      <button aria-current={view === "samples" ? "page" : undefined} onClick={() => { setView("samples"); setWorkspace(null); setNotice("") }}><Files size={19} />爆款样本</button>
       <button aria-current={view === "structures" ? "page" : undefined} onClick={() => setView("structures")}><BookOpen size={19} />结构库</button>
-      <button aria-current={view === "review" ? "page" : undefined} onClick={() => setView("review")}><SealCheck size={19} />待复核</button>
+      <button aria-current={view === "review" ? "page" : undefined} onClick={() => { setView("review"); setNotice("") }}><SealCheck size={19} />待复核</button>
       {!intake && view === "samples" && <button className="brain-new-sample" onClick={() => { setIntake(true); setView("samples") }}><FilePlus size={19} />新增爆款样本</button>}
     </nav>
     <AgentQueueSummary jobs={jobs} />
+    {view === "structures" && notice && <p className="brain-success-note brain-workspace-success" role="status">{notice}</p>}
     {error && <div className="brain-workspace-error" role="alert"><p>{error}</p><button onClick={() => refresh()}><ArrowClockwise size={18} />重试</button></div>}
     {loading ? <div className="brain-loading-document" aria-label="正在读取样本"><span /><span /><span /></div> : null}
     {!loading && intake && <SampleIntakeDocument api={api} onCancel={() => setIntake(false)} onCompleted={(next, nextJobs, duplicate) => {
@@ -116,7 +131,7 @@ export function ContentBrainWorkspace({ initialSamples, initialStructures, initi
     }} />}
     {!loading && !intake && view === "structures" && <StructureLedger structures={structures} />}
     {!loading && !intake && view === "review" && workspace && (candidate
-      ? <StructureDecisionDocument candidate={candidate} api={api} canActivate={canActivate} onUpdated={() => refresh()} />
+      ? <StructureDecisionDocument candidate={candidate} api={api} canActivate={canActivate} onUpdated={() => refresh()} onActivated={finishActivation} />
       : workspace.analyses.length
         ? <AnalysisReviewDocument workspace={workspace} api={api} onUpdated={acceptReviewUpdate} />
         : <AgentTaskDocument job={workspaceJob} sampleTitle={workspace.sample.title} pending={taskPending}

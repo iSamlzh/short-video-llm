@@ -369,6 +369,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .brain-mapping-list p { margin: 0; display: grid; gap: 5px; }
 .brain-mapping-list span { color: var(--brain-muted); }
 .brain-success-note { padding: 16px; border: 1px solid #8da291; color: var(--success); }
+.brain-workspace-success { margin: 20px 0 0; }
 .brain-candidate-reject { padding-top: 22px; }
 .brain-candidate-reject label { max-width: 620px; margin-top: 14px; display: grid; gap: 10px; color: var(--brain-muted); font-size: 13px; }
 .brain-candidate-reject textarea { width: 100%; padding: 12px; border: 1px solid #aaa99f; resize: vertical; background: var(--brain-sheet); color: var(--brain-ink); font: 15px/1.65 var(--sans); }

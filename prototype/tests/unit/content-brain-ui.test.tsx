@@ -84,7 +84,7 @@ describe("AI 原生爆款拆解工作区", () => {
 
   it("试生成成功后仍要求人工确认启用", async () => {
     const api = fixtureApi()
-    render(<StructureDecisionDocument candidate={candidateFixture} canActivate api={api as any} onUpdated={vi.fn()} />)
+    render(<StructureDecisionDocument candidate={candidateFixture} canActivate api={api as any} onUpdated={vi.fn()} onActivated={vi.fn()} />)
     await userEvent.click(screen.getByRole("button", { name: "试生成" }))
     expect(await screen.findByText("这份结构如何生成口播稿")).toBeVisible()
     await userEvent.click(screen.getByRole("button", { name: "启用这个结构" }))
@@ -94,7 +94,7 @@ describe("AI 原生爆款拆解工作区", () => {
 
   it("候选结构在本地编辑，明确保存后才创建新版本", async () => {
     const api = fixtureApi()
-    render(<StructureDecisionDocument candidate={candidateFixture} canActivate api={api as any} onUpdated={vi.fn()} />)
+    render(<StructureDecisionDocument candidate={candidateFixture} canActivate api={api as any} onUpdated={vi.fn()} onActivated={vi.fn()} />)
     await userEvent.clear(screen.getByLabelText("开场结构指令"))
     await userEvent.type(screen.getByLabelText("开场结构指令"), "先给出可核验冲突，再说明处理动作")
     expect(api.saveCandidate).not.toHaveBeenCalled()
@@ -107,7 +107,7 @@ describe("AI 原生爆款拆解工作区", () => {
 
   it("平台运营只能提交启用审核，不能直接调用启用接口", async () => {
     const api = fixtureApi()
-    render(<StructureDecisionDocument candidate={{ ...candidateFixture, preview: previewFixture }} canActivate={false} api={api as any} onUpdated={vi.fn()} />)
+    render(<StructureDecisionDocument candidate={{ ...candidateFixture, preview: previewFixture }} canActivate={false} api={api as any} onUpdated={vi.fn()} onActivated={vi.fn()} />)
     await userEvent.click(screen.getByRole("button", { name: "提交启用审核" }))
     expect(screen.getByText("已提交管理员复核。结构尚未进入团长创作。" )).toBeVisible()
     expect(api.activateCandidate).not.toHaveBeenCalled()
@@ -115,7 +115,7 @@ describe("AI 原生爆款拆解工作区", () => {
 
   it("人工可以说明原因后驳回结构候选", async () => {
     const api = fixtureApi()
-    render(<StructureDecisionDocument candidate={candidateFixture} canActivate api={api as any} onUpdated={vi.fn()} />)
+    render(<StructureDecisionDocument candidate={candidateFixture} canActivate api={api as any} onUpdated={vi.fn()} onActivated={vi.fn()} />)
     await userEvent.click(screen.getByRole("button", { name: "驳回结构" }))
     await userEvent.type(screen.getByLabelText("结构驳回原因"), "样本过于特殊，暂不具备复用价值")
     await userEvent.click(screen.getByRole("button", { name: "确认驳回结构" }))
@@ -127,7 +127,7 @@ describe("AI 原生爆款拆解工作区", () => {
   it("启用失败留在确认层并显示可操作的中文错误", async () => {
     const api = fixtureApi()
     api.activateCandidate.mockRejectedValueOnce(new Error("该候选版本已被更新，请刷新后重试"))
-    render(<StructureDecisionDocument candidate={{ ...candidateFixture, preview: previewFixture }} canActivate api={api as any} onUpdated={vi.fn()} />)
+    render(<StructureDecisionDocument candidate={{ ...candidateFixture, preview: previewFixture }} canActivate api={api as any} onUpdated={vi.fn()} onActivated={vi.fn()} />)
     await userEvent.click(screen.getByRole("button", { name: "启用这个结构" }))
     await userEvent.type(screen.getByLabelText("启用原因"), "试生成结果符合质量要求")
     await userEvent.click(screen.getByRole("button", { name: "确认启用" }))
@@ -139,6 +139,40 @@ describe("AI 原生爆款拆解工作区", () => {
     render(<StructureLedger structures={[]} />)
     expect(screen.getByText("还没有已启用结构")).toBeVisible()
     expect(screen.getByText("结构必须经过样本拆解、人工复核和试生成后才能进入团长创作。" )).toBeVisible()
+  })
+
+  it("启用结构后结束复核并自动进入结构库", async () => {
+    const api = fixtureApi()
+    const activeStructure = {
+      templateVersionId: "trust-v1", templateId: "trust", version: 1, name: "真实冲突到责任原则",
+      applicability: candidateFixture.payload.applicability,
+      nodes: candidateFixture.payload.nodes,
+      qualityRules: candidateFixture.payload.qualityRules,
+      riskRules: candidateFixture.payload.riskRules,
+      isGeneral: false, sourceCount: 1,
+    }
+    api.getSample.mockResolvedValue({
+      ...workspaceFixture,
+      sample: { ...workspaceFixture.sample, status: "candidate_ready" },
+      candidates: [{ ...candidateFixture, preview: previewFixture }],
+    })
+    api.listStructures.mockResolvedValue([activeStructure])
+    render(<ContentBrainWorkspace
+      initialSamples={[{ ...workspaceFixture.sample, status: "candidate_ready" }]}
+      initialStructures={[]}
+      canActivate
+      api={api as any}
+    />)
+
+    await userEvent.click(screen.getByRole("button", { name: /一次售后让我重新理解团长.*待决策/ }))
+    await userEvent.click(await screen.findByRole("button", { name: "启用这个结构" }))
+    await userEvent.type(screen.getByLabelText("启用原因"), "真实生成效果符合质量标准")
+    await userEvent.click(screen.getByRole("button", { name: "确认启用" }))
+
+    expect(await screen.findByRole("heading", { name: "结构库" })).toBeVisible()
+    expect(screen.getByText("“真实冲突到责任原则”已启用，当前版本已经进入团长口播稿创作。")).toBeVisible()
+    expect(screen.getByText("1 个当前启用版本")).toBeVisible()
+    expect(screen.queryByRole("heading", { name: "新建结构" })).not.toBeInTheDocument()
   })
 
   it("结构库按启用版本清晰展示结构步骤、适用范围和治理规则", () => {
