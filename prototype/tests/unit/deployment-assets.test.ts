@@ -10,6 +10,7 @@ describe("单机生产部署资产", () => {
     expect(unit).toContain("ReadWritePaths=/var/lib/content-agent")
     expect(unit).toContain("StandardOutput=append:/var/log/content-agent/app-access.jsonl")
     expect(unit).toContain("StandardError=append:/var/log/content-agent/app-error.jsonl")
+    expect(unit).toContain("EnvironmentFile=/etc/content-agent/release.env")
     expect(unit).not.toMatch(/pm2|cluster|replicas/i)
   })
 
@@ -58,5 +59,14 @@ describe("单机生产部署资产", () => {
     const deploy = readFileSync("deploy/scripts/deploy.sh", "utf8")
     expect(deploy).toContain('if [[ -f "${PRODUCTION_DATABASE}" ]]')
     expect(deploy).toContain("正式数据库尚未初始化，跳过本次部署前备份")
+  })
+
+  it("部署时自动写入可核对的源码版本号", () => {
+    const deploy = readFileSync("deploy/scripts/deploy.sh", "utf8")
+    const worker = readFileSync("deploy/systemd/content-agent-worker.service", "utf8")
+
+    expect(deploy).toContain('git -C "${SOURCE_DIRECTORY}" rev-parse --short=12 HEAD')
+    expect(deploy).toContain("APP_VERSION=%s")
+    expect(worker).toContain("EnvironmentFile=/etc/content-agent/release.env")
   })
 })

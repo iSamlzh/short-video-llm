@@ -10,8 +10,10 @@ Group=content-agent
 WorkingDirectory=/opt/content-agent/current
 Environment=NODE_ENV=production
 EnvironmentFile=/etc/content-agent/content-agent.env
+EnvironmentFile=/etc/content-agent/release.env
 Environment=CONTENT_ANALYSIS_INLINE_WORKER=false
 ExecStartPre=/usr/bin/test -r /etc/content-agent/content-agent.env
+ExecStartPre=/usr/bin/test -r /etc/content-agent/release.env
 ExecStartPre=/usr/bin/test -w /var/lib/content-agent
 ExecStart=/usr/bin/npm run worker:content
 StandardOutput=append:/var/log/content-agent/worker-access.jsonl

@@ -8,6 +8,8 @@ SERVICE_GROUP="${SERVICE_GROUP:-content-agent}"
 SMOKE_BASE_URL="${SMOKE_BASE_URL:-http://127.0.0.1:3000}"
 RELEASE_ID="${RELEASE_ID:-$(date -u +%Y%m%d%H%M%S)}"
 RELEASE_DIRECTORY="${APPLICATION_ROOT}/releases/${RELEASE_ID}"
+SOURCE_VERSION="${SOURCE_VERSION:-$(git -C "${SOURCE_DIRECTORY}" rev-parse --short=12 HEAD 2>/dev/null || printf '%s' "${RELEASE_ID}")}"
+RELEASE_ENVIRONMENT_FILE="/etc/content-agent/release.env"
 
 if [[ "${APPLICATION_ROOT}" != /* || "${SOURCE_DIRECTORY}" != /* ]]; then
   echo "APPLICATION_ROOT 与 SOURCE_DIRECTORY 必须是绝对路径" >&2
@@ -15,6 +17,10 @@ if [[ "${APPLICATION_ROOT}" != /* || "${SOURCE_DIRECTORY}" != /* ]]; then
 fi
 if [[ ! -f "${SOURCE_DIRECTORY}/package.json" || ! -f "/etc/content-agent/content-agent.env" ]]; then
   echo "项目源目录或生产环境文件不存在" >&2
+  exit 2
+fi
+if [[ ! "${SOURCE_VERSION}" =~ ^[0-9A-Za-z._-]+$ ]]; then
+  echo "SOURCE_VERSION 只能包含字母、数字、点、下划线和连字符" >&2
   exit 2
 fi
 
@@ -48,6 +54,10 @@ install -d -o root -g adm -m 0750 /var/log/content-agent
 install -m 0644 "${SOURCE_DIRECTORY}/deploy/logrotate/content-agent" /etc/logrotate.d/content-agent
 install -m 0644 "${SOURCE_DIRECTORY}/deploy/systemd/content-agent.service" "/etc/systemd/system/${SERVICE_NAME}.service"
 install -m 0644 "${SOURCE_DIRECTORY}/deploy/systemd/content-agent-worker.service" "/etc/systemd/system/${SERVICE_NAME}-worker.service"
+RELEASE_ENVIRONMENT_TEMP="$(mktemp /etc/content-agent/release.env.XXXXXX)"
+printf 'APP_VERSION=%s\n' "${SOURCE_VERSION}" > "${RELEASE_ENVIRONMENT_TEMP}"
+chmod 0644 "${RELEASE_ENVIRONMENT_TEMP}"
+mv -f "${RELEASE_ENVIRONMENT_TEMP}" "${RELEASE_ENVIRONMENT_FILE}"
 logrotate --debug /etc/logrotate.d/content-agent >/dev/null
 systemctl daemon-reload
 systemctl enable --now logrotate.timer
